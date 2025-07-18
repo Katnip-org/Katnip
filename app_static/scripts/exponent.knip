@@ -1,9 +1,0 @@
-func: exponent(warp=true, base[num], power[num]) -> num {
-    sys.create("private", $result, a.base)
-    control.repeat(a.power){
-        $result = $result * a.base
-    }
-
-    return($result)
-}
-

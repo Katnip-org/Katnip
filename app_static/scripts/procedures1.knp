@@ -1,9 +1,0 @@
-whenFlag(){
-    say("hi")
-    fn.asdf(ff: mousex(), google: "slow")
-}
-
-func: asdf(warp: true, ff[exp], google[exp]) {
-    say(a.ff)
-    fn.asdf(ff: $apple, google: "slow")
-}

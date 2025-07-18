@@ -1,5 +1,0 @@
-events.onflag(){
-    control.if($var1 == ("bello" || $var2) == "true"){
-        looks.say("o"); motion.move(9)
-    }
-}
