@@ -1,0 +1,17 @@
+{
+  "name": "katnip",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "pnpm -r run build",
+    "dev": "pnpm --filter compiler run dev",
+    "dev:frontend": "pnpm --filter frontend run dev",
+    "test": "pnpm -r run test"
+  },
+  "devDependencies": {
+    "@types/node": "^24.1.0",
+    "typescript": "^5.4.0"
+  }
+}

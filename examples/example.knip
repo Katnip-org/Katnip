@@ -1,0 +1,94 @@
+#> This
+is
+a
+comment
+<#
+
+enum: directions(
+    "UP",
+    "DOWN",
+    "LEFT",
+    "RIGHT"
+)
+
+enum: flowers(
+    "Rose",
+    "Tulip",
+    "Daisy"
+)
+
+def: move(
+    dir: enums.directions,
+    amount: num
+){
+    control.if(dir == enum.directions.UP){
+        motion.changeY(amount)
+    }
+    control.if(dir == enum.directions.DOWN){
+        motion.changeY(-amount)
+    }
+    control.if(dir == enum.directions.LEFT){
+        motion.changeX(-amount)
+    }
+    control.if(dir == enum.directions.RIGHT){
+        motion.changeX(amount)
+    }
+}
+
+def: multiply(
+    @proccode: "multiply %n by %n",
+    @doc: "Multiplies two numbers.",
+    @path: "math",
+    @constants: {"avogadro": 6.022e23}
+    x: num,
+    y: num,
+    msg = "Result: ",
+    sendMsg = false
+){
+    result = x * y
+    control.if(sendMsg){
+        looks.say(msg + result)
+    }
+    control.return(result)
+}
+
+# Move the sprite upwards
+proc.move(enum.directions.UP, 10)
+
+# Multiply two numbers and broadcast result as a message
+result = proc.multiply(x: 5, y: 8, sendMsg: true)
+
+# Loop through numbers 1 to 10 inclusive
+for(item, 10){
+    looks.say(item)
+}
+
+# Loop through a list of names
+names = ["Alice", "Bob", "Charlie"]
+for(item, names){
+    looks.say("Hello " + item)
+}
+
+# Enumerate a list of costumes and print index + costume
+costumes = ["cat", "dog", "bat"]
+for((idx, costume), enumerate(costumes)){
+    looks.timeSay("Costume #" + idx, 1)
+    looks.costume.set(costume)
+    looks.timeSay(costume, 1)
+}
+
+# Range loop (5 -> 12 inclusive, step 2)
+for(i, range(5, 12, 2)){
+    looks.timeSay("Step: " + i, 1)
+}
+
+# Zip flowers with colors
+flwTypes = [enum.flowers.Rose, enum.flowers.Tulip, enum.flowers.Daisy]
+colors = ["red", "yellow", "white"]
+
+for((flower, color), zip(flwTypes, colors)){
+    looks.timeSay(flower + " is " + color, 2)
+}
+
+# Use math constant
+looks.say("Avogadro's number: " + math.multiply.constants.avogadro)

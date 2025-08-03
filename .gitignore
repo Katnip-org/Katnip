@@ -1,0 +1,35 @@
+# Node.js dependencies
+node_modules/
+
+# TypeScript build output
+dist/
+build/
+
+# TypeScript incremental build info
+*.tsbuildinfo
+
+# Logs
+logs/
+*.log
+
+# Environment variables (for later config data)
+.env
+.env.local
+
+# OS-specific files
+.DS_Store
+Thumbs.db
+
+# IDE settings
+.vscode/
+.idea/
+
+# Test coverage
+coverage/
+
+# Temporary files
+*.tmp
+*.swp
+
+# Katnip outputs
+packages/compiler/out/
