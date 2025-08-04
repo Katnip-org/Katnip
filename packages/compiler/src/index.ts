@@ -1,14 +1,21 @@
 import { Lexer } from "./lexer/Lexer";
+import { ErrorReporter } from "./utils/ErrorReporter";
+import { Logger } from "./utils/Logger";
+
 import * as fs from "fs/promises";
 // import { Parser } from "./parser/Parser";
 // import { SemanticAnalyzer } from "./semantic/SemanticAnalyzer";
 // import { IRGenerator } from "./ir/IRGenerator";
 // import { SB3Generator } from "./codegen/SB3Generator";
 
-export async function compile(source: string, outputPath: string) {
-    const lexer = new Lexer();
+export async function compile(source: string, outputPath: string, cliReporter?: ErrorReporter) {
+    // Create an error reporter instance
+    const reporter = cliReporter ? cliReporter : new ErrorReporter(source);
+    const logger = new Logger();
+    logger.disable();
+
+    const lexer = new Lexer(reporter, logger);
     const tokens = lexer.tokenize(source);
-    console.log("Tokens:", tokens);
 
     // Create temp file with tokens for debugging
     const tempFilePath = `${outputPath}.tokens.json`;

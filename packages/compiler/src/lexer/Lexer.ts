@@ -9,8 +9,18 @@ import {
 } from "./Token";
 
 import { LexerState } from "./LexerState";
+import { ErrorReporter, KatnipError } from "../utils/ErrorReporter";
+import { Logger, KatnipLog, KatnipLogType } from "../utils/Logger";
 
 export class Lexer {
+    /**
+     * Creates a new Lexer instance.
+     */
+    constructor(
+        private reporter: ErrorReporter,
+        private logger: Logger = new Logger()
+    ) {}
+
     /**
      * Tokenizes the provided source code into an array of tokens.
      * 
@@ -68,6 +78,12 @@ export class Lexer {
             const char = peek();
             if (char !== null) {
                 position++;
+                if (char === '\n') {
+                    line++;
+                    col = 1;
+                } else {
+                    col++;
+                }
             }
             return char;
         }
@@ -78,13 +94,7 @@ export class Lexer {
                 break; // End of input
             }
 
-            // Update line and column tracking
-            if (char === '\n') {
-                line++;
-                col = 1;
-            } else {
-                col++;
-            }
+            // this.logger.log(new KatnipLog(KatnipLogType.Debug, `Lexer state: ${LexerState[currentState]}, char: '${char}'`, { line, column: col }));
 
             // State: Start
             if (currentState === LexerState.Start) {
@@ -122,7 +132,9 @@ export class Lexer {
                 } else if (char === '\x04') {
                     advance(); // Consume EOF character
                 } else {
-                    throw new Error(`Unexpected character '${char}' at line ${line}, column ${col}`);
+                    this.reporter.add(
+                        new KatnipError("Lexer", `Unexpected character '${char}'`, { line: line, column: col })
+                    );
                 }
             }
             
@@ -153,7 +165,9 @@ export class Lexer {
             // State: Escaped String
             else if (currentState === LexerState.EscapedString) {
                 if (char === null) {
-                    throw new Error("Unterminated string literal");
+                    this.reporter.add(
+                        new KatnipError("Lexer", `Unterminated string literal`, { line: line, column: col })
+                    );
                 }
 
                 if (char === "u") {
@@ -162,7 +176,9 @@ export class Lexer {
                     for (let i = 0; i < 4; i++) {
                         const nextChar = advance();
                         if (nextChar === null || !/[0-9a-fA-F]/.test(nextChar)) {
-                            throw new Error("Invalid Unicode escape sequence");
+                            this.reporter.add(
+                                new KatnipError("Lexer", `Invalid Unicode escape sequence`, { line: line, column: col })
+                            );
                         }
                         unicodeBuffer += nextChar;
                     }
@@ -187,13 +203,27 @@ export class Lexer {
                 } else if (char === '.') {
                     // Handle decimal point
                     if (buffer.includes('.')) {
-                        throw new Error("Invalid number format: multiple decimal points");
+                        this.reporter.add(
+                            new KatnipError("Lexer", `Invalid number format: Multiple decimal points`, { line: line, column: col })
+                        );
+                        emit("Number");
+                        currentState = LexerState.Start;
+                    } else {
+                        buffer += advance();
+                        currentState = LexerState.Number; // Still in number state
                     }
-                    buffer += advance();
-                    currentState = LexerState.Number; // Still in number state
                 } else if (/[eE]/.test(char)) {
-                    // Handle scientific notation
-                    buffer += advance();
+                    // Handle decimal point
+                    if (buffer.includes('e') || buffer.includes("E")) {
+                        this.reporter.add(
+                            new KatnipError("Lexer", `Invalid number format: Multiple exponentional notation characters`, { line: line, column: col })
+                        );
+                        emit("Number");
+                        currentState = LexerState.Start;
+                    } else {
+                        buffer += advance();
+                        currentState = LexerState.Number; // Still in number state
+                    }
                 } else if (/[+\-]/.test(char)) {
                     // Handle sign in scientific notation
                     if (buffer[-1] === 'e' || buffer[-1] === 'E') {
@@ -267,6 +297,7 @@ export class Lexer {
 
             else if (currentState === LexerState.Comment) {
                 const commentMap: Record<string, [ValuedTokenType, string]> = {
+                    "none": ["Comment_SingleExpanded", "\n"],
                     "*": ["Comment_SingleCollapsed", "\n"],
                     "!": ["Comment_SingleIgnored", "\n"],
                     "<": ["Comment_MultilineExpanded", ">#"],
@@ -278,6 +309,8 @@ export class Lexer {
                     const nextChar = advance();
                     if (nextChar && commentMap[nextChar]) {
                         commentType = nextChar;
+                    } else {
+                        commentType = "none"; // Default to single-line comment
                     }
                 } else {
                     const [tokenType, commentEnd] = commentMap[commentType];
@@ -297,7 +330,7 @@ export class Lexer {
                         currentState = LexerState.Start;
                         commentType = "";
                     }
-                    // No end yet → keep buffering
+                    // No end yet -> keep buffering
                     else {
                         buffer += advance() ?? "";
                     }

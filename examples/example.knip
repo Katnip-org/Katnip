@@ -1,6 +1,7 @@
 #> This
 is
 a
+big
 comment
 <#
 
@@ -20,75 +21,101 @@ enum: flowers(
 def: move(
     dir: enums.directions,
     amount: num
-){
-    control.if(dir == enum.directions.UP){
+) -> void {
+    if(dir == enum.directions.UP){
         motion.changeY(amount)
     }
-    control.if(dir == enum.directions.DOWN){
+    if(dir == enum.directions.DOWN){
         motion.changeY(-amount)
     }
-    control.if(dir == enum.directions.LEFT){
+    if(dir == enum.directions.LEFT){
         motion.changeX(-amount)
     }
-    control.if(dir == enum.directions.RIGHT){
+    if(dir == enum.directions.RIGHT){
         motion.changeX(amount)
     }
 }
 
-def: multiply(
-    @proccode: "multiply %n by %n",
-    @doc: "Multiplies two numbers.",
-    @path: "math",
-    @constants: {"avogadro": 6.022e23}
-    x: num,
-    y: num,
-    msg = "Result: ",
-    sendMsg = false
-){
-    result = x * y
-    control.if(sendMsg){
-        looks.say(msg + result)
+# Pose data (flat list: name, speed, power)
+poseList = [
+    "Dash", 10, 7,
+    "Smash", 4, 12,
+    "Blast", 8, 9
+]
+
+#> this is a collapsed comment
+and another line
+and a third line
+closing it now <#
+
+# Procedure: print a message to console
+def: console.log(
+    @proccode: "log %s",
+    @doc: "Logs a message to the console.",
+    msg = "No message."
+) -> void {
+    console.log(msg)
+}
+
+# Procedure: calculate score using exponentiation
+def: score(
+    @proccode: "score %n ^ %n",
+    @constants: {"avogadro":6.022e23}
+    base: num,
+    exp: num = 2
+) -> num {
+    return(base ^ exp)
+}
+
+def: thing(one: num, two: num) -> num {
+    return(one + two)
+}
+
+# Clone behavior
+clone.onStart(){
+    console.log("🌀 Clone active!")
+    wait(1)
+    clone.delete()
+}
+
+# User interaction + clone creation
+def: start() -> void {
+    var.set(name, console.input("What is your name?"))
+    console.log("Welcome, " + name + "!")
+
+    for(i, range(1, 3)){
+        console.log("Attempt #" + i)
     }
-    control.return(result)
+
+    clone.create("myself")
 }
 
-# Move the sprite upwards
-proc.move(enum.directions.UP, 10)
+onFlag(){
+    # Call the start function
+    proc.start()
 
-# Multiply two numbers and broadcast result as a message
-result = proc.multiply(x: 5, y: 8, sendMsg: true)
+    # Loop over pose list using tuple unpacking
+    for((name, speed, power), poseList){
+        looks.say("Move: " + name)
 
-# Loop through numbers 1 to 10 inclusive
-for(item, 10){
-    looks.say(item)
+        if(speed > 6 && power > 6){
+            console.log("Strong move!")
+        } else {
+            console.log("Weak stats.")
+        }
+
+        var.set(score, score(speed + power))
+        console.log("Score: " + score)
+    }
+
+    # Constant checks
+    console.log("π = " + const.pi)
+    console.log("e = " + const.e)
+    console.log("τ = " + const.tau)
+
+    if(const.true && !const.false){
+        console.log(f"Basic logic constants, like {const.pi} work.")
+    }
+
+    proc.thing(5.5e-4, 10)
 }
-
-# Loop through a list of names
-names = ["Alice", "Bob", "Charlie"]
-for(item, names){
-    looks.say("Hello " + item)
-}
-
-# Enumerate a list of costumes and print index + costume
-costumes = ["cat", "dog", "bat"]
-for((idx, costume), enumerate(costumes)){
-    looks.timeSay("Costume #" + idx, 1)
-    looks.costume.set(costume)
-    looks.timeSay(costume, 1)
-}
-
-# Range loop (5 -> 12 inclusive, step 2)
-for(i, range(5, 12, 2)){
-    looks.timeSay("Step: " + i, 1)
-}
-
-# Zip flowers with colors
-flwTypes = [enum.flowers.Rose, enum.flowers.Tulip, enum.flowers.Daisy]
-colors = ["red", "yellow", "white"]
-
-for((flower, color), zip(flwTypes, colors)){
-    looks.timeSay(flower + " is " + color, 2)
-}
-
-# Use math constant
-looks.say("Avogadro's number: " + math.multiply.constants.avogadro)
