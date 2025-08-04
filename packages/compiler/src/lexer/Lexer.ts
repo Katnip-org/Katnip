@@ -226,7 +226,7 @@ export class Lexer {
                     }
                 } else if (/[+\-]/.test(char)) {
                     // Handle sign in scientific notation
-                    if (buffer[-1] === 'e' || buffer[-1] === 'E') {
+                    if (buffer.slice(-1) === 'e' || buffer.slice(-1) === 'E') {
                         buffer += advance();
                     } else {
                         emit("Number");
