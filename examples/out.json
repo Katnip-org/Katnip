@@ -1,0 +1,1610 @@
+[
+  {
+    "token": {
+      "type": "Identifier",
+      "value": "private"
+    },
+    "start": {
+      "line": 1,
+      "column": 1
+    },
+    "end": {
+      "line": 1,
+      "column": 8
+    }
+  },
+  {
+    "token": {
+      "type": "Identifier",
+      "value": "a"
+    },
+    "start": {
+      "line": 1,
+      "column": 9
+    },
+    "end": {
+      "line": 1,
+      "column": 10
+    }
+  },
+  {
+    "token": {
+      "type": "Colon"
+    },
+    "start": {
+      "line": 1,
+      "column": 10
+    },
+    "end": {
+      "line": 1,
+      "column": 11
+    }
+  },
+  {
+    "token": {
+      "type": "Identifier",
+      "value": "num"
+    },
+    "start": {
+      "line": 1,
+      "column": 12
+    },
+    "end": {
+      "line": 1,
+      "column": 15
+    }
+  },
+  {
+    "token": {
+      "type": "Equals"
+    },
+    "start": {
+      "line": 1,
+      "column": 16
+    },
+    "end": {
+      "line": 1,
+      "column": 17
+    }
+  },
+  {
+    "token": {
+      "type": "Number",
+      "value": "42"
+    },
+    "start": {
+      "line": 1,
+      "column": 18
+    },
+    "end": {
+      "line": 1,
+      "column": 20
+    }
+  },
+  {
+    "token": {
+      "type": "Identifier",
+      "value": "temp"
+    },
+    "start": {
+      "line": 2,
+      "column": 1
+    },
+    "end": {
+      "line": 2,
+      "column": 5
+    }
+  },
+  {
+    "token": {
+      "type": "Identifier",
+      "value": "b"
+    },
+    "start": {
+      "line": 2,
+      "column": 6
+    },
+    "end": {
+      "line": 2,
+      "column": 7
+    }
+  },
+  {
+    "token": {
+      "type": "Colon"
+    },
+    "start": {
+      "line": 2,
+      "column": 7
+    },
+    "end": {
+      "line": 2,
+      "column": 8
+    }
+  },
+  {
+    "token": {
+      "type": "Identifier",
+      "value": "str"
+    },
+    "start": {
+      "line": 2,
+      "column": 9
+    },
+    "end": {
+      "line": 2,
+      "column": 12
+    }
+  },
+  {
+    "token": {
+      "type": "Equals"
+    },
+    "start": {
+      "line": 2,
+      "column": 13
+    },
+    "end": {
+      "line": 2,
+      "column": 14
+    }
+  },
+  {
+    "token": {
+      "type": "String",
+      "value": "\"Hello, World!\""
+    },
+    "start": {
+      "line": 2,
+      "column": 15
+    },
+    "end": {
+      "line": 2,
+      "column": 30
+    }
+  },
+  {
+    "token": {
+      "type": "Identifier",
+      "value": "public"
+    },
+    "start": {
+      "line": 3,
+      "column": 1
+    },
+    "end": {
+      "line": 3,
+      "column": 7
+    }
+  },
+  {
+    "token": {
+      "type": "Identifier",
+      "value": "c"
+    },
+    "start": {
+      "line": 3,
+      "column": 8
+    },
+    "end": {
+      "line": 3,
+      "column": 9
+    }
+  },
+  {
+    "token": {
+      "type": "Colon"
+    },
+    "start": {
+      "line": 3,
+      "column": 9
+    },
+    "end": {
+      "line": 3,
+      "column": 10
+    }
+  },
+  {
+    "token": {
+      "type": "Identifier",
+      "value": "bool"
+    },
+    "start": {
+      "line": 3,
+      "column": 11
+    },
+    "end": {
+      "line": 3,
+      "column": 15
+    }
+  },
+  {
+    "token": {
+      "type": "Equals"
+    },
+    "start": {
+      "line": 3,
+      "column": 16
+    },
+    "end": {
+      "line": 3,
+      "column": 17
+    }
+  },
+  {
+    "token": {
+      "type": "Identifier",
+      "value": "true"
+    },
+    "start": {
+      "line": 3,
+      "column": 18
+    },
+    "end": {
+      "line": 3,
+      "column": 22
+    }
+  },
+  {
+    "token": {
+      "type": "Identifier",
+      "value": "private"
+    },
+    "start": {
+      "line": 5,
+      "column": 1
+    },
+    "end": {
+      "line": 5,
+      "column": 8
+    }
+  },
+  {
+    "token": {
+      "type": "Identifier",
+      "value": "d"
+    },
+    "start": {
+      "line": 5,
+      "column": 9
+    },
+    "end": {
+      "line": 5,
+      "column": 10
+    }
+  },
+  {
+    "token": {
+      "type": "Colon"
+    },
+    "start": {
+      "line": 5,
+      "column": 10
+    },
+    "end": {
+      "line": 5,
+      "column": 11
+    }
+  },
+  {
+    "token": {
+      "type": "Identifier",
+      "value": "list"
+    },
+    "start": {
+      "line": 5,
+      "column": 12
+    },
+    "end": {
+      "line": 5,
+      "column": 16
+    }
+  },
+  {
+    "token": {
+      "type": "Equals"
+    },
+    "start": {
+      "line": 5,
+      "column": 17
+    },
+    "end": {
+      "line": 5,
+      "column": 18
+    }
+  },
+  {
+    "token": {
+      "type": "BracketOpen"
+    },
+    "start": {
+      "line": 5,
+      "column": 19
+    },
+    "end": {
+      "line": 5,
+      "column": 20
+    }
+  },
+  {
+    "token": {
+      "type": "Number",
+      "value": "1"
+    },
+    "start": {
+      "line": 5,
+      "column": 20
+    },
+    "end": {
+      "line": 5,
+      "column": 21
+    }
+  },
+  {
+    "token": {
+      "type": "Comma"
+    },
+    "start": {
+      "line": 5,
+      "column": 21
+    },
+    "end": {
+      "line": 5,
+      "column": 22
+    }
+  },
+  {
+    "token": {
+      "type": "Number",
+      "value": "2"
+    },
+    "start": {
+      "line": 5,
+      "column": 23
+    },
+    "end": {
+      "line": 5,
+      "column": 24
+    }
+  },
+  {
+    "token": {
+      "type": "Comma"
+    },
+    "start": {
+      "line": 5,
+      "column": 24
+    },
+    "end": {
+      "line": 5,
+      "column": 25
+    }
+  },
+  {
+    "token": {
+      "type": "Number",
+      "value": "3"
+    },
+    "start": {
+      "line": 5,
+      "column": 26
+    },
+    "end": {
+      "line": 5,
+      "column": 27
+    }
+  },
+  {
+    "token": {
+      "type": "BracketClose"
+    },
+    "start": {
+      "line": 5,
+      "column": 27
+    },
+    "end": {
+      "line": 5,
+      "column": 28
+    }
+  },
+  {
+    "token": {
+      "type": "Identifier",
+      "value": "public"
+    },
+    "start": {
+      "line": 6,
+      "column": 1
+    },
+    "end": {
+      "line": 6,
+      "column": 7
+    }
+  },
+  {
+    "token": {
+      "type": "Identifier",
+      "value": "e"
+    },
+    "start": {
+      "line": 6,
+      "column": 8
+    },
+    "end": {
+      "line": 6,
+      "column": 9
+    }
+  },
+  {
+    "token": {
+      "type": "Colon"
+    },
+    "start": {
+      "line": 6,
+      "column": 9
+    },
+    "end": {
+      "line": 6,
+      "column": 10
+    }
+  },
+  {
+    "token": {
+      "type": "Identifier",
+      "value": "dict"
+    },
+    "start": {
+      "line": 6,
+      "column": 11
+    },
+    "end": {
+      "line": 6,
+      "column": 15
+    }
+  },
+  {
+    "token": {
+      "type": "LeftChevron"
+    },
+    "start": {
+      "line": 6,
+      "column": 15
+    },
+    "end": {
+      "line": 6,
+      "column": 16
+    }
+  },
+  {
+    "token": {
+      "type": "Identifier",
+      "value": "str"
+    },
+    "start": {
+      "line": 6,
+      "column": 16
+    },
+    "end": {
+      "line": 6,
+      "column": 19
+    }
+  },
+  {
+    "token": {
+      "type": "Comma"
+    },
+    "start": {
+      "line": 6,
+      "column": 19
+    },
+    "end": {
+      "line": 6,
+      "column": 20
+    }
+  },
+  {
+    "token": {
+      "type": "Identifier",
+      "value": "str"
+    },
+    "start": {
+      "line": 6,
+      "column": 21
+    },
+    "end": {
+      "line": 6,
+      "column": 24
+    }
+  },
+  {
+    "token": {
+      "type": "RightChevron"
+    },
+    "start": {
+      "line": 6,
+      "column": 24
+    },
+    "end": {
+      "line": 6,
+      "column": 25
+    }
+  },
+  {
+    "token": {
+      "type": "Equals"
+    },
+    "start": {
+      "line": 6,
+      "column": 26
+    },
+    "end": {
+      "line": 6,
+      "column": 27
+    }
+  },
+  {
+    "token": {
+      "type": "BraceOpen"
+    },
+    "start": {
+      "line": 6,
+      "column": 28
+    },
+    "end": {
+      "line": 6,
+      "column": 29
+    }
+  },
+  {
+    "token": {
+      "type": "String",
+      "value": "\"key\""
+    },
+    "start": {
+      "line": 6,
+      "column": 29
+    },
+    "end": {
+      "line": 6,
+      "column": 34
+    }
+  },
+  {
+    "token": {
+      "type": "Colon"
+    },
+    "start": {
+      "line": 6,
+      "column": 34
+    },
+    "end": {
+      "line": 6,
+      "column": 35
+    }
+  },
+  {
+    "token": {
+      "type": "String",
+      "value": "\"value\""
+    },
+    "start": {
+      "line": 6,
+      "column": 36
+    },
+    "end": {
+      "line": 6,
+      "column": 43
+    }
+  },
+  {
+    "token": {
+      "type": "BraceClose"
+    },
+    "start": {
+      "line": 6,
+      "column": 43
+    },
+    "end": {
+      "line": 6,
+      "column": 44
+    }
+  },
+  {
+    "token": {
+      "type": "Identifier",
+      "value": "proc"
+    },
+    "start": {
+      "line": 8,
+      "column": 1
+    },
+    "end": {
+      "line": 8,
+      "column": 5
+    }
+  },
+  {
+    "token": {
+      "type": "Colon"
+    },
+    "start": {
+      "line": 8,
+      "column": 5
+    },
+    "end": {
+      "line": 8,
+      "column": 6
+    }
+  },
+  {
+    "token": {
+      "type": "Identifier",
+      "value": "log"
+    },
+    "start": {
+      "line": 8,
+      "column": 7
+    },
+    "end": {
+      "line": 8,
+      "column": 10
+    }
+  },
+  {
+    "token": {
+      "type": "ParenOpen"
+    },
+    "start": {
+      "line": 8,
+      "column": 10
+    },
+    "end": {
+      "line": 8,
+      "column": 11
+    }
+  },
+  {
+    "token": {
+      "type": "AtSymbol"
+    },
+    "start": {
+      "line": 8,
+      "column": 11
+    },
+    "end": {
+      "line": 8,
+      "column": 12
+    }
+  },
+  {
+    "token": {
+      "type": "Identifier",
+      "value": "warp"
+    },
+    "start": {
+      "line": 8,
+      "column": 12
+    },
+    "end": {
+      "line": 8,
+      "column": 16
+    }
+  },
+  {
+    "token": {
+      "type": "Equals"
+    },
+    "start": {
+      "line": 8,
+      "column": 16
+    },
+    "end": {
+      "line": 8,
+      "column": 17
+    }
+  },
+  {
+    "token": {
+      "type": "String",
+      "value": "\"true\""
+    },
+    "start": {
+      "line": 8,
+      "column": 17
+    },
+    "end": {
+      "line": 8,
+      "column": 23
+    }
+  },
+  {
+    "token": {
+      "type": "Comma"
+    },
+    "start": {
+      "line": 8,
+      "column": 23
+    },
+    "end": {
+      "line": 8,
+      "column": 24
+    }
+  },
+  {
+    "token": {
+      "type": "Identifier",
+      "value": "msg"
+    },
+    "start": {
+      "line": 8,
+      "column": 25
+    },
+    "end": {
+      "line": 8,
+      "column": 28
+    }
+  },
+  {
+    "token": {
+      "type": "Colon"
+    },
+    "start": {
+      "line": 8,
+      "column": 28
+    },
+    "end": {
+      "line": 8,
+      "column": 29
+    }
+  },
+  {
+    "token": {
+      "type": "Identifier",
+      "value": "str"
+    },
+    "start": {
+      "line": 8,
+      "column": 30
+    },
+    "end": {
+      "line": 8,
+      "column": 33
+    }
+  },
+  {
+    "token": {
+      "type": "ParenClose"
+    },
+    "start": {
+      "line": 8,
+      "column": 33
+    },
+    "end": {
+      "line": 8,
+      "column": 34
+    }
+  },
+  {
+    "token": {
+      "type": "Number",
+      "value": "-"
+    },
+    "start": {
+      "line": 8,
+      "column": 35
+    },
+    "end": {
+      "line": 8,
+      "column": 36
+    }
+  },
+  {
+    "token": {
+      "type": "RightChevron"
+    },
+    "start": {
+      "line": 8,
+      "column": 36
+    },
+    "end": {
+      "line": 8,
+      "column": 37
+    }
+  },
+  {
+    "token": {
+      "type": "Identifier",
+      "value": "void"
+    },
+    "start": {
+      "line": 8,
+      "column": 38
+    },
+    "end": {
+      "line": 8,
+      "column": 42
+    }
+  },
+  {
+    "token": {
+      "type": "BraceOpen"
+    },
+    "start": {
+      "line": 8,
+      "column": 43
+    },
+    "end": {
+      "line": 8,
+      "column": 44
+    }
+  },
+  {
+    "token": {
+      "type": "Identifier",
+      "value": "console"
+    },
+    "start": {
+      "line": 9,
+      "column": 5
+    },
+    "end": {
+      "line": 9,
+      "column": 12
+    }
+  },
+  {
+    "token": {
+      "type": "Dot"
+    },
+    "start": {
+      "line": 9,
+      "column": 12
+    },
+    "end": {
+      "line": 9,
+      "column": 13
+    }
+  },
+  {
+    "token": {
+      "type": "Identifier",
+      "value": "log"
+    },
+    "start": {
+      "line": 9,
+      "column": 13
+    },
+    "end": {
+      "line": 9,
+      "column": 16
+    }
+  },
+  {
+    "token": {
+      "type": "ParenOpen"
+    },
+    "start": {
+      "line": 9,
+      "column": 16
+    },
+    "end": {
+      "line": 9,
+      "column": 17
+    }
+  },
+  {
+    "token": {
+      "type": "Identifier",
+      "value": "msg"
+    },
+    "start": {
+      "line": 9,
+      "column": 17
+    },
+    "end": {
+      "line": 9,
+      "column": 20
+    }
+  },
+  {
+    "token": {
+      "type": "ParenClose"
+    },
+    "start": {
+      "line": 9,
+      "column": 20
+    },
+    "end": {
+      "line": 9,
+      "column": 21
+    }
+  },
+  {
+    "token": {
+      "type": "BraceClose"
+    },
+    "start": {
+      "line": 10,
+      "column": 1
+    },
+    "end": {
+      "line": 10,
+      "column": 2
+    }
+  },
+  {
+    "token": {
+      "type": "Identifier",
+      "value": "enum"
+    },
+    "start": {
+      "line": 12,
+      "column": 1
+    },
+    "end": {
+      "line": 12,
+      "column": 5
+    }
+  },
+  {
+    "token": {
+      "type": "Colon"
+    },
+    "start": {
+      "line": 12,
+      "column": 5
+    },
+    "end": {
+      "line": 12,
+      "column": 6
+    }
+  },
+  {
+    "token": {
+      "type": "Identifier",
+      "value": "thing"
+    },
+    "start": {
+      "line": 12,
+      "column": 7
+    },
+    "end": {
+      "line": 12,
+      "column": 12
+    }
+  },
+  {
+    "token": {
+      "type": "ParenOpen"
+    },
+    "start": {
+      "line": 12,
+      "column": 12
+    },
+    "end": {
+      "line": 12,
+      "column": 13
+    }
+  },
+  {
+    "token": {
+      "type": "Identifier",
+      "value": "red"
+    },
+    "start": {
+      "line": 13,
+      "column": 5
+    },
+    "end": {
+      "line": 13,
+      "column": 8
+    }
+  },
+  {
+    "token": {
+      "type": "Equals"
+    },
+    "start": {
+      "line": 13,
+      "column": 9
+    },
+    "end": {
+      "line": 13,
+      "column": 10
+    }
+  },
+  {
+    "token": {
+      "type": "Number",
+      "value": "1"
+    },
+    "start": {
+      "line": 13,
+      "column": 11
+    },
+    "end": {
+      "line": 13,
+      "column": 12
+    }
+  },
+  {
+    "token": {
+      "type": "Comma"
+    },
+    "start": {
+      "line": 13,
+      "column": 12
+    },
+    "end": {
+      "line": 13,
+      "column": 13
+    }
+  },
+  {
+    "token": {
+      "type": "Identifier",
+      "value": "green"
+    },
+    "start": {
+      "line": 14,
+      "column": 5
+    },
+    "end": {
+      "line": 14,
+      "column": 10
+    }
+  },
+  {
+    "token": {
+      "type": "Equals"
+    },
+    "start": {
+      "line": 14,
+      "column": 11
+    },
+    "end": {
+      "line": 14,
+      "column": 12
+    }
+  },
+  {
+    "token": {
+      "type": "Number",
+      "value": "2"
+    },
+    "start": {
+      "line": 14,
+      "column": 13
+    },
+    "end": {
+      "line": 14,
+      "column": 14
+    }
+  },
+  {
+    "token": {
+      "type": "Comma"
+    },
+    "start": {
+      "line": 14,
+      "column": 14
+    },
+    "end": {
+      "line": 14,
+      "column": 15
+    }
+  },
+  {
+    "token": {
+      "type": "Identifier",
+      "value": "blue"
+    },
+    "start": {
+      "line": 15,
+      "column": 5
+    },
+    "end": {
+      "line": 15,
+      "column": 9
+    }
+  },
+  {
+    "token": {
+      "type": "Equals"
+    },
+    "start": {
+      "line": 15,
+      "column": 10
+    },
+    "end": {
+      "line": 15,
+      "column": 11
+    }
+  },
+  {
+    "token": {
+      "type": "Number",
+      "value": "3"
+    },
+    "start": {
+      "line": 15,
+      "column": 12
+    },
+    "end": {
+      "line": 15,
+      "column": 13
+    }
+  },
+  {
+    "token": {
+      "type": "ParenClose"
+    },
+    "start": {
+      "line": 16,
+      "column": 1
+    },
+    "end": {
+      "line": 16,
+      "column": 2
+    }
+  },
+  {
+    "token": {
+      "type": "Identifier",
+      "value": "events"
+    },
+    "start": {
+      "line": 18,
+      "column": 1
+    },
+    "end": {
+      "line": 18,
+      "column": 7
+    }
+  },
+  {
+    "token": {
+      "type": "Dot"
+    },
+    "start": {
+      "line": 18,
+      "column": 7
+    },
+    "end": {
+      "line": 18,
+      "column": 8
+    }
+  },
+  {
+    "token": {
+      "type": "Identifier",
+      "value": "onflag"
+    },
+    "start": {
+      "line": 18,
+      "column": 8
+    },
+    "end": {
+      "line": 18,
+      "column": 14
+    }
+  },
+  {
+    "token": {
+      "type": "Identifier",
+      "value": "motion"
+    },
+    "start": {
+      "line": 19,
+      "column": 5
+    },
+    "end": {
+      "line": 19,
+      "column": 11
+    }
+  },
+  {
+    "token": {
+      "type": "Dot"
+    },
+    "start": {
+      "line": 19,
+      "column": 11
+    },
+    "end": {
+      "line": 19,
+      "column": 12
+    }
+  },
+  {
+    "token": {
+      "type": "Identifier",
+      "value": "x"
+    },
+    "start": {
+      "line": 19,
+      "column": 12
+    },
+    "end": {
+      "line": 19,
+      "column": 13
+    }
+  },
+  {
+    "token": {
+      "type": "Dot"
+    },
+    "start": {
+      "line": 19,
+      "column": 13
+    },
+    "end": {
+      "line": 19,
+      "column": 14
+    }
+  },
+  {
+    "token": {
+      "type": "Identifier",
+      "value": "set"
+    },
+    "start": {
+      "line": 19,
+      "column": 14
+    },
+    "end": {
+      "line": 19,
+      "column": 17
+    }
+  },
+  {
+    "token": {
+      "type": "ParenOpen"
+    },
+    "start": {
+      "line": 19,
+      "column": 17
+    },
+    "end": {
+      "line": 19,
+      "column": 18
+    }
+  },
+  {
+    "token": {
+      "type": "Number",
+      "value": "100"
+    },
+    "start": {
+      "line": 19,
+      "column": 18
+    },
+    "end": {
+      "line": 19,
+      "column": 21
+    }
+  },
+  {
+    "token": {
+      "type": "ParenClose"
+    },
+    "start": {
+      "line": 19,
+      "column": 21
+    },
+    "end": {
+      "line": 19,
+      "column": 22
+    }
+  },
+  {
+    "token": {
+      "type": "BraceClose"
+    },
+    "start": {
+      "line": 20,
+      "column": 1
+    },
+    "end": {
+      "line": 20,
+      "column": 2
+    }
+  },
+  {
+    "token": {
+      "type": "Identifier",
+      "value": "private"
+    },
+    "start": {
+      "line": 22,
+      "column": 1
+    },
+    "end": {
+      "line": 22,
+      "column": 8
+    }
+  },
+  {
+    "token": {
+      "type": "Identifier",
+      "value": "i"
+    },
+    "start": {
+      "line": 22,
+      "column": 9
+    },
+    "end": {
+      "line": 22,
+      "column": 10
+    }
+  },
+  {
+    "token": {
+      "type": "Colon"
+    },
+    "start": {
+      "line": 22,
+      "column": 10
+    },
+    "end": {
+      "line": 22,
+      "column": 11
+    }
+  },
+  {
+    "token": {
+      "type": "Identifier",
+      "value": "num"
+    },
+    "start": {
+      "line": 22,
+      "column": 12
+    },
+    "end": {
+      "line": 22,
+      "column": 15
+    }
+  },
+  {
+    "token": {
+      "type": "Equals"
+    },
+    "start": {
+      "line": 22,
+      "column": 16
+    },
+    "end": {
+      "line": 22,
+      "column": 17
+    }
+  },
+  {
+    "token": {
+      "type": "Number",
+      "value": "0"
+    },
+    "start": {
+      "line": 22,
+      "column": 18
+    },
+    "end": {
+      "line": 22,
+      "column": 19
+    }
+  },
+  {
+    "token": {
+      "type": "Identifier",
+      "value": "for"
+    },
+    "start": {
+      "line": 23,
+      "column": 1
+    },
+    "end": {
+      "line": 23,
+      "column": 4
+    }
+  },
+  {
+    "token": {
+      "type": "ParenOpen"
+    },
+    "start": {
+      "line": 23,
+      "column": 5
+    },
+    "end": {
+      "line": 23,
+      "column": 6
+    }
+  },
+  {
+    "token": {
+      "type": "Identifier",
+      "value": "i"
+    },
+    "start": {
+      "line": 23,
+      "column": 6
+    },
+    "end": {
+      "line": 23,
+      "column": 7
+    }
+  },
+  {
+    "token": {
+      "type": "Comma"
+    },
+    "start": {
+      "line": 23,
+      "column": 7
+    },
+    "end": {
+      "line": 23,
+      "column": 8
+    }
+  },
+  {
+    "token": {
+      "type": "Number",
+      "value": "10"
+    },
+    "start": {
+      "line": 23,
+      "column": 9
+    },
+    "end": {
+      "line": 23,
+      "column": 11
+    }
+  },
+  {
+    "token": {
+      "type": "ParenClose"
+    },
+    "start": {
+      "line": 23,
+      "column": 11
+    },
+    "end": {
+      "line": 23,
+      "column": 12
+    }
+  },
+  {
+    "token": {
+      "type": "BraceOpen"
+    },
+    "start": {
+      "line": 23,
+      "column": 13
+    },
+    "end": {
+      "line": 23,
+      "column": 14
+    }
+  },
+  {
+    "token": {
+      "type": "Identifier",
+      "value": "console"
+    },
+    "start": {
+      "line": 24,
+      "column": 5
+    },
+    "end": {
+      "line": 24,
+      "column": 12
+    }
+  },
+  {
+    "token": {
+      "type": "Dot"
+    },
+    "start": {
+      "line": 24,
+      "column": 12
+    },
+    "end": {
+      "line": 24,
+      "column": 13
+    }
+  },
+  {
+    "token": {
+      "type": "Identifier",
+      "value": "log"
+    },
+    "start": {
+      "line": 24,
+      "column": 13
+    },
+    "end": {
+      "line": 24,
+      "column": 16
+    }
+  },
+  {
+    "token": {
+      "type": "ParenOpen"
+    },
+    "start": {
+      "line": 24,
+      "column": 16
+    },
+    "end": {
+      "line": 24,
+      "column": 17
+    }
+  },
+  {
+    "token": {
+      "type": "String",
+      "value": "\"Iteration: \""
+    },
+    "start": {
+      "line": 24,
+      "column": 17
+    },
+    "end": {
+      "line": 24,
+      "column": 30
+    }
+  },
+  {
+    "token": {
+      "type": "Plus"
+    },
+    "start": {
+      "line": 24,
+      "column": 31
+    },
+    "end": {
+      "line": 24,
+      "column": 32
+    }
+  },
+  {
+    "token": {
+      "type": "Identifier",
+      "value": "i"
+    },
+    "start": {
+      "line": 24,
+      "column": 33
+    },
+    "end": {
+      "line": 24,
+      "column": 34
+    }
+  },
+  {
+    "token": {
+      "type": "ParenClose"
+    },
+    "start": {
+      "line": 24,
+      "column": 34
+    },
+    "end": {
+      "line": 24,
+      "column": 35
+    }
+  },
+  {
+    "token": {
+      "type": "BraceClose"
+    },
+    "start": {
+      "line": 25,
+      "column": 1
+    },
+    "end": {
+      "line": 25,
+      "column": 2
+    }
+  }
+]

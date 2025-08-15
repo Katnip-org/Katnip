@@ -1,3 +1,7 @@
+/**
+ * @fileoverview Contains the main lexer class for the Katnip compiler.
+ */
+
 import { 
     Token,
     TokenType,
@@ -18,7 +22,7 @@ export class Lexer {
      */
     constructor(
         private reporter: ErrorReporter,
-        private logger: Logger = new Logger()
+        private logger: Logger = new Logger(),
     ) {}
 
     /**
@@ -338,6 +342,8 @@ export class Lexer {
             }
         }
 
+        buffer = "\x04"
+        emit("EOF"); // Emit EOF token at the end
         return tokens;
     }
 }

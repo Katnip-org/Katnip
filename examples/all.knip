@@ -1,0 +1,25 @@
+private a: num = 42
+temp b: str = "Hello, World!"
+public c: bool = true
+
+private d: list = [1, 2, 3]
+public e: dict<str, str> = {"key": "value"}
+
+proc: log(@warp="true", msg: str) -> void {
+    console.log(msg)
+}
+
+enum: thing(
+    red = 1,
+    green = 2,
+    blue = 3
+)
+
+events.onflag(){
+    motion.x.set(100)
+}
+
+private i: num = 0
+for (i, 10) {
+    console.log("Iteration: " + i)
+}

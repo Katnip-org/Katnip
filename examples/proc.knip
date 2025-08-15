@@ -1,0 +1,16 @@
+proc: log(msg: str) -> void {
+    console.log(msg)
+}
+
+proc: score(
+    @proccode: "score %n %n",
+    @path: "game.score",
+    @constants: {"avogadro":6.022e23}
+    @doc: "Calculates the score using exponentiation.",
+    @warp: true,
+    
+    base: num,
+    exponent: num
+) -> num {
+    return math.pow(base, exponent)
+}

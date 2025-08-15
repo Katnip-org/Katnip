@@ -18,7 +18,7 @@ enum: flowers(
     "Daisy"
 )
 
-def: move(
+proc: move(
     dir: enums.directions,
     amount: num
 ) -> void {
@@ -49,7 +49,7 @@ and a third line
 closing it now <#
 
 # Procedure: print a message to console
-def: console.log(
+proc: log(
     @proccode: "log %s",
     @doc: "Logs a message to the console.",
     msg = "No message."
@@ -58,16 +58,16 @@ def: console.log(
 }
 
 # Procedure: calculate score using exponentiation
-def: score(
+proc: score(
     @proccode: "score %n ^ %n",
     @constants: {"avogadro":6.022e23}
     base: num,
     exp: num = 2
 ) -> num {
-    return(base ^ exp)
+    return(base ** exp)
 }
 
-def: thing(one: num, two: num) -> num {
+proc: thing(one: num, two: num) -> num {
     return(one + two)
 }
 
@@ -79,7 +79,7 @@ clone.onStart(){
 }
 
 # User interaction + clone creation
-def: start() -> void {
+proc: start() -> void {
     var.set(name, console.input("What is your name?"))
     console.log("Welcome, " + name + "!")
 
@@ -118,4 +118,33 @@ onFlag(){
     }
 
     proc.thing(5.5e-4, 10)
+}
+
+onFlag(){
+    # Move in different directions
+    proc.move(enum.directions.UP, 10)
+    proc.move(enum.directions.DOWN, 5)
+    proc.move(enum.directions.LEFT, 3)
+    proc.move(enum.directions.RIGHT, 8)
+
+    # Log the current position
+    console.log("Current position: " + motion.getPosition())
+}
+
+# Turtle draw implementation
+onFlag(){
+    # Draw a square using turtle graphics
+    pen.down()
+    for(i, range(4)){
+        motion.forward(100)
+        motion.turn(90)
+    }
+    pen.up()
+    console.log("Square drawn!")
+
+    # Draw squid
+    pen.down()
+    motion.forward(50)
+    motion.turn(45)
+    motion.forward(50)
 }

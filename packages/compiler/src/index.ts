@@ -3,14 +3,14 @@ import { ErrorReporter } from "./utils/ErrorReporter";
 import { Logger } from "./utils/Logger";
 
 import * as fs from "fs/promises";
-// import { Parser } from "./parser/Parser";
+import { Parser } from "./parser/Parser";
 // import { SemanticAnalyzer } from "./semantic/SemanticAnalyzer";
 // import { IRGenerator } from "./ir/IRGenerator";
 // import { SB3Generator } from "./codegen/SB3Generator";
 
-export async function compile(source: string, outputPath: string, cliReporter?: ErrorReporter) {
+export async function compile(source: string, outputPath: string) {
     // Create an error reporter instance
-    const reporter = cliReporter ? cliReporter : new ErrorReporter(source);
+    const reporter = new ErrorReporter(source);
     const logger = new Logger();
     logger.disable();
 
@@ -18,11 +18,11 @@ export async function compile(source: string, outputPath: string, cliReporter?: 
     const tokens = lexer.tokenize(source);
 
     // Create temp file with tokens for debugging
-    const tempFilePath = `${outputPath}.tokens.json`;
+    const tempFilePath = outputPath; // `${outputPath}.tokens.json`;
     await fs.writeFile(tempFilePath, JSON.stringify(tokens, null, 2));
 
-    // const parser = new Parser(tokens);
-    // const ast = parser.parse();
+    const parser = new Parser(tokens);
+    const ast = parser.parse();
 
     // const semantic = new SemanticAnalyzer();
     // semantic.check(ast);

@@ -1,0 +1,11 @@
+control.onclone(){
+    js.patch("target.window ??= {}")
+    if (process_type == "App") {
+        if (embed_mode == 1) {
+            forever(){
+                js.patch(f"target.window.width = {screen_size_x}")
+                ...
+            }
+        }
+    }
+}

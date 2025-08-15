@@ -1,3 +1,7 @@
+/**
+ * @fileoverview Contains the token interfaces for the Katnip lexer.
+ */
+
 const valuedTokenTypes = [
     // Literals
     "String",
@@ -65,6 +69,9 @@ export type TokenType = ValuedTokenType | UnitTokenType
 type TokenInfo =
     | { type: ValuedTokenType; value: string }
     | { type: UnitTokenType };
+
+export type ValuedToken = { type: ValuedTokenType; value: string };
+export type UnitToken = { type: ValuedTokenType };
 
 interface TokenPos {
     line: number;
