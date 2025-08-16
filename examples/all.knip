@@ -5,7 +5,7 @@ public c: bool = true
 private d: list = [1, 2, 3]
 public e: dict<str, str> = {"key": "value"}
 
-proc: log(@warp="true", msg: str) -> void {
+proc: log(@warp="true", msg: str = "default") -> void {
     console.log(msg)
 }
 

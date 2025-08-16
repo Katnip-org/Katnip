@@ -38,13 +38,19 @@ export interface ProcedureDeclarationNode extends NodeBase {
 export interface DecoratorNode extends NodeBase {
     type: "Decorator";
     name: string;
-    value: string | ExpressionNode;
+    value: string | number;
 }
 
-export interface ParameterNode {
+export interface ParameterNode extends NodeBase {
+    type: "Parameter";
     name: string;
-    type: TypeNode;
-    default?: string;
+    paramType: TypeNode;
+    default?: ParameterDefaultNode;
+}
+
+export interface ParameterDefaultNode extends NodeBase {
+    type: "ParameterDefault";
+    value: string;
 }
 
 export interface TypeNode extends NodeBase {

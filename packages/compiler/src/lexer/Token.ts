@@ -21,28 +21,31 @@ const valuedTokenTypes = [
     // Misc
     "Identifier",
 
+    "ErrorToken", // Used for error handling, not a real token type
+
 ] as const;
 
 export type ValuedTokenType = typeof valuedTokenTypes[number];
 
 const unitTokenTypes = [
     // Grouping
-    "BracketOpen",
-    "BracketClose",
-    "BraceOpen",
-    "BraceClose",
-    "ParenOpen",
-    "ParenClose",
+    "BracketOpen",    // [
+    "BracketClose",   // ]
+    "BraceOpen",      // {
+    "BraceClose",     // }
+    "ParenOpen",      // (
+    "ParenClose",     // )
 
     // Punctuation
-    "Dot",
-    "Comma",
-    "Colon",
-    "Semicolon",
-    "AtSymbol",
+    "Dot",            // .
+    "Comma",          // ,
+    "Colon",          // :
+    "Semicolon",      // ;
+    "AtSymbol",       // @
 
     // Misc punctuation
-    "Pound",
+    "Pound",          // #
+    "QuestionMark",   // ?
 
     // Operators
     "Plus",           // +
@@ -65,6 +68,10 @@ const unitTokenTypes = [
 export type UnitTokenType = typeof unitTokenTypes[number];
 
 export type TokenType = ValuedTokenType | UnitTokenType
+export type TokenInfoFor<T extends TokenType> =
+    T extends ValuedTokenType ? { type: T; value: string } :
+    T extends UnitTokenType   ? { type: T } :
+    never;
 
 type TokenInfo =
     | { type: ValuedTokenType; value: string }
@@ -73,7 +80,7 @@ type TokenInfo =
 export type ValuedToken = { type: ValuedTokenType; value: string };
 export type UnitToken = { type: ValuedTokenType };
 
-interface TokenPos {
+export interface TokenPos {
     line: number;
     column: number;
 }
