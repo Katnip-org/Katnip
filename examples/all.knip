@@ -9,11 +9,11 @@ proc: log(@warp="true", msg: str = "default") -> void {
     console.log(msg)
 }
 
-enum: thing(
-    red = 1,
-    green = 2,
-    blue = 3
-)
+enum: thing {
+    red,
+    green,
+    blue
+}
 
 events.onflag(){
     motion.x.set(100)

@@ -773,15 +773,42 @@
   },
   {
     "token": {
+      "type": "Equals"
+    },
+    "start": {
+      "line": 8,
+      "column": 34
+    },
+    "end": {
+      "line": 8,
+      "column": 35
+    }
+  },
+  {
+    "token": {
+      "type": "String",
+      "value": "\"default\""
+    },
+    "start": {
+      "line": 8,
+      "column": 36
+    },
+    "end": {
+      "line": 8,
+      "column": 45
+    }
+  },
+  {
+    "token": {
       "type": "ParenClose"
     },
     "start": {
       "line": 8,
-      "column": 33
+      "column": 45
     },
     "end": {
       "line": 8,
-      "column": 34
+      "column": 46
     }
   },
   {
@@ -791,11 +818,11 @@
     },
     "start": {
       "line": 8,
-      "column": 35
+      "column": 47
     },
     "end": {
       "line": 8,
-      "column": 36
+      "column": 48
     }
   },
   {
@@ -804,11 +831,11 @@
     },
     "start": {
       "line": 8,
-      "column": 36
+      "column": 48
     },
     "end": {
       "line": 8,
-      "column": 37
+      "column": 49
     }
   },
   {
@@ -818,11 +845,11 @@
     },
     "start": {
       "line": 8,
-      "column": 38
+      "column": 50
     },
     "end": {
       "line": 8,
-      "column": 42
+      "column": 54
     }
   },
   {
@@ -831,11 +858,11 @@
     },
     "start": {
       "line": 8,
-      "column": 43
+      "column": 55
     },
     "end": {
       "line": 8,
-      "column": 44
+      "column": 56
     }
   },
   {
@@ -975,15 +1002,15 @@
   },
   {
     "token": {
-      "type": "ParenOpen"
+      "type": "BraceOpen"
     },
     "start": {
       "line": 12,
-      "column": 12
+      "column": 13
     },
     "end": {
       "line": 12,
-      "column": 13
+      "column": 14
     }
   },
   {
@@ -1002,42 +1029,15 @@
   },
   {
     "token": {
-      "type": "Equals"
-    },
-    "start": {
-      "line": 13,
-      "column": 9
-    },
-    "end": {
-      "line": 13,
-      "column": 10
-    }
-  },
-  {
-    "token": {
-      "type": "Number",
-      "value": "1"
-    },
-    "start": {
-      "line": 13,
-      "column": 11
-    },
-    "end": {
-      "line": 13,
-      "column": 12
-    }
-  },
-  {
-    "token": {
       "type": "Comma"
     },
     "start": {
       "line": 13,
-      "column": 12
+      "column": 8
     },
     "end": {
       "line": 13,
-      "column": 13
+      "column": 9
     }
   },
   {
@@ -1056,42 +1056,15 @@
   },
   {
     "token": {
-      "type": "Equals"
-    },
-    "start": {
-      "line": 14,
-      "column": 11
-    },
-    "end": {
-      "line": 14,
-      "column": 12
-    }
-  },
-  {
-    "token": {
-      "type": "Number",
-      "value": "2"
-    },
-    "start": {
-      "line": 14,
-      "column": 13
-    },
-    "end": {
-      "line": 14,
-      "column": 14
-    }
-  },
-  {
-    "token": {
       "type": "Comma"
     },
     "start": {
       "line": 14,
-      "column": 14
+      "column": 10
     },
     "end": {
       "line": 14,
-      "column": 15
+      "column": 11
     }
   },
   {
@@ -1110,34 +1083,7 @@
   },
   {
     "token": {
-      "type": "Equals"
-    },
-    "start": {
-      "line": 15,
-      "column": 10
-    },
-    "end": {
-      "line": 15,
-      "column": 11
-    }
-  },
-  {
-    "token": {
-      "type": "Number",
-      "value": "3"
-    },
-    "start": {
-      "line": 15,
-      "column": 12
-    },
-    "end": {
-      "line": 15,
-      "column": 13
-    }
-  },
-  {
-    "token": {
-      "type": "ParenClose"
+      "type": "BraceClose"
     },
     "start": {
       "line": 16,

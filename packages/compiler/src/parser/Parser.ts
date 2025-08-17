@@ -241,7 +241,35 @@ export class Parser {
     }
 
     private parseEnumDefinition(): any {
-        // TODO: implement
+        this.consume({ type: "Identifier", value: "enum" }, "Expected 'enum' keyword");
+        this.consume({ type: "Colon" }, "Expected ':' after 'enum' keyword");
+        const nameToken = this.consume({ type: "Identifier" }, "Expected enum name");
+        const name = nameToken.token.value;
+
+        if (this.tryConsume("type", "BraceOpen")) {
+            const members: string[] = [];
+            while (!this.checkToken("type", "BraceClose")) {
+                const memberToken = this.consume({ type: "Identifier" }, "Expected enum member name");
+                members.push(memberToken.token.value);
+
+                if (!this.tryConsume("type", "Comma") && !this.checkToken("type", "ParenClose")) {
+                    this.reporter.add(
+                        new KatnipError("Parser", "Expected ',' or ')'", this.peek()?.start || { line: -1, column: -1 })
+                    );
+                }
+            }
+            this.consume({ type: "ParenClose" }, "Expected closing parenthesis for enum members");
+
+            return {
+                type: "EnumDeclaration",
+                name: name,
+                members: members,
+                loc: {
+                    start: nameToken.start,
+                    end: this.peek()?.end || { line: -1, column: -1 }
+                }
+            };
+        }
     }
 
     private parseVariableDeclaration(): any {
