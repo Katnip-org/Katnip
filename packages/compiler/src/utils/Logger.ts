@@ -27,11 +27,18 @@ export class Logger {
         [KatnipLogType.Debug]: (msg) => pc.gray(msg)
     };
 
+    private sanitizeForLog(value: any): string {
+        if (typeof value === "string") {
+            return JSON.stringify(value); // \n and \r etc are escaped
+        }
+        return String(value);
+    }
+
     print(log: KatnipLog) {
         if (this.enabled) {
             const formatter = this.formatters[log.type];
             const formattedMessage = formatter(
-                `${log.timestamp} - [${log.type}] ${log.message}` +
+                `${log.timestamp} - [${log.type}] ${this.sanitizeForLog(log.message)}` +
                 (log.location ? ` at line ${log.location.line}, column ${log.location.column}` : "")
             );
             console.log(formattedMessage);

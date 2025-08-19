@@ -62,6 +62,7 @@ const unitTokenTypes = [
     "Equals",         // =
 
     // Special
+    "Newline",        // \n
     "EOF"
 ] as const;
 

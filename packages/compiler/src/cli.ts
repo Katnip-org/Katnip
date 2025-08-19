@@ -30,7 +30,9 @@ yargs(hideBin(process.argv))
                 // Create an error reporter instance
                 const reporter = new ErrorReporter(fileContent);
                 const logger = new Logger();
+                
                 if (argv.logger && argv.logger === false) logger.disable();
+                else logger.enable();
 
                 const lexer = new Lexer(reporter, logger);
                 const tokens = lexer.tokenize(fileContent);

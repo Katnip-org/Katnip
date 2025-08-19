@@ -5,7 +5,7 @@
 import { isValuedTokenType, Token, TokenInfoFor, TokenPos, TokenType, ValuedToken } from "../lexer/Token";
 import { ErrorReporter, KatnipError } from "../utils/ErrorReporter";
 import { Logger } from "../utils/Logger";
-import { AST, DecoratorNode, NodeBase, ParameterNode, ProcedureDeclarationNode } from "./AST-nodes";
+import { AST, DecoratorNode, NodeBase, ParameterNode, ProcedureDeclarationNode, SingleTypeNode, TypeNode, UnionTypeNode } from "./AST-nodes";
 
 export class Parser {
     private tokens: Token[] = [];
@@ -16,6 +16,11 @@ export class Parser {
         private logger: Logger = new Logger(),
     ) {}
 
+    /**
+     * Parses a list of tokens into an Abstract Syntax Tree (AST).
+     * @param tokens - The list of tokens to parse.
+     * @returns The resulting AST or void if parsing fails.
+     */
     parse(tokens: Token[]): AST | void {
         this.tokens = tokens;
         this.position = 0;
@@ -30,14 +35,26 @@ export class Parser {
     }
 
     // -- Helper functions --
+    /**
+     * Retrieves the current token without advancing the position.
+     * @returns The current token or null if at the end.
+     */
     private peek(): Token | null {
         return this.position < this.tokens.length ? this.tokens[this.position] : null;
     }
 
+    /**
+     * Retrieves the previous token.
+     * @returns The previous token or null if at the beginning.
+     */
     private previous(): Token | null {
         return this.position > 0 ? this.tokens[this.position - 1] : null;
     }
 
+    /**
+     * Advances the position and retrieves the previous token.
+     * @returns The previous token or null if at the beginning.
+     */
     private advance(): Token | null {
         if (!this.isAtEnd()) {
             this.position++;
@@ -45,10 +62,20 @@ export class Parser {
         return this.previous();
     }
 
+    /**
+     * Checks if the parser has reached the end of the token list.
+     * @returns True if at the end, false otherwise.
+     */
     private isAtEnd(): boolean {
         return this.peek()?.token.type === "EOF";
     }
 
+    /**
+     * Checks if the current token matches the specified type or value.
+     * @param kind - The kind of check ("type" or "value").
+     * @param patterns - The patterns to match against.
+     * @returns True if the token matches, false otherwise.
+     */
     private checkToken(kind: "type" | "value", ...patterns: string[]): boolean {
         if (this.isAtEnd()) return false;
 
@@ -63,6 +90,12 @@ export class Parser {
         }
     }
 
+    /**
+     * Attempts to consume the current token if it matches the specified type or value.
+     * @param kind - The kind of check ("type" or "value").
+     * @param patterns - The patterns to match against.
+     * @returns True if the token was consumed, false otherwise.
+     */
     private tryConsume(kind: "type" | "value", ...patterns: string[]): boolean {
         if (this.checkToken(kind, ...patterns)) {
             this.advance();
@@ -71,6 +104,13 @@ export class Parser {
         return false;
     }
 
+    /**
+     * Consumes the current token if it matches the specified type or value.
+     * Reports an error if the token does not match.
+     * @param options - The options specifying the type and/or value to match.
+     * @param message - The error message to report if the token does not match.
+     * @returns The consumed token information or an error token.
+     */
     private consume<T extends TokenType>(
         options: { type: T | T[]; value?: string | string[] },
         message: string
@@ -106,13 +146,60 @@ export class Parser {
     }
 
     // -- Statement parsing --
+    /** 
+     * Parses through and returns a type annotation.
+     * @returns The parsed type annotation
+     */
+    private parseTypeAnnotation(): SingleTypeNode | UnionTypeNode {
+        const typeNameToken = this.consume({ type: "Identifier" }, "Expected type name");
+        const typeName = typeNameToken.token.value;
+
+        if (this.tryConsume("type", "Pipe")) {
+            const rightType = this.parseTypeAnnotation();
+            return {
+                type: "UnionType",
+                left: { type: "Type", typeName, loc: { start: typeNameToken.start, end: typeNameToken.end } },
+                right: rightType,
+                loc: { start: typeNameToken.start, end: rightType.loc.end }
+            };
+        } else if (this.tryConsume("type", "LeftChevron")) {
+            const typeParams: TypeNode[] = [];
+            while (!this.checkToken("type", "RightChevron")) {
+                typeParams.push(this.parseTypeAnnotation());
+                if (!this.tryConsume("type", "Comma") && !this.checkToken("type", "RightChevron")) {
+                    this.reporter.add(
+                        new KatnipError("Parser", "Expected ',' or '>'", this.peek()?.start || { line: -1, column: -1 })
+                    );
+                }
+            }
+            this.consume({ type: "RightChevron" }, "Expected closing '>' for type parameters");
+
+            return {
+                type: "Type",
+                typeName,
+                typeParams,
+                loc: { start: typeNameToken.start, end: this.peek()?.end || { line: -1, column: -1 } }
+            };
+        }
+
+        return {
+            type: "Type",
+            typeName,
+            loc: { start: typeNameToken.start, end: typeNameToken.end }
+        };
+    }
+
+    /**
+     * Parses a single statement from the token list.
+     * @returns The parsed statement or an error token.
+     */
     private parseStatement(): any {
         if (this.checkToken("type", "ProcedureDeclaration")) {
             return this.parseProcedureDefinition();
         } else if (this.checkToken("type", "EnumDeclaration")) {
             return this.parseEnumDefinition();
         } else if (this.checkToken("type", "Identifier")) {
-            if (this.tryConsume("value", "private", "temp", "public")) {
+            if (this.checkToken("value", "private", "temp", "public")) {
                 return this.parseVariableDeclaration();
             } else {
                 return this.parseExpression();
@@ -126,6 +213,10 @@ export class Parser {
         return { type: "ErrorToken", value: "" };
     }
 
+    /**
+     * Parses a procedure definition from the token list.
+     * @returns The parsed procedure declaration node.
+     */
     private parseProcedureDefinition(): ProcedureDeclarationNode {
         this.consume({ type: "Identifier", value: "proc" }, "Expected 'proc' keyword");
         this.consume({ type: "Colon" }, "Expected ':' after 'proc' keyword");
@@ -212,7 +303,7 @@ export class Parser {
         this.consume({ type: "Minus" }, "Expected arrow return symbol piece '-'");
         this.consume({ type: "RightChevron" }, "Expected arrow return symbol piece '>' after '-'");
 
-        const returnType = this.consume({ type: "Identifier" }, "Expected return type");
+        const returnType = this.parseTypeAnnotation();
 
         this.consume({ type: "BraceOpen" }, "Expected open curly brace '{' for procedure body");
 
@@ -224,15 +315,11 @@ export class Parser {
 
         return {
             type: "ProcedureDeclaration",
-            name: name,
+            name,
             decorators,
             parameters,
-            returnType: {
-                type: "Type",
-                typeName: returnType.token.value,
-                loc: { start: returnType.start, end: returnType.end }
-            },
-            body: body,
+            returnType,
+            body,
             loc: {
                 start: nameToken.start,
                 end: this.peek()?.end || { line: -1, column: -1 }
@@ -240,6 +327,10 @@ export class Parser {
         };
     }
 
+    /**
+     * Parses an enum definition from the token list.
+     * @returns The parsed enum declaration node.
+     */
     private parseEnumDefinition(): any {
         this.consume({ type: "Identifier", value: "enum" }, "Expected 'enum' keyword");
         this.consume({ type: "Colon" }, "Expected ':' after 'enum' keyword");
@@ -272,10 +363,23 @@ export class Parser {
         }
     }
 
+    /**
+     * Parses a variable declaration from the token list.
+     * @returns The parsed variable declaration node.
+     */
     private parseVariableDeclaration(): any {
-        // TODO: implement
+        const access = this.consume({ type: "Identifier", value: ["private", "temp", "public"] }, "Expected 'private', 'temp', or 'public' keyword");
+        const variableName = this.consume({ type: "Identifier" }, "Expected variable name");
+        this.consume({ type: "Colon" }, "Expected ':' after variable name for type annotation");
+        const typeAnnotation = this.parseTypeAnnotation();
+        this.consume({ type: "Equals" }, "Expected '=' after type annotation for variable declaration");
+        // TODO: Handle variable initialization value, consuming list dict or any literal expression
     }
 
+    /**
+     * Parses an expression from the token list.
+     * @returns The parsed expression node.
+     */
     private parseExpression(): any {
         // TODO: implement
     }

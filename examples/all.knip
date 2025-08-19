@@ -1,11 +1,16 @@
+# Scalar types
 private a: num = 42
 temp b: str = "Hello, World!"
-public c: bool = true
+public c: bool = const.true
 
-private d: list = [1, 2, 3]
+# Container types
+private d: list<num | str> = [1, 2, 3, "4"]
 public e: dict<str, str> = {"key": "value"}
 
-proc: log(@warp="true", msg: str = "default") -> void {
+# Custom types
+public f: nestedList<list<num | str>> = [[1, 2], [3, 4, "apple"]]
+
+proc: log(@warp="true", msg: str = "default") -> void | num {
     console.log(msg)
 }
 
@@ -22,4 +27,6 @@ events.onflag(){
 private i: num = 0
 for (i, 10) {
     console.log("Iteration: " + i)
+    motion.move(i * 10)
+    looks.say("hello")
 }

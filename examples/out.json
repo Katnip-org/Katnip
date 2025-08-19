@@ -1,15 +1,29 @@
 [
   {
     "token": {
-      "type": "Identifier",
-      "value": "private"
+      "type": "Comment_SingleExpanded",
+      "value": "Scalar types"
     },
     "start": {
       "line": 1,
       "column": 1
     },
     "end": {
-      "line": 1,
+      "line": 2,
+      "column": 1
+    }
+  },
+  {
+    "token": {
+      "type": "Identifier",
+      "value": "private"
+    },
+    "start": {
+      "line": 2,
+      "column": 1
+    },
+    "end": {
+      "line": 2,
       "column": 8
     }
   },
@@ -19,11 +33,11 @@
       "value": "a"
     },
     "start": {
-      "line": 1,
+      "line": 2,
       "column": 9
     },
     "end": {
-      "line": 1,
+      "line": 2,
       "column": 10
     }
   },
@@ -32,11 +46,11 @@
       "type": "Colon"
     },
     "start": {
-      "line": 1,
+      "line": 2,
       "column": 10
     },
     "end": {
-      "line": 1,
+      "line": 2,
       "column": 11
     }
   },
@@ -46,11 +60,11 @@
       "value": "num"
     },
     "start": {
-      "line": 1,
+      "line": 2,
       "column": 12
     },
     "end": {
-      "line": 1,
+      "line": 2,
       "column": 15
     }
   },
@@ -59,11 +73,11 @@
       "type": "Equals"
     },
     "start": {
-      "line": 1,
+      "line": 2,
       "column": 16
     },
     "end": {
-      "line": 1,
+      "line": 2,
       "column": 17
     }
   },
@@ -73,11 +87,24 @@
       "value": "42"
     },
     "start": {
-      "line": 1,
+      "line": 2,
       "column": 18
     },
     "end": {
-      "line": 1,
+      "line": 2,
+      "column": 20
+    }
+  },
+  {
+    "token": {
+      "type": "Newline"
+    },
+    "start": {
+      "line": 2,
+      "column": 20
+    },
+    "end": {
+      "line": 2,
       "column": 20
     }
   },
@@ -87,11 +114,11 @@
       "value": "temp"
     },
     "start": {
-      "line": 2,
+      "line": 3,
       "column": 1
     },
     "end": {
-      "line": 2,
+      "line": 3,
       "column": 5
     }
   },
@@ -101,11 +128,11 @@
       "value": "b"
     },
     "start": {
-      "line": 2,
+      "line": 3,
       "column": 6
     },
     "end": {
-      "line": 2,
+      "line": 3,
       "column": 7
     }
   },
@@ -114,11 +141,11 @@
       "type": "Colon"
     },
     "start": {
-      "line": 2,
+      "line": 3,
       "column": 7
     },
     "end": {
-      "line": 2,
+      "line": 3,
       "column": 8
     }
   },
@@ -128,11 +155,11 @@
       "value": "str"
     },
     "start": {
-      "line": 2,
+      "line": 3,
       "column": 9
     },
     "end": {
-      "line": 2,
+      "line": 3,
       "column": 12
     }
   },
@@ -141,11 +168,11 @@
       "type": "Equals"
     },
     "start": {
-      "line": 2,
+      "line": 3,
       "column": 13
     },
     "end": {
-      "line": 2,
+      "line": 3,
       "column": 14
     }
   },
@@ -155,11 +182,24 @@
       "value": "\"Hello, World!\""
     },
     "start": {
-      "line": 2,
+      "line": 3,
       "column": 15
     },
     "end": {
-      "line": 2,
+      "line": 3,
+      "column": 30
+    }
+  },
+  {
+    "token": {
+      "type": "Newline"
+    },
+    "start": {
+      "line": 3,
+      "column": 30
+    },
+    "end": {
+      "line": 3,
       "column": 30
     }
   },
@@ -169,11 +209,11 @@
       "value": "public"
     },
     "start": {
-      "line": 3,
+      "line": 4,
       "column": 1
     },
     "end": {
-      "line": 3,
+      "line": 4,
       "column": 7
     }
   },
@@ -183,11 +223,11 @@
       "value": "c"
     },
     "start": {
-      "line": 3,
+      "line": 4,
       "column": 8
     },
     "end": {
-      "line": 3,
+      "line": 4,
       "column": 9
     }
   },
@@ -196,11 +236,11 @@
       "type": "Colon"
     },
     "start": {
-      "line": 3,
+      "line": 4,
       "column": 9
     },
     "end": {
-      "line": 3,
+      "line": 4,
       "column": 10
     }
   },
@@ -210,11 +250,11 @@
       "value": "bool"
     },
     "start": {
-      "line": 3,
+      "line": 4,
       "column": 11
     },
     "end": {
-      "line": 3,
+      "line": 4,
       "column": 15
     }
   },
@@ -223,12 +263,39 @@
       "type": "Equals"
     },
     "start": {
-      "line": 3,
+      "line": 4,
       "column": 16
     },
     "end": {
-      "line": 3,
+      "line": 4,
       "column": 17
+    }
+  },
+  {
+    "token": {
+      "type": "Identifier",
+      "value": "const"
+    },
+    "start": {
+      "line": 4,
+      "column": 18
+    },
+    "end": {
+      "line": 4,
+      "column": 23
+    }
+  },
+  {
+    "token": {
+      "type": "Dot"
+    },
+    "start": {
+      "line": 4,
+      "column": 23
+    },
+    "end": {
+      "line": 4,
+      "column": 24
     }
   },
   {
@@ -237,12 +304,39 @@
       "value": "true"
     },
     "start": {
-      "line": 3,
-      "column": 18
+      "line": 4,
+      "column": 24
     },
     "end": {
-      "line": 3,
-      "column": 22
+      "line": 4,
+      "column": 28
+    }
+  },
+  {
+    "token": {
+      "type": "Newline"
+    },
+    "start": {
+      "line": 5,
+      "column": 1
+    },
+    "end": {
+      "line": 5,
+      "column": 1
+    }
+  },
+  {
+    "token": {
+      "type": "Comment_SingleExpanded",
+      "value": "Container types"
+    },
+    "start": {
+      "line": 6,
+      "column": 1
+    },
+    "end": {
+      "line": 7,
+      "column": 1
     }
   },
   {
@@ -251,11 +345,11 @@
       "value": "private"
     },
     "start": {
-      "line": 5,
+      "line": 7,
       "column": 1
     },
     "end": {
-      "line": 5,
+      "line": 7,
       "column": 8
     }
   },
@@ -265,11 +359,11 @@
       "value": "d"
     },
     "start": {
-      "line": 5,
+      "line": 7,
       "column": 9
     },
     "end": {
-      "line": 5,
+      "line": 7,
       "column": 10
     }
   },
@@ -278,11 +372,11 @@
       "type": "Colon"
     },
     "start": {
-      "line": 5,
+      "line": 7,
       "column": 10
     },
     "end": {
-      "line": 5,
+      "line": 7,
       "column": 11
     }
   },
@@ -292,12 +386,79 @@
       "value": "list"
     },
     "start": {
-      "line": 5,
+      "line": 7,
       "column": 12
     },
     "end": {
-      "line": 5,
+      "line": 7,
       "column": 16
+    }
+  },
+  {
+    "token": {
+      "type": "LeftChevron"
+    },
+    "start": {
+      "line": 7,
+      "column": 16
+    },
+    "end": {
+      "line": 7,
+      "column": 17
+    }
+  },
+  {
+    "token": {
+      "type": "Identifier",
+      "value": "num"
+    },
+    "start": {
+      "line": 7,
+      "column": 17
+    },
+    "end": {
+      "line": 7,
+      "column": 20
+    }
+  },
+  {
+    "token": {
+      "type": "Pipe"
+    },
+    "start": {
+      "line": 7,
+      "column": 21
+    },
+    "end": {
+      "line": 7,
+      "column": 22
+    }
+  },
+  {
+    "token": {
+      "type": "Identifier",
+      "value": "str"
+    },
+    "start": {
+      "line": 7,
+      "column": 23
+    },
+    "end": {
+      "line": 7,
+      "column": 26
+    }
+  },
+  {
+    "token": {
+      "type": "RightChevron"
+    },
+    "start": {
+      "line": 7,
+      "column": 26
+    },
+    "end": {
+      "line": 7,
+      "column": 27
     }
   },
   {
@@ -305,12 +466,12 @@
       "type": "Equals"
     },
     "start": {
-      "line": 5,
-      "column": 17
+      "line": 7,
+      "column": 28
     },
     "end": {
-      "line": 5,
-      "column": 18
+      "line": 7,
+      "column": 29
     }
   },
   {
@@ -318,12 +479,12 @@
       "type": "BracketOpen"
     },
     "start": {
-      "line": 5,
-      "column": 19
+      "line": 7,
+      "column": 30
     },
     "end": {
-      "line": 5,
-      "column": 20
+      "line": 7,
+      "column": 31
     }
   },
   {
@@ -332,12 +493,12 @@
       "value": "1"
     },
     "start": {
-      "line": 5,
-      "column": 20
+      "line": 7,
+      "column": 31
     },
     "end": {
-      "line": 5,
-      "column": 21
+      "line": 7,
+      "column": 32
     }
   },
   {
@@ -345,12 +506,12 @@
       "type": "Comma"
     },
     "start": {
-      "line": 5,
-      "column": 21
+      "line": 7,
+      "column": 32
     },
     "end": {
-      "line": 5,
-      "column": 22
+      "line": 7,
+      "column": 33
     }
   },
   {
@@ -359,12 +520,12 @@
       "value": "2"
     },
     "start": {
-      "line": 5,
-      "column": 23
+      "line": 7,
+      "column": 34
     },
     "end": {
-      "line": 5,
-      "column": 24
+      "line": 7,
+      "column": 35
     }
   },
   {
@@ -372,12 +533,12 @@
       "type": "Comma"
     },
     "start": {
-      "line": 5,
-      "column": 24
+      "line": 7,
+      "column": 35
     },
     "end": {
-      "line": 5,
-      "column": 25
+      "line": 7,
+      "column": 36
     }
   },
   {
@@ -386,12 +547,39 @@
       "value": "3"
     },
     "start": {
-      "line": 5,
-      "column": 26
+      "line": 7,
+      "column": 37
     },
     "end": {
-      "line": 5,
-      "column": 27
+      "line": 7,
+      "column": 38
+    }
+  },
+  {
+    "token": {
+      "type": "Comma"
+    },
+    "start": {
+      "line": 7,
+      "column": 38
+    },
+    "end": {
+      "line": 7,
+      "column": 39
+    }
+  },
+  {
+    "token": {
+      "type": "String",
+      "value": "\"4\""
+    },
+    "start": {
+      "line": 7,
+      "column": 40
+    },
+    "end": {
+      "line": 7,
+      "column": 43
     }
   },
   {
@@ -399,12 +587,25 @@
       "type": "BracketClose"
     },
     "start": {
-      "line": 5,
-      "column": 27
+      "line": 7,
+      "column": 43
     },
     "end": {
-      "line": 5,
-      "column": 28
+      "line": 7,
+      "column": 44
+    }
+  },
+  {
+    "token": {
+      "type": "Newline"
+    },
+    "start": {
+      "line": 7,
+      "column": 44
+    },
+    "end": {
+      "line": 7,
+      "column": 44
     }
   },
   {
@@ -413,11 +614,11 @@
       "value": "public"
     },
     "start": {
-      "line": 6,
+      "line": 8,
       "column": 1
     },
     "end": {
-      "line": 6,
+      "line": 8,
       "column": 7
     }
   },
@@ -427,11 +628,11 @@
       "value": "e"
     },
     "start": {
-      "line": 6,
+      "line": 8,
       "column": 8
     },
     "end": {
-      "line": 6,
+      "line": 8,
       "column": 9
     }
   },
@@ -440,11 +641,11 @@
       "type": "Colon"
     },
     "start": {
-      "line": 6,
+      "line": 8,
       "column": 9
     },
     "end": {
-      "line": 6,
+      "line": 8,
       "column": 10
     }
   },
@@ -454,11 +655,11 @@
       "value": "dict"
     },
     "start": {
-      "line": 6,
+      "line": 8,
       "column": 11
     },
     "end": {
-      "line": 6,
+      "line": 8,
       "column": 15
     }
   },
@@ -467,11 +668,11 @@
       "type": "LeftChevron"
     },
     "start": {
-      "line": 6,
+      "line": 8,
       "column": 15
     },
     "end": {
-      "line": 6,
+      "line": 8,
       "column": 16
     }
   },
@@ -481,11 +682,11 @@
       "value": "str"
     },
     "start": {
-      "line": 6,
+      "line": 8,
       "column": 16
     },
     "end": {
-      "line": 6,
+      "line": 8,
       "column": 19
     }
   },
@@ -494,11 +695,11 @@
       "type": "Comma"
     },
     "start": {
-      "line": 6,
+      "line": 8,
       "column": 19
     },
     "end": {
-      "line": 6,
+      "line": 8,
       "column": 20
     }
   },
@@ -508,11 +709,11 @@
       "value": "str"
     },
     "start": {
-      "line": 6,
+      "line": 8,
       "column": 21
     },
     "end": {
-      "line": 6,
+      "line": 8,
       "column": 24
     }
   },
@@ -521,11 +722,11 @@
       "type": "RightChevron"
     },
     "start": {
-      "line": 6,
+      "line": 8,
       "column": 24
     },
     "end": {
-      "line": 6,
+      "line": 8,
       "column": 25
     }
   },
@@ -534,11 +735,11 @@
       "type": "Equals"
     },
     "start": {
-      "line": 6,
+      "line": 8,
       "column": 26
     },
     "end": {
-      "line": 6,
+      "line": 8,
       "column": 27
     }
   },
@@ -547,11 +748,11 @@
       "type": "BraceOpen"
     },
     "start": {
-      "line": 6,
+      "line": 8,
       "column": 28
     },
     "end": {
-      "line": 6,
+      "line": 8,
       "column": 29
     }
   },
@@ -561,11 +762,11 @@
       "value": "\"key\""
     },
     "start": {
-      "line": 6,
+      "line": 8,
       "column": 29
     },
     "end": {
-      "line": 6,
+      "line": 8,
       "column": 34
     }
   },
@@ -574,11 +775,11 @@
       "type": "Colon"
     },
     "start": {
-      "line": 6,
+      "line": 8,
       "column": 34
     },
     "end": {
-      "line": 6,
+      "line": 8,
       "column": 35
     }
   },
@@ -588,11 +789,11 @@
       "value": "\"value\""
     },
     "start": {
-      "line": 6,
+      "line": 8,
       "column": 36
     },
     "end": {
-      "line": 6,
+      "line": 8,
       "column": 43
     }
   },
@@ -601,12 +802,323 @@
       "type": "BraceClose"
     },
     "start": {
-      "line": 6,
+      "line": 8,
       "column": 43
     },
     "end": {
-      "line": 6,
+      "line": 8,
       "column": 44
+    }
+  },
+  {
+    "token": {
+      "type": "Newline"
+    },
+    "start": {
+      "line": 9,
+      "column": 1
+    },
+    "end": {
+      "line": 9,
+      "column": 1
+    }
+  },
+  {
+    "token": {
+      "type": "Comment_SingleExpanded",
+      "value": "Custom types"
+    },
+    "start": {
+      "line": 10,
+      "column": 1
+    },
+    "end": {
+      "line": 11,
+      "column": 1
+    }
+  },
+  {
+    "token": {
+      "type": "Identifier",
+      "value": "public"
+    },
+    "start": {
+      "line": 11,
+      "column": 1
+    },
+    "end": {
+      "line": 11,
+      "column": 7
+    }
+  },
+  {
+    "token": {
+      "type": "Identifier",
+      "value": "f"
+    },
+    "start": {
+      "line": 11,
+      "column": 8
+    },
+    "end": {
+      "line": 11,
+      "column": 9
+    }
+  },
+  {
+    "token": {
+      "type": "Colon"
+    },
+    "start": {
+      "line": 11,
+      "column": 9
+    },
+    "end": {
+      "line": 11,
+      "column": 10
+    }
+  },
+  {
+    "token": {
+      "type": "Identifier",
+      "value": "nestedList"
+    },
+    "start": {
+      "line": 11,
+      "column": 11
+    },
+    "end": {
+      "line": 11,
+      "column": 21
+    }
+  },
+  {
+    "token": {
+      "type": "LeftChevron"
+    },
+    "start": {
+      "line": 11,
+      "column": 21
+    },
+    "end": {
+      "line": 11,
+      "column": 22
+    }
+  },
+  {
+    "token": {
+      "type": "Identifier",
+      "value": "list"
+    },
+    "start": {
+      "line": 11,
+      "column": 22
+    },
+    "end": {
+      "line": 11,
+      "column": 26
+    }
+  },
+  {
+    "token": {
+      "type": "LeftChevron"
+    },
+    "start": {
+      "line": 11,
+      "column": 26
+    },
+    "end": {
+      "line": 11,
+      "column": 27
+    }
+  },
+  {
+    "token": {
+      "type": "Identifier",
+      "value": "num"
+    },
+    "start": {
+      "line": 11,
+      "column": 27
+    },
+    "end": {
+      "line": 11,
+      "column": 30
+    }
+  },
+  {
+    "token": {
+      "type": "Pipe"
+    },
+    "start": {
+      "line": 11,
+      "column": 31
+    },
+    "end": {
+      "line": 11,
+      "column": 32
+    }
+  },
+  {
+    "token": {
+      "type": "Identifier",
+      "value": "str"
+    },
+    "start": {
+      "line": 11,
+      "column": 33
+    },
+    "end": {
+      "line": 11,
+      "column": 36
+    }
+  },
+  {
+    "token": {
+      "type": "Equals"
+    },
+    "start": {
+      "line": 11,
+      "column": 39
+    },
+    "end": {
+      "line": 11,
+      "column": 40
+    }
+  },
+  {
+    "token": {
+      "type": "Number",
+      "value": "1"
+    },
+    "start": {
+      "line": 11,
+      "column": 43
+    },
+    "end": {
+      "line": 11,
+      "column": 44
+    }
+  },
+  {
+    "token": {
+      "type": "Comma"
+    },
+    "start": {
+      "line": 11,
+      "column": 44
+    },
+    "end": {
+      "line": 11,
+      "column": 45
+    }
+  },
+  {
+    "token": {
+      "type": "Number",
+      "value": "2"
+    },
+    "start": {
+      "line": 11,
+      "column": 46
+    },
+    "end": {
+      "line": 11,
+      "column": 47
+    }
+  },
+  {
+    "token": {
+      "type": "BracketOpen"
+    },
+    "start": {
+      "line": 11,
+      "column": 50
+    },
+    "end": {
+      "line": 11,
+      "column": 51
+    }
+  },
+  {
+    "token": {
+      "type": "Number",
+      "value": "3"
+    },
+    "start": {
+      "line": 11,
+      "column": 51
+    },
+    "end": {
+      "line": 11,
+      "column": 52
+    }
+  },
+  {
+    "token": {
+      "type": "Comma"
+    },
+    "start": {
+      "line": 11,
+      "column": 52
+    },
+    "end": {
+      "line": 11,
+      "column": 53
+    }
+  },
+  {
+    "token": {
+      "type": "Number",
+      "value": "4"
+    },
+    "start": {
+      "line": 11,
+      "column": 54
+    },
+    "end": {
+      "line": 11,
+      "column": 55
+    }
+  },
+  {
+    "token": {
+      "type": "Comma"
+    },
+    "start": {
+      "line": 11,
+      "column": 55
+    },
+    "end": {
+      "line": 11,
+      "column": 56
+    }
+  },
+  {
+    "token": {
+      "type": "String",
+      "value": "\"apple\""
+    },
+    "start": {
+      "line": 11,
+      "column": 57
+    },
+    "end": {
+      "line": 11,
+      "column": 64
+    }
+  },
+  {
+    "token": {
+      "type": "Newline"
+    },
+    "start": {
+      "line": 12,
+      "column": 1
+    },
+    "end": {
+      "line": 12,
+      "column": 1
     }
   },
   {
@@ -615,11 +1127,11 @@
       "value": "proc"
     },
     "start": {
-      "line": 8,
+      "line": 13,
       "column": 1
     },
     "end": {
-      "line": 8,
+      "line": 13,
       "column": 5
     }
   },
@@ -628,11 +1140,11 @@
       "type": "Colon"
     },
     "start": {
-      "line": 8,
+      "line": 13,
       "column": 5
     },
     "end": {
-      "line": 8,
+      "line": 13,
       "column": 6
     }
   },
@@ -642,11 +1154,11 @@
       "value": "log"
     },
     "start": {
-      "line": 8,
+      "line": 13,
       "column": 7
     },
     "end": {
-      "line": 8,
+      "line": 13,
       "column": 10
     }
   },
@@ -655,11 +1167,11 @@
       "type": "ParenOpen"
     },
     "start": {
-      "line": 8,
+      "line": 13,
       "column": 10
     },
     "end": {
-      "line": 8,
+      "line": 13,
       "column": 11
     }
   },
@@ -668,11 +1180,11 @@
       "type": "AtSymbol"
     },
     "start": {
-      "line": 8,
+      "line": 13,
       "column": 11
     },
     "end": {
-      "line": 8,
+      "line": 13,
       "column": 12
     }
   },
@@ -682,11 +1194,11 @@
       "value": "warp"
     },
     "start": {
-      "line": 8,
+      "line": 13,
       "column": 12
     },
     "end": {
-      "line": 8,
+      "line": 13,
       "column": 16
     }
   },
@@ -695,11 +1207,11 @@
       "type": "Equals"
     },
     "start": {
-      "line": 8,
+      "line": 13,
       "column": 16
     },
     "end": {
-      "line": 8,
+      "line": 13,
       "column": 17
     }
   },
@@ -709,11 +1221,11 @@
       "value": "\"true\""
     },
     "start": {
-      "line": 8,
+      "line": 13,
       "column": 17
     },
     "end": {
-      "line": 8,
+      "line": 13,
       "column": 23
     }
   },
@@ -722,11 +1234,11 @@
       "type": "Comma"
     },
     "start": {
-      "line": 8,
+      "line": 13,
       "column": 23
     },
     "end": {
-      "line": 8,
+      "line": 13,
       "column": 24
     }
   },
@@ -736,11 +1248,11 @@
       "value": "msg"
     },
     "start": {
-      "line": 8,
+      "line": 13,
       "column": 25
     },
     "end": {
-      "line": 8,
+      "line": 13,
       "column": 28
     }
   },
@@ -749,11 +1261,11 @@
       "type": "Colon"
     },
     "start": {
-      "line": 8,
+      "line": 13,
       "column": 28
     },
     "end": {
-      "line": 8,
+      "line": 13,
       "column": 29
     }
   },
@@ -763,11 +1275,11 @@
       "value": "str"
     },
     "start": {
-      "line": 8,
+      "line": 13,
       "column": 30
     },
     "end": {
-      "line": 8,
+      "line": 13,
       "column": 33
     }
   },
@@ -776,11 +1288,11 @@
       "type": "Equals"
     },
     "start": {
-      "line": 8,
+      "line": 13,
       "column": 34
     },
     "end": {
-      "line": 8,
+      "line": 13,
       "column": 35
     }
   },
@@ -790,11 +1302,11 @@
       "value": "\"default\""
     },
     "start": {
-      "line": 8,
+      "line": 13,
       "column": 36
     },
     "end": {
-      "line": 8,
+      "line": 13,
       "column": 45
     }
   },
@@ -803,11 +1315,11 @@
       "type": "ParenClose"
     },
     "start": {
-      "line": 8,
+      "line": 13,
       "column": 45
     },
     "end": {
-      "line": 8,
+      "line": 13,
       "column": 46
     }
   },
@@ -817,11 +1329,11 @@
       "value": "-"
     },
     "start": {
-      "line": 8,
+      "line": 13,
       "column": 47
     },
     "end": {
-      "line": 8,
+      "line": 13,
       "column": 48
     }
   },
@@ -830,11 +1342,11 @@
       "type": "RightChevron"
     },
     "start": {
-      "line": 8,
+      "line": 13,
       "column": 48
     },
     "end": {
-      "line": 8,
+      "line": 13,
       "column": 49
     }
   },
@@ -844,12 +1356,39 @@
       "value": "void"
     },
     "start": {
-      "line": 8,
+      "line": 13,
       "column": 50
     },
     "end": {
-      "line": 8,
+      "line": 13,
       "column": 54
+    }
+  },
+  {
+    "token": {
+      "type": "Pipe"
+    },
+    "start": {
+      "line": 13,
+      "column": 55
+    },
+    "end": {
+      "line": 13,
+      "column": 56
+    }
+  },
+  {
+    "token": {
+      "type": "Identifier",
+      "value": "num"
+    },
+    "start": {
+      "line": 13,
+      "column": 57
+    },
+    "end": {
+      "line": 13,
+      "column": 60
     }
   },
   {
@@ -857,12 +1396,25 @@
       "type": "BraceOpen"
     },
     "start": {
-      "line": 8,
-      "column": 55
+      "line": 13,
+      "column": 61
     },
     "end": {
-      "line": 8,
-      "column": 56
+      "line": 13,
+      "column": 62
+    }
+  },
+  {
+    "token": {
+      "type": "Newline"
+    },
+    "start": {
+      "line": 13,
+      "column": 62
+    },
+    "end": {
+      "line": 13,
+      "column": 62
     }
   },
   {
@@ -871,11 +1423,11 @@
       "value": "console"
     },
     "start": {
-      "line": 9,
+      "line": 14,
       "column": 5
     },
     "end": {
-      "line": 9,
+      "line": 14,
       "column": 12
     }
   },
@@ -884,11 +1436,11 @@
       "type": "Dot"
     },
     "start": {
-      "line": 9,
+      "line": 14,
       "column": 12
     },
     "end": {
-      "line": 9,
+      "line": 14,
       "column": 13
     }
   },
@@ -898,11 +1450,11 @@
       "value": "log"
     },
     "start": {
-      "line": 9,
+      "line": 14,
       "column": 13
     },
     "end": {
-      "line": 9,
+      "line": 14,
       "column": 16
     }
   },
@@ -911,11 +1463,11 @@
       "type": "ParenOpen"
     },
     "start": {
-      "line": 9,
+      "line": 14,
       "column": 16
     },
     "end": {
-      "line": 9,
+      "line": 14,
       "column": 17
     }
   },
@@ -925,11 +1477,11 @@
       "value": "msg"
     },
     "start": {
-      "line": 9,
+      "line": 14,
       "column": 17
     },
     "end": {
-      "line": 9,
+      "line": 14,
       "column": 20
     }
   },
@@ -938,11 +1490,24 @@
       "type": "ParenClose"
     },
     "start": {
-      "line": 9,
+      "line": 14,
       "column": 20
     },
     "end": {
-      "line": 9,
+      "line": 14,
+      "column": 21
+    }
+  },
+  {
+    "token": {
+      "type": "Newline"
+    },
+    "start": {
+      "line": 14,
+      "column": 21
+    },
+    "end": {
+      "line": 14,
       "column": 21
     }
   },
@@ -951,12 +1516,25 @@
       "type": "BraceClose"
     },
     "start": {
-      "line": 10,
+      "line": 15,
       "column": 1
     },
     "end": {
-      "line": 10,
+      "line": 15,
       "column": 2
+    }
+  },
+  {
+    "token": {
+      "type": "Newline"
+    },
+    "start": {
+      "line": 16,
+      "column": 1
+    },
+    "end": {
+      "line": 16,
+      "column": 1
     }
   },
   {
@@ -965,11 +1543,11 @@
       "value": "enum"
     },
     "start": {
-      "line": 12,
+      "line": 17,
       "column": 1
     },
     "end": {
-      "line": 12,
+      "line": 17,
       "column": 5
     }
   },
@@ -978,11 +1556,11 @@
       "type": "Colon"
     },
     "start": {
-      "line": 12,
+      "line": 17,
       "column": 5
     },
     "end": {
-      "line": 12,
+      "line": 17,
       "column": 6
     }
   },
@@ -992,11 +1570,11 @@
       "value": "thing"
     },
     "start": {
-      "line": 12,
+      "line": 17,
       "column": 7
     },
     "end": {
-      "line": 12,
+      "line": 17,
       "column": 12
     }
   },
@@ -1005,11 +1583,24 @@
       "type": "BraceOpen"
     },
     "start": {
-      "line": 12,
+      "line": 17,
       "column": 13
     },
     "end": {
-      "line": 12,
+      "line": 17,
+      "column": 14
+    }
+  },
+  {
+    "token": {
+      "type": "Newline"
+    },
+    "start": {
+      "line": 17,
+      "column": 14
+    },
+    "end": {
+      "line": 17,
       "column": 14
     }
   },
@@ -1019,11 +1610,11 @@
       "value": "red"
     },
     "start": {
-      "line": 13,
+      "line": 18,
       "column": 5
     },
     "end": {
-      "line": 13,
+      "line": 18,
       "column": 8
     }
   },
@@ -1032,11 +1623,24 @@
       "type": "Comma"
     },
     "start": {
-      "line": 13,
+      "line": 18,
       "column": 8
     },
     "end": {
-      "line": 13,
+      "line": 18,
+      "column": 9
+    }
+  },
+  {
+    "token": {
+      "type": "Newline"
+    },
+    "start": {
+      "line": 18,
+      "column": 9
+    },
+    "end": {
+      "line": 18,
       "column": 9
     }
   },
@@ -1046,11 +1650,11 @@
       "value": "green"
     },
     "start": {
-      "line": 14,
+      "line": 19,
       "column": 5
     },
     "end": {
-      "line": 14,
+      "line": 19,
       "column": 10
     }
   },
@@ -1059,11 +1663,24 @@
       "type": "Comma"
     },
     "start": {
-      "line": 14,
+      "line": 19,
       "column": 10
     },
     "end": {
-      "line": 14,
+      "line": 19,
+      "column": 11
+    }
+  },
+  {
+    "token": {
+      "type": "Newline"
+    },
+    "start": {
+      "line": 19,
+      "column": 11
+    },
+    "end": {
+      "line": 19,
       "column": 11
     }
   },
@@ -1073,11 +1690,24 @@
       "value": "blue"
     },
     "start": {
-      "line": 15,
+      "line": 20,
       "column": 5
     },
     "end": {
-      "line": 15,
+      "line": 20,
+      "column": 9
+    }
+  },
+  {
+    "token": {
+      "type": "Newline"
+    },
+    "start": {
+      "line": 20,
+      "column": 9
+    },
+    "end": {
+      "line": 20,
       "column": 9
     }
   },
@@ -1086,12 +1716,25 @@
       "type": "BraceClose"
     },
     "start": {
-      "line": 16,
+      "line": 21,
       "column": 1
     },
     "end": {
-      "line": 16,
+      "line": 21,
       "column": 2
+    }
+  },
+  {
+    "token": {
+      "type": "Newline"
+    },
+    "start": {
+      "line": 22,
+      "column": 1
+    },
+    "end": {
+      "line": 22,
+      "column": 1
     }
   },
   {
@@ -1100,11 +1743,11 @@
       "value": "events"
     },
     "start": {
-      "line": 18,
+      "line": 23,
       "column": 1
     },
     "end": {
-      "line": 18,
+      "line": 23,
       "column": 7
     }
   },
@@ -1113,11 +1756,11 @@
       "type": "Dot"
     },
     "start": {
-      "line": 18,
+      "line": 23,
       "column": 7
     },
     "end": {
-      "line": 18,
+      "line": 23,
       "column": 8
     }
   },
@@ -1127,12 +1770,25 @@
       "value": "onflag"
     },
     "start": {
-      "line": 18,
+      "line": 23,
       "column": 8
     },
     "end": {
-      "line": 18,
+      "line": 23,
       "column": 14
+    }
+  },
+  {
+    "token": {
+      "type": "Newline"
+    },
+    "start": {
+      "line": 23,
+      "column": 17
+    },
+    "end": {
+      "line": 23,
+      "column": 17
     }
   },
   {
@@ -1141,11 +1797,11 @@
       "value": "motion"
     },
     "start": {
-      "line": 19,
+      "line": 24,
       "column": 5
     },
     "end": {
-      "line": 19,
+      "line": 24,
       "column": 11
     }
   },
@@ -1154,11 +1810,11 @@
       "type": "Dot"
     },
     "start": {
-      "line": 19,
+      "line": 24,
       "column": 11
     },
     "end": {
-      "line": 19,
+      "line": 24,
       "column": 12
     }
   },
@@ -1168,11 +1824,11 @@
       "value": "x"
     },
     "start": {
-      "line": 19,
+      "line": 24,
       "column": 12
     },
     "end": {
-      "line": 19,
+      "line": 24,
       "column": 13
     }
   },
@@ -1181,11 +1837,11 @@
       "type": "Dot"
     },
     "start": {
-      "line": 19,
+      "line": 24,
       "column": 13
     },
     "end": {
-      "line": 19,
+      "line": 24,
       "column": 14
     }
   },
@@ -1195,11 +1851,11 @@
       "value": "set"
     },
     "start": {
-      "line": 19,
+      "line": 24,
       "column": 14
     },
     "end": {
-      "line": 19,
+      "line": 24,
       "column": 17
     }
   },
@@ -1208,11 +1864,11 @@
       "type": "ParenOpen"
     },
     "start": {
-      "line": 19,
+      "line": 24,
       "column": 17
     },
     "end": {
-      "line": 19,
+      "line": 24,
       "column": 18
     }
   },
@@ -1222,11 +1878,11 @@
       "value": "100"
     },
     "start": {
-      "line": 19,
+      "line": 24,
       "column": 18
     },
     "end": {
-      "line": 19,
+      "line": 24,
       "column": 21
     }
   },
@@ -1235,11 +1891,24 @@
       "type": "ParenClose"
     },
     "start": {
-      "line": 19,
+      "line": 24,
       "column": 21
     },
     "end": {
-      "line": 19,
+      "line": 24,
+      "column": 22
+    }
+  },
+  {
+    "token": {
+      "type": "Newline"
+    },
+    "start": {
+      "line": 24,
+      "column": 22
+    },
+    "end": {
+      "line": 24,
       "column": 22
     }
   },
@@ -1248,12 +1917,25 @@
       "type": "BraceClose"
     },
     "start": {
-      "line": 20,
+      "line": 25,
       "column": 1
     },
     "end": {
-      "line": 20,
+      "line": 25,
       "column": 2
+    }
+  },
+  {
+    "token": {
+      "type": "Newline"
+    },
+    "start": {
+      "line": 26,
+      "column": 1
+    },
+    "end": {
+      "line": 26,
+      "column": 1
     }
   },
   {
@@ -1262,11 +1944,11 @@
       "value": "private"
     },
     "start": {
-      "line": 22,
+      "line": 27,
       "column": 1
     },
     "end": {
-      "line": 22,
+      "line": 27,
       "column": 8
     }
   },
@@ -1276,11 +1958,11 @@
       "value": "i"
     },
     "start": {
-      "line": 22,
+      "line": 27,
       "column": 9
     },
     "end": {
-      "line": 22,
+      "line": 27,
       "column": 10
     }
   },
@@ -1289,11 +1971,11 @@
       "type": "Colon"
     },
     "start": {
-      "line": 22,
+      "line": 27,
       "column": 10
     },
     "end": {
-      "line": 22,
+      "line": 27,
       "column": 11
     }
   },
@@ -1303,11 +1985,11 @@
       "value": "num"
     },
     "start": {
-      "line": 22,
+      "line": 27,
       "column": 12
     },
     "end": {
-      "line": 22,
+      "line": 27,
       "column": 15
     }
   },
@@ -1316,11 +1998,11 @@
       "type": "Equals"
     },
     "start": {
-      "line": 22,
+      "line": 27,
       "column": 16
     },
     "end": {
-      "line": 22,
+      "line": 27,
       "column": 17
     }
   },
@@ -1330,11 +2012,24 @@
       "value": "0"
     },
     "start": {
-      "line": 22,
+      "line": 27,
       "column": 18
     },
     "end": {
-      "line": 22,
+      "line": 27,
+      "column": 19
+    }
+  },
+  {
+    "token": {
+      "type": "Newline"
+    },
+    "start": {
+      "line": 27,
+      "column": 19
+    },
+    "end": {
+      "line": 27,
       "column": 19
     }
   },
@@ -1344,11 +2039,11 @@
       "value": "for"
     },
     "start": {
-      "line": 23,
+      "line": 28,
       "column": 1
     },
     "end": {
-      "line": 23,
+      "line": 28,
       "column": 4
     }
   },
@@ -1357,11 +2052,11 @@
       "type": "ParenOpen"
     },
     "start": {
-      "line": 23,
+      "line": 28,
       "column": 5
     },
     "end": {
-      "line": 23,
+      "line": 28,
       "column": 6
     }
   },
@@ -1371,11 +2066,11 @@
       "value": "i"
     },
     "start": {
-      "line": 23,
+      "line": 28,
       "column": 6
     },
     "end": {
-      "line": 23,
+      "line": 28,
       "column": 7
     }
   },
@@ -1384,11 +2079,11 @@
       "type": "Comma"
     },
     "start": {
-      "line": 23,
+      "line": 28,
       "column": 7
     },
     "end": {
-      "line": 23,
+      "line": 28,
       "column": 8
     }
   },
@@ -1398,11 +2093,11 @@
       "value": "10"
     },
     "start": {
-      "line": 23,
+      "line": 28,
       "column": 9
     },
     "end": {
-      "line": 23,
+      "line": 28,
       "column": 11
     }
   },
@@ -1411,11 +2106,11 @@
       "type": "ParenClose"
     },
     "start": {
-      "line": 23,
+      "line": 28,
       "column": 11
     },
     "end": {
-      "line": 23,
+      "line": 28,
       "column": 12
     }
   },
@@ -1424,11 +2119,24 @@
       "type": "BraceOpen"
     },
     "start": {
-      "line": 23,
+      "line": 28,
       "column": 13
     },
     "end": {
-      "line": 23,
+      "line": 28,
+      "column": 14
+    }
+  },
+  {
+    "token": {
+      "type": "Newline"
+    },
+    "start": {
+      "line": 28,
+      "column": 14
+    },
+    "end": {
+      "line": 28,
       "column": 14
     }
   },
@@ -1438,11 +2146,11 @@
       "value": "console"
     },
     "start": {
-      "line": 24,
+      "line": 29,
       "column": 5
     },
     "end": {
-      "line": 24,
+      "line": 29,
       "column": 12
     }
   },
@@ -1451,11 +2159,11 @@
       "type": "Dot"
     },
     "start": {
-      "line": 24,
+      "line": 29,
       "column": 12
     },
     "end": {
-      "line": 24,
+      "line": 29,
       "column": 13
     }
   },
@@ -1465,11 +2173,11 @@
       "value": "log"
     },
     "start": {
-      "line": 24,
+      "line": 29,
       "column": 13
     },
     "end": {
-      "line": 24,
+      "line": 29,
       "column": 16
     }
   },
@@ -1478,11 +2186,11 @@
       "type": "ParenOpen"
     },
     "start": {
-      "line": 24,
+      "line": 29,
       "column": 16
     },
     "end": {
-      "line": 24,
+      "line": 29,
       "column": 17
     }
   },
@@ -1492,11 +2200,11 @@
       "value": "\"Iteration: \""
     },
     "start": {
-      "line": 24,
+      "line": 29,
       "column": 17
     },
     "end": {
-      "line": 24,
+      "line": 29,
       "column": 30
     }
   },
@@ -1505,11 +2213,11 @@
       "type": "Plus"
     },
     "start": {
-      "line": 24,
+      "line": 29,
       "column": 31
     },
     "end": {
-      "line": 24,
+      "line": 29,
       "column": 32
     }
   },
@@ -1519,11 +2227,11 @@
       "value": "i"
     },
     "start": {
-      "line": 24,
+      "line": 29,
       "column": 33
     },
     "end": {
-      "line": 24,
+      "line": 29,
       "column": 34
     }
   },
@@ -1532,12 +2240,240 @@
       "type": "ParenClose"
     },
     "start": {
-      "line": 24,
+      "line": 29,
       "column": 34
     },
     "end": {
-      "line": 24,
+      "line": 29,
       "column": 35
+    }
+  },
+  {
+    "token": {
+      "type": "Newline"
+    },
+    "start": {
+      "line": 29,
+      "column": 35
+    },
+    "end": {
+      "line": 29,
+      "column": 35
+    }
+  },
+  {
+    "token": {
+      "type": "Identifier",
+      "value": "motion"
+    },
+    "start": {
+      "line": 30,
+      "column": 5
+    },
+    "end": {
+      "line": 30,
+      "column": 11
+    }
+  },
+  {
+    "token": {
+      "type": "Dot"
+    },
+    "start": {
+      "line": 30,
+      "column": 11
+    },
+    "end": {
+      "line": 30,
+      "column": 12
+    }
+  },
+  {
+    "token": {
+      "type": "Identifier",
+      "value": "move"
+    },
+    "start": {
+      "line": 30,
+      "column": 12
+    },
+    "end": {
+      "line": 30,
+      "column": 16
+    }
+  },
+  {
+    "token": {
+      "type": "ParenOpen"
+    },
+    "start": {
+      "line": 30,
+      "column": 16
+    },
+    "end": {
+      "line": 30,
+      "column": 17
+    }
+  },
+  {
+    "token": {
+      "type": "Identifier",
+      "value": "i"
+    },
+    "start": {
+      "line": 30,
+      "column": 17
+    },
+    "end": {
+      "line": 30,
+      "column": 18
+    }
+  },
+  {
+    "token": {
+      "type": "Asterisk"
+    },
+    "start": {
+      "line": 30,
+      "column": 19
+    },
+    "end": {
+      "line": 30,
+      "column": 20
+    }
+  },
+  {
+    "token": {
+      "type": "Number",
+      "value": "10"
+    },
+    "start": {
+      "line": 30,
+      "column": 21
+    },
+    "end": {
+      "line": 30,
+      "column": 23
+    }
+  },
+  {
+    "token": {
+      "type": "ParenClose"
+    },
+    "start": {
+      "line": 30,
+      "column": 23
+    },
+    "end": {
+      "line": 30,
+      "column": 24
+    }
+  },
+  {
+    "token": {
+      "type": "Newline"
+    },
+    "start": {
+      "line": 30,
+      "column": 24
+    },
+    "end": {
+      "line": 30,
+      "column": 24
+    }
+  },
+  {
+    "token": {
+      "type": "Identifier",
+      "value": "looks"
+    },
+    "start": {
+      "line": 31,
+      "column": 5
+    },
+    "end": {
+      "line": 31,
+      "column": 10
+    }
+  },
+  {
+    "token": {
+      "type": "Dot"
+    },
+    "start": {
+      "line": 31,
+      "column": 10
+    },
+    "end": {
+      "line": 31,
+      "column": 11
+    }
+  },
+  {
+    "token": {
+      "type": "Identifier",
+      "value": "say"
+    },
+    "start": {
+      "line": 31,
+      "column": 11
+    },
+    "end": {
+      "line": 31,
+      "column": 14
+    }
+  },
+  {
+    "token": {
+      "type": "ParenOpen"
+    },
+    "start": {
+      "line": 31,
+      "column": 14
+    },
+    "end": {
+      "line": 31,
+      "column": 15
+    }
+  },
+  {
+    "token": {
+      "type": "String",
+      "value": "\"hello\""
+    },
+    "start": {
+      "line": 31,
+      "column": 15
+    },
+    "end": {
+      "line": 31,
+      "column": 22
+    }
+  },
+  {
+    "token": {
+      "type": "ParenClose"
+    },
+    "start": {
+      "line": 31,
+      "column": 22
+    },
+    "end": {
+      "line": 31,
+      "column": 23
+    }
+  },
+  {
+    "token": {
+      "type": "Newline"
+    },
+    "start": {
+      "line": 31,
+      "column": 23
+    },
+    "end": {
+      "line": 31,
+      "column": 23
     }
   },
   {
@@ -1545,12 +2481,38 @@
       "type": "BraceClose"
     },
     "start": {
-      "line": 25,
+      "line": 32,
       "column": 1
     },
     "end": {
-      "line": 25,
+      "line": 32,
       "column": 2
+    }
+  },
+  {
+    "token": {
+      "type": "EOF"
+    },
+    "start": {
+      "line": 32,
+      "column": 2
+    },
+    "end": {
+      "line": 32,
+      "column": 3
+    }
+  },
+  {
+    "token": {
+      "type": "EOF"
+    },
+    "start": {
+      "line": 32,
+      "column": 2
+    },
+    "end": {
+      "line": 32,
+      "column": 3
     }
   }
 ]

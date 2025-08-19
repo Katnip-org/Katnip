@@ -25,6 +25,20 @@ export interface CommentNode {
     isExpanded: boolean; // true -> expanded comment, false -> collapsed comment
 }
 
+export interface SingleTypeNode extends NodeBase {
+    type: "Type";
+    typeName: string;
+    typeParams?: TypeNode[]; // Optional type parameters for container types
+}
+
+export interface UnionTypeNode extends NodeBase {
+    type: "UnionType";
+    left: TypeNode;
+    right: TypeNode;
+}
+
+export type TypeNode = SingleTypeNode | UnionTypeNode;
+
 // -- Procedure nodes --
 export interface ProcedureDeclarationNode extends NodeBase {
     type: "ProcedureDeclaration";
@@ -51,11 +65,6 @@ export interface ParameterNode extends NodeBase {
 export interface ParameterDefaultNode extends NodeBase {
     type: "ParameterDefault";
     value: string;
-}
-
-export interface TypeNode extends NodeBase {
-    type: "Type";
-    typeName: string;
 }
 
 // -- For loop nodes --

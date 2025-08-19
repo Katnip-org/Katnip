@@ -12,7 +12,7 @@ export async function compile(source: string, outputPath: string) {
     // Create an error reporter instance
     const reporter = new ErrorReporter(source);
     const logger = new Logger();
-    logger.disable();
+    //logger.disable();
 
     const lexer = new Lexer(reporter, logger);
     const tokens = lexer.tokenize(source);
@@ -21,8 +21,8 @@ export async function compile(source: string, outputPath: string) {
     const tempFilePath = outputPath; // `${outputPath}.tokens.json`;
     await fs.writeFile(tempFilePath, JSON.stringify(tokens, null, 2));
 
-    const parser = new Parser(tokens);
-    const ast = parser.parse();
+    const parser = new Parser(reporter, logger);
+    const ast = parser.parse(tokens);
 
     // const semantic = new SemanticAnalyzer();
     // semantic.check(ast);

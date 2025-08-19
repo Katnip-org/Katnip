@@ -33,7 +33,7 @@ export class Lexer {
      */
     tokenize(src: string): Token[] {
         // Add a sentinel character to the end
-        src = src.replace(/\x04/g, ""); // Remove any existing EOF characters
+        src = src.replaceAll(/\x04/g, "").replaceAll("\r", ""); // Remove any existing EOF characters
         src += "\x04"; // EOF Sentinel
 
         let position = 0;
@@ -50,25 +50,22 @@ export class Lexer {
         let commentType: string = ""; // tracks comment type if in comment state
 
         const emit = (type: TokenType): void => {
-            if (buffer.length > 0) {
-                buffer = buffer.trim(); // Trim whitespace from buffer
-                if (buffer === "") return; // Skip empty buffers
-                if (isValuedTokenType(type)) {
-                    tokens.push({
-                        token: { type, value: buffer },
-                        start: { line: lineStart, column: colStart },
-                        end: { line, column: col }
-                    });
-                } else if (isUnitTokenType(type)) {
-                    tokens.push({
-                        token: { type },
-                        start: { line: lineStart, column: colStart },
-                        end: { line, column: col }
-                    });
-                }
-                buffer = ""; // Reset buffer after emitting
-                currentState = LexerState.Start;
+            buffer = buffer.trim(); // Trim whitespace from buffer
+            if (isValuedTokenType(type)) {
+                tokens.push({
+                    token: { type, value: buffer },
+                    start: { line: lineStart, column: colStart },
+                    end: { line, column: col }
+                });
+            } else if (isUnitTokenType(type)) {
+                tokens.push({
+                    token: { type },
+                    start: { line: lineStart, column: colStart },
+                    end: { line, column: col }
+                });
             }
+            buffer = ""; // Reset buffer after emitting
+            currentState = LexerState.Start;
         };
 
         const peek = (distance: number = 0): string | null => {
@@ -98,12 +95,16 @@ export class Lexer {
                 break; // End of input
             }
 
-            // this.logger.log(new KatnipLog(KatnipLogType.Debug, `Lexer state: ${LexerState[currentState]}, char: '${char}'`, { line, column: col }));
+            // this.logger.log(new KatnipLog( KatnipLogType.Debug, `Lexer state: ${LexerState[currentState]}, char: '${char}'`, { line, column: col } ));
 
             // State: Start
             if (currentState === LexerState.Start) {
                 colStart = col; // Reset column start for new token
                 lineStart = line; // Reset line start for new token
+
+                if (char === '\n' && peek(1) !== '\n') { // Check for single newline
+                    emit("Newline");
+                }
 
                 if (/\s/.test(char)) {
                     // Whitespace
@@ -135,6 +136,7 @@ export class Lexer {
                     advance();
                 } else if (char === '\x04') {
                     advance(); // Consume EOF character
+                    emit("EOF");
                 } else {
                     this.reporter.add(
                         new KatnipError("Lexer", `Unexpected character '${char}'`, { line: line, column: col })
