@@ -17,6 +17,17 @@ import { ErrorReporter, KatnipError } from "../utils/ErrorReporter";
 import { Logger, KatnipLog, KatnipLogType } from "../utils/Logger";
 
 export class Lexer {
+    private position = 0;
+    private line = 1;
+    private lineStart = 0;
+    private col = 1;
+    private colStart = 1;
+    private currentState: LexerState = LexerState.Start;
+    private buffer: string = "";
+    private stringQuote: "'" | '"' | null = null;
+    private commentType: string = "";
+    private tokens: Token[] = [];
+
     /**
      * Creates a new Lexer instance.
      */
@@ -32,320 +43,354 @@ export class Lexer {
      * @returns The tokens extracted from the source code.
      */
     tokenize(src: string): Token[] {
-        // Add a sentinel character to the end
         src = src.replaceAll(/\x04/g, "").replaceAll("\r", ""); // Remove any existing EOF characters
         src += "\x04"; // EOF Sentinel
 
-        let position = 0;
-        let line = 1;
-        let lineStart = 0; // Track start of current token
-        let col = 1;
-        let colStart = 1; // Track start column of current token
-        const tokens: Token[] = [];
-        let currentState: LexerState = LexerState.Start;
-        let buffer: string = "";
+        this.position = 0;
+        this.line = 1;
+        this.lineStart = 0;
+        this.col = 1;
+        this.colStart = 1;
+        this.currentState = LexerState.Start;
+        this.buffer = "";
+        this.stringQuote = null;
+        this.commentType = "";
+        this.tokens = [];
 
-        // Flags
-        let stringQuote: "'" | '"' | null = null; // tracks current quote type
-        let commentType: string = ""; // tracks comment type if in comment state
-
-        const emit = (type: TokenType): void => {
-            buffer = buffer.trim(); // Trim whitespace from buffer
-            if (isValuedTokenType(type)) {
-                tokens.push({
-                    token: { type, value: buffer },
-                    start: { line: lineStart, column: colStart },
-                    end: { line, column: col }
-                });
-            } else if (isUnitTokenType(type)) {
-                tokens.push({
-                    token: { type },
-                    start: { line: lineStart, column: colStart },
-                    end: { line, column: col }
-                });
-            }
-            buffer = ""; // Reset buffer after emitting
-            currentState = LexerState.Start;
-        };
-
-        const peek = (distance: number = 0): string | null => {
-            if (position < src.length) {
-                return src[position + distance];
-            }
-            return null;
-        }
-
-        const advance = (): string | null => {
-            const char = peek();
-            if (char !== null) {
-                position++;
-                if (char === '\n') {
-                    line++;
-                    col = 1;
-                } else {
-                    col++;
-                }
-            }
-            return char;
-        }
-
-        while (position < src.length) {
-            const char = peek();
+        while (this.position < src.length) {
+            const char = this.peek(src);
             if (char === null) {
                 break; // End of input
             }
 
-            // this.logger.log(new KatnipLog( KatnipLogType.Debug, `Lexer state: ${LexerState[currentState]}, char: '${char}'`, { line, column: col } ));
+            this.processChar(char, src);
+        }
 
-            // State: Start
-            if (currentState === LexerState.Start) {
-                colStart = col; // Reset column start for new token
-                lineStart = line; // Reset line start for new token
+        this.buffer = "\x04";
+        this.emit("EOF"); // Emit EOF token at the end
+        return this.tokens;
+    }
 
-                if (char === '\n' && peek(1) !== '\n') { // Check for single newline
-                    emit("Newline");
-                }
+    /**
+     * Emits a token based on the current buffer and resets the buffer.
+     * 
+     * @param type The type of token to emit.
+     */
+    private emit(type: TokenType): void {
+        this.buffer = this.buffer.trim();
+        if (isValuedTokenType(type)) {
+            this.tokens.push({
+                token: { type, value: this.buffer },
+                start: { line: this.lineStart, column: this.colStart },
+                end: { line: this.line, column: this.col }
+            });
+        } else if (isUnitTokenType(type)) {
+            this.tokens.push({
+                token: { type },
+                start: { line: this.lineStart, column: this.colStart },
+                end: { line: this.line, column: this.col }
+            });
+        }
+        this.buffer = ""; // Reset buffer after emitting
+        this.currentState = LexerState.Start;
+    }
 
-                if (/\s/.test(char)) {
-                    // Whitespace
-                    advance();
-                } else if (/[a-zA-Z_]/.test(char)) {
-                    // Identifier start
-                    currentState = LexerState.Identifier;
-                    buffer += advance();
-                } else if (/[\-0-9]/.test(char)) {
-                    // Number literal start
-                    currentState = LexerState.Number;
-                    buffer += advance();
-                } else if (char === '"' || char === "'") {
-                    // String literal start
-                    stringQuote = char;
-                    currentState = LexerState.String;
-                    buffer += advance();
-                } else if (/[+\-*/%&|^!<>?=]/.test(char)) {
-                    // Operator start
-                    currentState = LexerState.Operator;
-                    buffer += advance();
-                } else if (/[.,;:@(){}\[\]]/.test(char)) {
-                    // Punctuation
-                    currentState = LexerState.Punctuation;
-                    buffer += advance();
-                } else if (char === '#') {
-                    // Comment start
-                    currentState = LexerState.Comment;
-                    advance();
-                } else if (char === '\x04') {
-                    advance(); // Consume EOF character
-                    emit("EOF");
-                } else {
-                    this.reporter.add(
-                        new KatnipError("Lexer", `Unexpected character '${char}'`, { line: line, column: col })
-                    );
-                }
+    /**
+     * Peeks at the next character in the source code without consuming it.
+     * 
+     * @param src The source code to peek into.
+     * @param distance The number of characters to look ahead (default is 0).
+     * @returns The character at the specified distance or null if out of bounds.
+     */
+    private peek(src: string, distance: number = 0): string | null {
+        if (this.position < src.length) {
+            return src[this.position + distance];
+        }
+        return null;
+    }
+
+    /**
+     * Advances the lexer position by one character and updates line/column tracking.
+     * 
+     * @param src The source code to advance in.
+     * @returns The character that was advanced or null if at the end of input.
+     */
+    private advance(src: string): string | null {
+        const char = this.peek(src);
+        if (char !== null) {
+            this.position++;
+            if (char === '\n') {
+                this.line++;
+                this.col = 1;
+            } else {
+                this.col++;
             }
-            
-            // State: Identifier
-            else if (currentState === LexerState.Identifier) {
-                if (/[a-zA-Z0-9_]/.test(char)) {
-                    buffer += advance();
-                } else {
-                    emit("Identifier");
-                    currentState = LexerState.Start;
-                }
-            }
+        }
+        return char;
+    }
 
-            // State: String
-            else if (currentState === LexerState.String) {
-                if (char === stringQuote) {
-                    buffer += advance();
-                    emit("String");
-                } else if (char === '\\') {
-                    // Handle escape sequences
-                    buffer += advance();
-                    currentState = LexerState.EscapedString;
-                } else {
-                    buffer += advance();
-                }
-            }
+    /**
+     * Processes a single character from the source code and updates the lexer state.
+     * 
+     * @param char The character to process.
+     * @param src The source code being tokenized.
+     */
+    private processChar(char: string, src: string): void {
+        // this.logger.log(new KatnipLog( KatnipLogType.Debug, `Lexer state: ${LexerState[this.currentState]}, char: '${char}'`, { line: this.line, column: this.col } ));
 
-            // State: Escaped String
-            else if (currentState === LexerState.EscapedString) {
-                if (char === null) {
-                    this.reporter.add(
-                        new KatnipError("Lexer", `Unterminated string literal`, { line: line, column: col })
-                    );
-                }
+        if (this.currentState === LexerState.Start) {
+            this.colStart = this.col; // Reset column start for new token
+            this.lineStart = this.line; // Reset line start for new token
 
-                if (char === "u") {
-                    // Handle Unicode escape sequences
-                    let unicodeBuffer = "";
-                    for (let i = 0; i < 4; i++) {
-                        const nextChar = advance();
-                        if (nextChar === null || !/[0-9a-fA-F]/.test(nextChar)) {
-                            this.reporter.add(
-                                new KatnipError("Lexer", `Invalid Unicode escape sequence`, { line: line, column: col })
-                            );
-                        }
-                        unicodeBuffer += nextChar;
-                    }
-                    buffer += String.fromCharCode(parseInt(unicodeBuffer, 16));
-                } else {
-                    const escapeSequenceMap: Record<string, string> = {
-                        "n": "\n",
-                        "t": "\t",
-                        "r": "\r",
-                    };
-                    buffer += escapeSequenceMap[char] ?? char;
-                }
-
-                // Reset to String state after handling escape
-                currentState = LexerState.String;
+            if (char === '\n' && this.peek(src, 1) !== '\n') { // Check for single newline
+                this.emit("Newline");
             }
 
-            // State: Number
-            else if (currentState === LexerState.Number) {
-                if (/[0-9]/.test(char)) {
-                    buffer += advance();
-                } else if (char === '.') {
-                    // Handle decimal point
-                    if (buffer.includes('.')) {
-                        this.reporter.add(
-                            new KatnipError("Lexer", `Invalid number format: Multiple decimal points`, { line: line, column: col })
-                        );
-                        emit("Number");
-                        currentState = LexerState.Start;
-                    } else {
-                        buffer += advance();
-                        currentState = LexerState.Number; // Still in number state
-                    }
-                } else if (/[eE]/.test(char)) {
-                    // Handle decimal point
-                    if (buffer.includes('e') || buffer.includes("E")) {
-                        this.reporter.add(
-                            new KatnipError("Lexer", `Invalid number format: Multiple exponentional notation characters`, { line: line, column: col })
-                        );
-                        emit("Number");
-                        currentState = LexerState.Start;
-                    } else {
-                        buffer += advance();
-                        currentState = LexerState.Number; // Still in number state
-                    }
-                } else if (/[+\-]/.test(char)) {
-                    // Handle sign in scientific notation
-                    if (buffer.slice(-1) === 'e' || buffer.slice(-1) === 'E') {
-                        buffer += advance();
-                    } else {
-                        emit("Number");
-                        currentState = LexerState.Start;
-                    }
-                } else if (/[xbo]/.test(char)) {
-                    // Handle hexadecimal or binary prefixes
-                    if (buffer === "0") {
-                        buffer += advance(); // consume 'x', 'b', or 'o'
-                        currentState = LexerState.Number; // stay in number state
-                    } else {
-                        emit("Number");
-                        currentState = LexerState.Start;
-                    }
-                } else {
-                    emit("Number");
-                    currentState = LexerState.Start;
-                }
+            if (/\s/.test(char)) {
+                // Whitespace
+                this.advance(src);
+            } else if (/[a-zA-Z_]/.test(char)) {
+                // Identifier start
+                this.currentState = LexerState.Identifier;
+                this.buffer += this.advance(src);
+            } else if (/[-0-9]/.test(char)) {
+                // Number literal start
+                this.currentState = LexerState.Number;
+                this.buffer += this.advance(src);
+            } else if (char === '"' || char === "'") {
+                // String literal start
+                this.stringQuote = char;
+                this.currentState = LexerState.String;
+                this.buffer += this.advance(src);
+            } else if (/[+\-*/%&|^!<>?=]/.test(char)) {
+                // Operator start
+                this.currentState = LexerState.Operator;
+                this.buffer += this.advance(src);
+            } else if (/[.,;:@(){}\[\]]/.test(char)) {
+                // Punctuation
+                this.currentState = LexerState.Punctuation;
+                this.buffer += this.advance(src);
+            } else if (char === '#') {
+                // Comment start
+                this.currentState = LexerState.Comment;
+                this.advance(src);
+            } else if (char === '\x04') {
+                this.advance(src); // Consume EOF character
+                this.emit("EOF");
+            } else {
+                this.reporter.add(
+                    new KatnipError("Lexer", `Unexpected character '${char}'`, { line: this.line, column: this.col })
+                );
             }
+        } else {
+            this.processState(char, src);
+        }
+    }
 
-            // State: Operator
-            else if (currentState === LexerState.Operator) {
-                const operatorMap: Record<string, string> = {
-                    "+": "Plus",
-                    "-": "Minus",
-                    "*": "Asterisk",
-                    "/": "FwdSlash",
-                    "%": "Percent",
-                    "^": "Caret",
-                    "!": "Exclamation",
-                    "&": "Ampersand",
-                    "|": "Pipe",
-                    "<": "LeftChevron",
-                    ">": "RightChevron",
-                    "=": "Equals"
-                };
-
-                if (/[+\-*/%&|^!<>?=]/.test(char)) {
-                    buffer += advance();
-                } else {
-                    emit(operatorMap[buffer] as UnitTokenType);
-                    currentState = LexerState.Start;
-                }
-            }
-
-            // State: Punctuation
-            else if (currentState === LexerState.Punctuation) {
-                const punctuationMap: Record<string, string> = {
-                    ".": "Dot",
-                    ",": "Comma",
-                    ":": "Colon",
-                    ";": "Semicolon",
-                    "@": "AtSymbol",
-                    "(": "ParenOpen",
-                    ")": "ParenClose",
-                    "{": "BraceOpen",
-                    "}": "BraceClose",
-                    "[": "BracketOpen",
-                    "]": "BracketClose"
-                };
-
-                if (/[.,;:(){}\[\]]/.test(char)) {
-                    buffer += advance();
-                } else {
-                    emit(punctuationMap[buffer] as UnitTokenType);
-                }
-            }
-
-            else if (currentState === LexerState.Comment) {
-                const commentMap: Record<string, [ValuedTokenType, string]> = {
-                    "none": ["Comment_SingleExpanded", "\n"],
-                    "*": ["Comment_SingleCollapsed", "\n"],
-                    "!": ["Comment_SingleIgnored", "\n"],
-                    "<": ["Comment_MultilineExpanded", ">#"],
-                    ">": ["Comment_MultilineCollapsed", "<#"],
-                    "[": ["Comment_MultilineIgnored", "]#"]
-                };
-
-                if (commentType === "") {
-                    const nextChar = advance();
-                    if (nextChar && commentMap[nextChar]) {
-                        commentType = nextChar;
-                    } else {
-                        commentType = "none"; // Default to single-line comment
-                    }
-                } else {
-                    const [tokenType, commentEnd] = commentMap[commentType];
-
-                    // Multichar end delimiter
-                    if (commentEnd.length === 2 && char + peek(1) === commentEnd) {
-                        advance();
-                        advance();
-                        emit(tokenType);
-                        currentState = LexerState.Start;
-                        commentType = "";
-                    }
-                    // Single-char end delimiter
-                    else if (commentEnd.length === 1 && char === commentEnd) {
-                        advance();
-                        emit(tokenType);
-                        currentState = LexerState.Start;
-                        commentType = "";
-                    }
-                    // No end yet -> keep buffering
-                    else {
-                        buffer += advance() ?? "";
-                    }
-                }
+    /**
+     * Processes the current state of the lexer based on the character and source code.
+     * 
+     * @param char The current character being processed.
+     * @param src The source code being tokenized.
+     */
+    private processState(char: string, src: string): void {
+        // State: Identifier
+        if (this.currentState === LexerState.Identifier) {
+            if (/[a-zA-Z0-9_]/.test(char)) {
+                this.buffer += this.advance(src);
+            } else {
+                this.emit("Identifier");
+                this.currentState = LexerState.Start;
             }
         }
 
-        buffer = "\x04"
-        emit("EOF"); // Emit EOF token at the end
-        return tokens;
+        // State: String
+        else if (this.currentState === LexerState.String) {
+            if (char === this.stringQuote) {
+                this.buffer += this.advance(src);
+                this.emit("String");
+            } else if (char === '\\') {
+                // Handle escape sequences
+                this.buffer += this.advance(src);
+                this.currentState = LexerState.EscapedString;
+            } else {
+                this.buffer += this.advance(src);
+            }
+        }
+
+        // State: Escaped String
+        else if (this.currentState === LexerState.EscapedString) {
+            if (char === null) {
+                this.reporter.add(
+                    new KatnipError("Lexer", `Unterminated string literal`, { line: this.line, column: this.col })
+                );
+            }
+
+            if (char === "u") {
+                // Handle Unicode escape sequences
+                let unicodeBuffer = "";
+                for (let i = 0; i < 4; i++) {
+                    const nextChar = this.advance(src);
+                    if (nextChar === null || !/[0-9a-fA-F]/.test(nextChar)) {
+                        this.reporter.add(
+                            new KatnipError("Lexer", `Invalid Unicode escape sequence`, { line: this.line, column: this.col })
+                        );
+                    }
+                    unicodeBuffer += nextChar;
+                }
+                this.buffer += String.fromCharCode(parseInt(unicodeBuffer, 16));
+            } else {
+                const escapeSequenceMap: Record<string, string> = {
+                    "n": "\n",
+                    "t": "\t",
+                    "r": "\r",
+                };
+                this.buffer += escapeSequenceMap[char] ?? char;
+            }
+
+            // Reset to String state after handling escape
+            this.currentState = LexerState.String;
+        }
+
+        // State: Number
+        else if (this.currentState === LexerState.Number) {
+            if (/[0-9]/.test(char)) {
+                this.buffer += this.advance(src);
+            } else if (char === '.') {
+                // Handle decimal point
+                if (this.buffer.includes('.')) {
+                    this.reporter.add(
+                        new KatnipError("Lexer", `Invalid number format: Multiple decimal points`, { line: this.line, column: this.col })
+                    );
+                    this.emit("Number");
+                    this.currentState = LexerState.Start;
+                } else {
+                    this.buffer += this.advance(src);
+                    this.currentState = LexerState.Number; // Still in number state
+                }
+            } else if (/[eE]/.test(char)) {
+                // Handle exponential notation
+                if (this.buffer.includes('e') || this.buffer.includes("E")) {
+                    this.reporter.add(
+                        new KatnipError("Lexer", `Invalid number format: Multiple exponentional notation characters`, { line: this.line, column: this.col })
+                    );
+                    this.emit("Number");
+                    this.currentState = LexerState.Start;
+                } else {
+                    this.buffer += this.advance(src);
+                    this.currentState = LexerState.Number; // Still in number state
+                }
+            } else if (/[+\-]/.test(char)) {
+                // Handle sign in scientific notation
+                if (this.buffer.slice(-1) === 'e' || this.buffer.slice(-1) === 'E') {
+                    this.buffer += this.advance(src);
+                } else {
+                    this.emit("Number");
+                    this.currentState = LexerState.Start;
+                }
+            } else if (/[xbo]/.test(char)) {
+                // Handle hexadecimal or binary prefixes
+                if (this.buffer === "0") {
+                    this.buffer += this.advance(src); // consume 'x', 'b', or 'o'
+                    this.currentState = LexerState.Number; // stay in number state
+                } else {
+                    this.emit("Number");
+                    this.currentState = LexerState.Start;
+                }
+            } else {
+                this.emit("Number");
+                this.currentState = LexerState.Start;
+            }
+        }
+
+        // State: Operator
+        else if (this.currentState === LexerState.Operator) {
+            const operatorMap: Record<string, string> = {
+                "+": "Plus",
+                "-": "Minus",
+                "*": "Asterisk",
+                "/": "FwdSlash",
+                "%": "Percent",
+                "^": "Caret",
+                "!": "Exclamation",
+                "&": "Ampersand",
+                "|": "Pipe",
+                "<": "LeftChevron",
+                ">": "RightChevron",
+                "=": "Equals"
+            };
+
+            if (/[+\-*/%&|^!<>?=]/.test(char)) {
+                this.buffer += this.advance(src);
+            } else {
+                this.emit(operatorMap[this.buffer] as UnitTokenType);
+                this.currentState = LexerState.Start;
+            }
+        }
+
+        // State: Punctuation
+        else if (this.currentState === LexerState.Punctuation) {
+            const punctuationMap: Record<string, string> = {
+                ".": "Dot",
+                ",": "Comma",
+                ":": "Colon",
+                ";": "Semicolon",
+                "@": "AtSymbol",
+                "(": "ParenOpen",
+                ")": "ParenClose",
+                "{": "BraceOpen",
+                "}": "BraceClose",
+                "[": "BracketOpen",
+                "]": "BracketClose"
+            };
+
+            if (/[.,;:(){}\[\]]/.test(char)) {
+                this.buffer += this.advance(src);
+            } else {
+                this.emit(punctuationMap[this.buffer] as UnitTokenType);
+            }
+        }
+
+        else if (this.currentState === LexerState.Comment) {
+            const commentMap: Record<string, [ValuedTokenType, string]> = {
+                "none": ["Comment_SingleExpanded", "\n"],
+                "*": ["Comment_SingleCollapsed", "\n"],
+                "!": ["Comment_SingleIgnored", "\n"],
+                "<": ["Comment_MultilineExpanded", ">#"],
+                ">": ["Comment_MultilineCollapsed", "<#"],
+                "[": ["Comment_MultilineIgnored", "]#"]
+            };
+
+            if (this.commentType === "") {
+                const nextChar = this.advance(src);
+                if (nextChar && commentMap[nextChar]) {
+                    this.commentType = nextChar;
+                } else {
+                    this.commentType = "none"; // Default to single-line comment
+                }
+            } else {
+                const [tokenType, commentEnd] = commentMap[this.commentType];
+
+                // Multichar end delimiter
+                if (commentEnd.length === 2 && char + this.peek(src, 1) === commentEnd) {
+                    this.advance(src);
+                    this.advance(src);
+                    if (tokenType !== "Comment_MultilineIgnored") this.emit(tokenType);
+                    this.currentState = LexerState.Start;
+                    this.commentType = "";
+                }
+                // Single-char end delimiter
+                else if (commentEnd.length === 1 && char === commentEnd) {
+                    this.advance(src);
+                    if (tokenType !== "Comment_SingleIgnored") this.emit(tokenType);
+                    this.currentState = LexerState.Start;
+                    this.commentType = "";
+                }
+                // No end yet -> keep buffering
+                else {
+                    this.buffer += this.advance(src) ?? "";
+                }
+            }
+        }
     }
 }
