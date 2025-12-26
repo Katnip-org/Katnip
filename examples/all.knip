@@ -30,3 +30,8 @@ for (i, 10) {
     motion.move(i * 10)
     looks.say("hello")
 }
+
+#> big comment
+still inside it
+spanning multiple lines
+<#

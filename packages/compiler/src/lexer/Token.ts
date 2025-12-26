@@ -61,6 +61,17 @@ const unitTokenTypes = [
     "RightChevron",   // >
     "Equals",         // =
 
+    // Double-character operators
+    "Power",          // **
+    "EqualsTo",        // ==
+    "LessThanOrEqualsTo",      // <=
+    "GreaterThanorEqualsTo",   // >=
+    "AND",            // &&
+    "OR",             // ||
+    "NAND",           // !&
+    "NOR",            // !|
+    "XNOR",           // !^
+
     // Special
     "Newline",        // \n
     "EOF"

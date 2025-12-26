@@ -1,12 +1,12 @@
-import { Lexer } from "./lexer/Lexer";
-import { ErrorReporter } from "./utils/ErrorReporter";
-import { Logger } from "./utils/Logger";
+import { Lexer } from "./lexer/Lexer.js";
+import { ErrorReporter } from "./utils/ErrorReporter.js";
+import { Logger } from "./utils/Logger.js";
 
 import * as fs from "fs/promises";
-import { Parser } from "./parser/Parser";
-// import { SemanticAnalyzer } from "./semantic/SemanticAnalyzer";
-// import { IRGenerator } from "./ir/IRGenerator";
-// import { SB3Generator } from "./codegen/SB3Generator";
+import { Parser } from "./parser/Parser.js";
+// import { SemanticAnalyzer } from "./semantic/SemanticAnalyzer.js";
+// import { IRGenerator } from "./ir/IRGenerator.js";
+// import { SB3Generator } from "./codegen/SB3Generator.js";
 
 export async function compile(source: string, outputPath: string) {
     // Create an error reporter instance

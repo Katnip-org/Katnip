@@ -3,18 +3,21 @@
  */
 
 import { 
+    isUnitTokenType,
+    isValuedTokenType
+} from "./Token.js";
+
+import type { 
     Token,
     TokenType,
 
-    isValuedTokenType,
     ValuedTokenType,
-    isUnitTokenType,
     UnitTokenType,
-} from "./Token";
+} from "./Token.js";
 
-import { LexerState } from "./LexerState";
-import { ErrorReporter, KatnipError } from "../utils/ErrorReporter";
-import { Logger, KatnipLog, KatnipLogType } from "../utils/Logger";
+import { LexerState } from "./LexerState.js";
+import { ErrorReporter, KatnipError } from "../utils/ErrorReporter.js";
+import { Logger, KatnipLog, KatnipLogType } from "../utils/Logger.js";
 
 export class Lexer {
     private position = 0;

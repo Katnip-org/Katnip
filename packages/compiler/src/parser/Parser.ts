@@ -2,10 +2,12 @@
  * @fileoverview Contains the main parser class for the Katnip compiler.
  */
 
-import { isValuedTokenType, Token, TokenInfoFor, TokenPos, TokenType, ValuedToken } from "../lexer/Token";
-import { ErrorReporter, KatnipError } from "../utils/ErrorReporter";
-import { Logger } from "../utils/Logger";
-import { AST, DecoratorNode, NodeBase, ParameterNode, ProcedureDeclarationNode, SingleTypeNode, TypeNode, UnionTypeNode } from "./AST-nodes";
+import { isValuedTokenType } from "../lexer/Token.js";
+import type { Token, TokenInfoFor, TokenPos, TokenType, ValuedToken } from "../lexer/Token.js";
+import { ErrorReporter, KatnipError } from "../utils/ErrorReporter.js";
+import { Logger } from "../utils/Logger.js";
+import type { AST, DecoratorNode, NodeBase, ParameterNode, ProcedureDeclarationNode, SingleTypeNode, TypeNode, UnionTypeNode, ExpressionNode } from "./AST-nodes.js";
+import { bindingPowerTable, getBindingPower } from "./BindingPowerTable.js";
 
 export class Parser {
     private tokens: Token[] = [];
@@ -76,7 +78,7 @@ export class Parser {
      * @param patterns - The patterns to match against.
      * @returns True if the token matches, false otherwise.
      */
-    private checkToken(kind: "type" | "value", ...patterns: string[]): boolean {
+    private checkToken(kind: "type" | "value", patterns: string[]): boolean {
         if (this.isAtEnd()) return false;
 
         const token = this.peek();
@@ -96,8 +98,8 @@ export class Parser {
      * @param patterns - The patterns to match against.
      * @returns True if the token was consumed, false otherwise.
      */
-    private tryConsume(kind: "type" | "value", ...patterns: string[]): boolean {
-        if (this.checkToken(kind, ...patterns)) {
+    private tryConsume(kind: "type" | "value", patterns: string[]): boolean {
+        if (this.checkToken(kind, patterns)) {
             this.advance();
             return true;
         }
@@ -118,10 +120,10 @@ export class Parser {
         const types = options.type ? (Array.isArray(options.type) ? options.type : [options.type]) : [];
         const values = options.value ? (Array.isArray(options.value) ? options.value : [options.value]) : [];
 
-        if (types.length && this.tryConsume("type", ...types)) {
+        if (types.length && this.tryConsume("type", types)) {
             return this.previous() as { token: TokenInfoFor<T>; start: TokenPos; end: TokenPos };
         }
-        if (values.length && this.tryConsume("value", ...values)) {
+        if (values.length && this.tryConsume("value", values)) {
             return this.previous() as { token: TokenInfoFor<T>; start: TokenPos; end: TokenPos };
         }
         if (!types.length && !values.length) throw new Error("consume() must be called with either type or value");
@@ -154,7 +156,7 @@ export class Parser {
         const typeNameToken = this.consume({ type: "Identifier" }, "Expected type name");
         const typeName = typeNameToken.token.value;
 
-        if (this.tryConsume("type", "Pipe")) {
+        if (this.tryConsume("type", ["Pipe"])) {
             const rightType = this.parseTypeAnnotation();
             return {
                 type: "UnionType",
@@ -162,11 +164,11 @@ export class Parser {
                 right: rightType,
                 loc: { start: typeNameToken.start, end: rightType.loc.end }
             };
-        } else if (this.tryConsume("type", "LeftChevron")) {
+        } else if (this.tryConsume("type", ["LeftChevron"])) {
             const typeParams: TypeNode[] = [];
-            while (!this.checkToken("type", "RightChevron")) {
+            while (!this.checkToken("type", ["RightChevron"])) {
                 typeParams.push(this.parseTypeAnnotation());
-                if (!this.tryConsume("type", "Comma") && !this.checkToken("type", "RightChevron")) {
+                if (!this.tryConsume("type", ["Comma"]) && !this.checkToken("type", ["RightChevron"])) {
                     this.reporter.add(
                         new KatnipError("Parser", "Expected ',' or '>'", this.peek()?.start || { line: -1, column: -1 })
                     );
@@ -194,12 +196,10 @@ export class Parser {
      * @returns The parsed statement or an error token.
      */
     private parseStatement(): any {
-        if (this.checkToken("type", "ProcedureDeclaration")) {
-            return this.parseProcedureDefinition();
-        } else if (this.checkToken("type", "EnumDeclaration")) {
-            return this.parseEnumDefinition();
-        } else if (this.checkToken("type", "Identifier")) {
-            if (this.checkToken("value", "private", "temp", "public")) {
+        if (this.checkToken("type", ["ProcedureDeclaration"])) return this.parseProcedureDefinition();
+        if (this.checkToken("type", ["EnumDeclaration"])) return this.parseEnumDefinition();
+        if (this.checkToken("type", ["Identifier"])) {
+            if (this.checkToken("value", ["private", "temp", "public"])) {
                 return this.parseVariableDeclaration();
             } else {
                 return this.parseExpression();
@@ -207,7 +207,7 @@ export class Parser {
         }
 
         this.reporter.add(
-            new KatnipError("Parser", "Unexpected token", this.peek()?.start || { line: -1, column: -1 })
+            new KatnipError("Parser", `Unexpected token: Type '${this.peek()!.token.type}'`, this.peek()?.start || { line: -1, column: -1 })
         );
         this.advance();
         return { type: "ErrorToken", value: "" };
@@ -227,10 +227,10 @@ export class Parser {
         const decorators: DecoratorNode[] = [];
         const parameters: ParameterNode[] = [];
 
-        if (this.tryConsume("type", "ParenOpen")) {
-            while (!this.checkToken("type", "ParenClose")) {
-                if (this.tryConsume("type", "AtSymbol") || this.checkToken("type", "Identifier")) {
-                    if (this.checkToken("type", "Identifier")) parsingDecorators = false;
+        if (this.tryConsume("type", ["ParenOpen"])) {
+            while (!this.checkToken("type", ["ParenClose"])) {
+                if (this.tryConsume("type", ["AtSymbol"]) || this.checkToken("type", ["Identifier"])) {
+                    if (this.checkToken("type", ["Identifier"])) parsingDecorators = false;
                 } else {
                     this.reporter.add(
                         new KatnipError("Parser", "Expected decorator or parameter", this.peek()?.start || { line: -1, column: -1 })
@@ -241,7 +241,7 @@ export class Parser {
                     const decoratorNameToken = this.consume({ type: "Identifier" }, "Expected decorator name");
                     const decoratorName = decoratorNameToken.token.value;
 
-                    if (this.tryConsume("type", "Equals")) {
+                    if (this.tryConsume("type", ["Equals"])) {
                         const decoratorValueToken = this.consume({ type: "Identifier" }, "Expected decorator value");
                         const decoratorValue = decoratorValueToken.token.value;
 
@@ -259,13 +259,13 @@ export class Parser {
                     const argumentNameToken = this.consume({ type: "Identifier" }, "Expected argument name");
                     const argumentName = argumentNameToken.token.value;
 
-                    if (this.tryConsume("type", "Colon")) {
+                    if (this.tryConsume("type", ["Colon"])) {
                         const argumentTypeToken = this.consume({ type: "Identifier" }, "Expected argument type");
                         const argumentType = argumentTypeToken.token.value;
 
                         let defaultValueToken: Token | undefined = undefined;
                         let defaultValue: string | undefined = undefined;
-                        if (this.tryConsume("type", "Equals")) {
+                        if (this.tryConsume("type", ["Equals"])) {
                             defaultValueToken = this.consume({ type: "Identifier" }, "Expected default value");
                             const defaultValueInfo = defaultValueToken.token as ValuedToken;
                             defaultValue = defaultValueInfo.value;
@@ -291,7 +291,7 @@ export class Parser {
                     }
                 }
 
-                if (!this.tryConsume("type", "Comma") && !this.checkToken("type", "ParenClose")) {
+                if (!this.tryConsume("type", ["Comma"]) && !this.checkToken("type", ["ParenClose"])) {
                     this.reporter.add(
                         new KatnipError("Parser", "Expected ',' or ')'", this.peek()?.start || { line: -1, column: -1 })
                     );
@@ -308,7 +308,7 @@ export class Parser {
         this.consume({ type: "BraceOpen" }, "Expected open curly brace '{' for procedure body");
 
         const body: NodeBase[] = [];
-        while (!this.isAtEnd() && !this.checkToken("type", "BraceClose")) {
+        while (!this.isAtEnd() && !this.checkToken("type", ["BraceClose"])) {
             const stmt = this.parseStatement();
             if (stmt) body.push(stmt);
         }
@@ -337,13 +337,13 @@ export class Parser {
         const nameToken = this.consume({ type: "Identifier" }, "Expected enum name");
         const name = nameToken.token.value;
 
-        if (this.tryConsume("type", "BraceOpen")) {
+        if (this.tryConsume("type", ["BraceOpen"])) {
             const members: string[] = [];
-            while (!this.checkToken("type", "BraceClose")) {
+            while (!this.checkToken("type", ["BraceClose"])) {
                 const memberToken = this.consume({ type: "Identifier" }, "Expected enum member name");
                 members.push(memberToken.token.value);
 
-                if (!this.tryConsume("type", "Comma") && !this.checkToken("type", "ParenClose")) {
+                if (!this.tryConsume("type", ["Comma"]) && !this.checkToken("type", ["ParenClose"])) {
                     this.reporter.add(
                         new KatnipError("Parser", "Expected ',' or ')'", this.peek()?.start || { line: -1, column: -1 })
                     );
@@ -373,14 +373,170 @@ export class Parser {
         this.consume({ type: "Colon" }, "Expected ':' after variable name for type annotation");
         const typeAnnotation = this.parseTypeAnnotation();
         this.consume({ type: "Equals" }, "Expected '=' after type annotation for variable declaration");
-        // TODO: Handle variable initialization value, consuming list dict or any literal expression
+        const initializer = this.parseExpression();
+        return {
+            type: "VariableDeclaration",
+            access: access.token.value,
+            name: variableName.token.value,
+            varType: typeAnnotation,
+            initializer: initializer,
+            loc: {
+                start: access.start,
+                end: this.peek()?.end || { line: -1, column: -1 }
+            }
+        };
     }
 
     /**
      * Parses an expression from the token list.
      * @returns The parsed expression node.
      */
-    private parseExpression(): any {
-        // TODO: implement
+    private parseExpression(minBP = 0): ExpressionNode {
+        let left = this.parsePrefix();
+
+        while (true) {
+            const token = this.peek();
+            if (!token) break;
+
+            const bp = getBindingPower(token);
+            if (!bp || bp.lbp <= minBP) break;
+
+            this.advance();
+            left = this.parseInfix(left, bp);
+        }
+
+        return left;
+    }
+
+    /**
+     * Parses the prefix part of an expression.
+     * @returns The parsed expression node.
+     */
+    private parsePrefix(): ExpressionNode {
+        const token = this.peek();
+        if (!token) return { type: "ErrorToken", value: "", loc: { start: { line: -1, column: -1 }, end: { line: -1, column: -1 } } } as ExpressionNode;
+
+        const value = token.token.type;
+
+        // Unary operators
+        if (value === "Exclamation" || value === "Minus") {
+            this.advance();
+            const opKey = value === "Minus" ? "UnaryMinus" : value;
+            const { rbp } = bindingPowerTable[opKey];
+            const right = this.parseExpression(rbp);
+            return {
+                type: "UnaryExpression",
+                operator: value,
+                argument: right,
+                loc: { start: token.start, end: right.loc?.end || token.end },
+            } as ExpressionNode;
+        }
+
+        // Parenthesized expression
+        if (this.tryConsume("type", ["ParenOpen"])) {
+            const expr = this.parseExpression();
+            this.consume({ type: "ParenClose" }, "Expected ')' after expression");
+            return expr;
+        }
+
+        // Identifiers
+        if (this.checkToken("type", ["Identifier"])) {
+            const id = this.consume({ type: "Identifier" }, "Expected identifier");
+            return {
+                type: "Identifier",
+                name: id.token.value,
+                loc: { start: id.start, end: id.end },
+            } as ExpressionNode;
+        }
+
+        // String literal
+        if (this.checkToken("type", ["String"])) {
+            const lit = this.consume({ type: "String" }, "Expected string literal");
+            return {
+                type: "Literal",
+                value: lit.token.value,
+                valueType: "string",
+                loc: { start: lit.start, end: lit.end },
+            } as ExpressionNode;
+        }
+
+        // Number literal
+        if (this.checkToken("type", ["Number"])) {
+            const lit = this.consume({ type: "Number" }, "Expected number literal");
+            return {
+                type: "Literal",
+                value: Number(lit.token.value),
+                valueType: "number",
+                loc: { start: lit.start, end: lit.end },
+            } as ExpressionNode;
+        }
+
+        // Fallback error
+        this.reporter.add(new KatnipError("Parser", "Unexpected token in expression", token.start));
+        this.advance();
+        return { type: "ErrorToken", value: "", loc: { start: token.start, end: token.end } } as ExpressionNode;
+    }
+
+    /**
+     * Parses the infix part of an expression.
+     * @returns The parsed expression node.
+     */
+    private parseInfix(
+        left: ExpressionNode,
+        bp: { lbp: number; rbp: number }
+    ): ExpressionNode {
+        const token = this.advance();
+        if (!token) {
+            this.reporter.add(new KatnipError("Parser", "Unexpected end of input in infix expression", left.loc?.end || { line: -1, column: -1 }));
+            return { type: "ErrorToken", value: "", loc: left.loc || { start: { line: -1, column: -1 }, end: { line: -1, column: -1 } } } as ExpressionNode;
+        }
+
+        const tokenType = token.token.type;
+        const operatorToken = this.previous();
+        if (!operatorToken) {
+            this.reporter.add(new KatnipError("Parser", "Unexpected end of input in infix expression", left.loc?.end || { line: -1, column: -1 }));
+            return { type: "ErrorToken", value: "", loc: left.loc || { start: { line: -1, column: -1 }, end: { line: -1, column: -1 } } } as ExpressionNode;
+        }
+        const tokenValue = isValuedTokenType(operatorToken.token.type)
+            ? (operatorToken.token as ValuedToken).value
+            : operatorToken.token.type;
+
+        // Function call: token type is ParenOpen
+        if (tokenType === "ParenOpen") {
+            const args: ExpressionNode[] = [];
+            if (!this.checkToken("type", ["ParenClose"])) {
+                do {
+                    args.push(this.parseExpression());
+                } while (this.tryConsume("type", ["Comma"]));
+            }
+            this.consume({ type: "ParenClose" }, "Expected ')' after arguments");
+            return {
+                type: "CallExpression",
+                callee: left,
+                arguments: args,
+                loc: { start: left.loc.start, end: this.peek()?.end || token.end },
+            };
+        }
+
+        // Member access: token type is Dot
+        if (tokenType === "Dot") {
+            const id = this.consume({ type: "Identifier" }, "Expected property name after '.'");
+            return {
+                type: "MemberExpression",
+                object: left,
+                property: { type: "Identifier", name: id.token.value, loc: { start: id.start, end: id.end } },
+                loc: { start: left.loc.start, end: id.end },
+            } as ExpressionNode;
+        }
+
+        // Binary operator (fallback). Use binding power to parse right-hand side.
+        const right = this.parseExpression(bp.rbp);
+        return {
+            type: "BinaryExpression",
+            operator: tokenValue,
+            left,
+            right,
+            loc: { start: left.loc.start, end: right.loc.end },
+        } as ExpressionNode;
     }
 }

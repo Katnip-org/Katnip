@@ -4,5 +4,6 @@
   },
   "scripts": {
     "build": "tsc"
-  }
+  },
+  "type": "module"
 }

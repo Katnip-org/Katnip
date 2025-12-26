@@ -2,7 +2,7 @@
  * @fileoverview Contains all the AST node interfaces for the Katnip parser.
  */
 
-// -- Base node interfaces --
+// Base node interfaces 
 export interface AST {
     body: NodeBase[];
 }
@@ -39,7 +39,7 @@ export interface UnionTypeNode extends NodeBase {
 
 export type TypeNode = SingleTypeNode | UnionTypeNode;
 
-// -- Procedure nodes --
+// Procedure nodes 
 export interface ProcedureDeclarationNode extends NodeBase {
     type: "ProcedureDeclaration";
     name: string;
@@ -67,7 +67,7 @@ export interface ParameterDefaultNode extends NodeBase {
     value: string;
 }
 
-// -- For loop nodes --
+// For loop nodes 
 export interface ForLoopNode extends NodeBase {
     type: "ForLoop";
     iterator: string | tupleBinding;
@@ -77,19 +77,22 @@ export interface ForLoopNode extends NodeBase {
 
 export type tupleBinding = [...string[]];
 
-// -- Enum Nodes --
+// Enum Nodes 
 export interface EnumDeclarationNode extends NodeBase {
     type: "EnumDeclaration";
     name: string;
     members: (string | number)[];
 }
 
-// -- Expression Nodes --
+// Expression Nodes 
 export type ExpressionNode =
     | IdentifierExpressionNode
     | LiteralExpressionNode
     | BinaryExpressionNode
-    | CallExpressionNode;
+    | CallExpressionNode
+    | UnaryExpressionNode
+    | MemberExpressionNode
+    | ErrorExpressionNode;
 
 export interface IdentifierExpressionNode extends NodeBase {
     type: "Identifier";
@@ -113,4 +116,21 @@ export interface CallExpressionNode extends NodeBase {
     type: "CallExpression";
     callee: ExpressionNode;
     arguments: ExpressionNode[];
+}
+
+export interface UnaryExpressionNode extends NodeBase {
+    type: "UnaryExpression";
+    operator: string;
+    argument: ExpressionNode;
+}
+
+export interface MemberExpressionNode extends NodeBase {
+    type: "MemberExpression";
+    object: ExpressionNode;
+    property: IdentifierExpressionNode;
+}
+
+export interface ErrorExpressionNode extends NodeBase {
+    type: "ErrorToken";
+    value: string;
 }

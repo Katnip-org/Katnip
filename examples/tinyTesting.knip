@@ -1,0 +1,3 @@
+events.onflag() {
+    looks.say(1+2)
+}
