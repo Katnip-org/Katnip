@@ -22,13 +22,13 @@ export interface CommentNode {
     type: "Comment";
     loc: SourceLocation;
     content: string;
-    isExpanded: boolean; // true -> expanded comment, false -> collapsed comment
+    isExpanded: boolean;
 }
 
 export interface SingleTypeNode extends NodeBase {
     type: "Type";
     typeName: string;
-    typeParams?: TypeNode[]; // Optional type parameters for container types
+    typeParams?: TypeNode[];
 }
 
 export interface UnionTypeNode extends NodeBase {
@@ -67,16 +67,6 @@ export interface ParameterDefaultNode extends NodeBase {
     value: string;
 }
 
-// For loop nodes 
-export interface ForLoopNode extends NodeBase {
-    type: "ForLoop";
-    iterator: string | tupleBinding;
-    iterable: ExpressionNode;
-    body: NodeBase[];
-}
-
-export type tupleBinding = [...string[]];
-
 // Enum Nodes 
 export interface EnumDeclarationNode extends NodeBase {
     type: "EnumDeclaration";
@@ -92,6 +82,7 @@ export type ExpressionNode =
     | CallExpressionNode
     | UnaryExpressionNode
     | MemberExpressionNode
+    | EmptyExpressionNode
     | ErrorExpressionNode;
 
 export interface IdentifierExpressionNode extends NodeBase {
@@ -116,6 +107,7 @@ export interface CallExpressionNode extends NodeBase {
     type: "CallExpression";
     callee: ExpressionNode;
     arguments: ExpressionNode[];
+    children: NodeBase[];
 }
 
 export interface UnaryExpressionNode extends NodeBase {
@@ -128,6 +120,10 @@ export interface MemberExpressionNode extends NodeBase {
     type: "MemberExpression";
     object: ExpressionNode;
     property: IdentifierExpressionNode;
+}
+
+export interface EmptyExpressionNode extends NodeBase {
+    type: "EmptyExpression";
 }
 
 export interface ErrorExpressionNode extends NodeBase {

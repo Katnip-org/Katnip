@@ -46,16 +46,3 @@ export function getBindingPower(token: Token | null): BindingPower {
     const key = token.token.type;
     return bindingPowerTable[key] || { lbp: 0, rbp: 0 };
 }
-
-export function isExpressionTerminator(token: Token): boolean {
-    switch (token.token.type) {
-        case "BraceOpen":
-        case "BraceClose":
-        case "Newline":
-        case "Comma":
-        case "ParenClose":
-            return true;
-        default:
-            return false;
-    }
-}

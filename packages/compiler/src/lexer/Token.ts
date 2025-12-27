@@ -85,12 +85,10 @@ export type TokenInfoFor<T extends TokenType> =
     T extends UnitTokenType   ? { type: T } :
     never;
 
-type TokenInfo =
-    | { type: ValuedTokenType; value: string }
-    | { type: UnitTokenType };
+type TokenInfo = ValuedToken | UnitToken;
 
 export type ValuedToken = { type: ValuedTokenType; value: string };
-export type UnitToken = { type: ValuedTokenType };
+export type UnitToken = { type: UnitTokenType };
 
 export interface TokenPos {
     line: number;

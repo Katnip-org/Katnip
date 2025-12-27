@@ -5,34 +5,34 @@ big
 comment
 <#
 
-enum: directions(
+enum directions {
     "UP",
     "DOWN",
     "LEFT",
     "RIGHT"
-)
+}
 
-enum: flowers(
+enum flowers {
     "Rose",
     "Tulip",
     "Daisy"
-)
+}
 
-proc: move(
+proc move(
     dir: enums.directions,
     amount: num
 ) -> void {
     if(dir == enum.directions.UP){
-        motion.changeY(amount)
+        motion.changeY(amount);
     }
     if(dir == enum.directions.DOWN){
-        motion.changeY(-amount)
+        motion.changeY(-amount);
     }
     if(dir == enum.directions.LEFT){
-        motion.changeX(-amount)
+        motion.changeX(-amount);
     }
     if(dir == enum.directions.RIGHT){
-        motion.changeX(amount)
+        motion.changeX(amount);
     }
 }
 
@@ -49,45 +49,45 @@ and a third line
 closing it now <#
 
 # Procedure: print a message to console
-proc: log(
+proc log(
     @proccode: "log %s",
     @doc: "Logs a message to the console.",
     msg = "No message."
 ) -> void {
-    console.log(msg)
+    console.log(msg);
 }
 
 # Procedure: calculate score using exponentiation
-proc: score(
+proc score(
     @proccode: "score %n ^ %n",
-    @constants: {"avogadro":6.022e23}
+    @constants: {"avogadro":6.022e23},
     base: num,
     exp: num = 2
 ) -> num {
-    return(base ** exp)
+    return(base ** exp);
 }
 
-proc: thing(one: num, two: num) -> num {
-    return(one + two)
+proc thing(one: num, two: num) -> num {
+    return(one + two);
 }
 
 # Clone behavior
 clone.onStart(){
-    console.log("🌀 Clone active!")
-    wait(1)
-    clone.delete()
+    console.log("🌀 Clone active!");
+    wait(1);
+    clone.delete();
 }
 
 # User interaction + clone creation
-proc: start() -> void {
-    var.set(name, console.input("What is your name?"))
-    console.log("Welcome, " + name + "!")
+proc start() -> void {
+    var.set(name, console.input("What is your name?"));
+    console.log("Welcome, " + name + "!");
 
     for(i, range(1, 3)){
-        console.log("Attempt #" + i)
+        console.log("Attempt #" + i);
     }
 
-    clone.create("myself")
+    clone.create("myself");
 }
 
 onFlag(){
@@ -96,55 +96,55 @@ onFlag(){
 
     # Loop over pose list using tuple unpacking
     for((name, speed, power), poseList){
-        looks.say("Move: " + name)
+        looks.say("Move: " + name);
 
         if(speed > 6 && power > 6){
-            console.log("Strong move!")
+            console.log("Strong move!");
         } else {
-            console.log("Weak stats.")
+            console.log("Weak stats.");
         }
 
-        var.set(score, score(speed + power))
-        console.log("Score: " + score)
+        score = score(speed + power);
+        console.log("Score: " + score);
     }
 
     # Constant checks
-    console.log("π = " + const.pi)
-    console.log("e = " + const.e)
-    console.log("τ = " + const.tau)
+    console.log("π = " + const.pi);
+    console.log("e = " + const.e);
+    console.log("τ = " + const.tau);
 
     if(const.true && !const.false){
-        console.log(f"Basic logic constants, like {const.pi} work.")
+        console.log(f"Basic logic constants, like {const.pi} work.");
     }
 
-    proc.thing(5.5e-4, 10)
+    proc.thing(5.5e-4, 10);
 }
 
 onFlag(){
     # Move in different directions
-    proc.move(enum.directions.UP, 10)
-    proc.move(enum.directions.DOWN, 5)
-    proc.move(enum.directions.LEFT, 3)
-    proc.move(enum.directions.RIGHT, 8)
+    proc.move(enum.directions.UP, 10);
+    proc.move(enum.directions.DOWN, 5);
+    proc.move(enum.directions.LEFT, 3);
+    proc.move(enum.directions.RIGHT, 8);
 
     # Log the current position
-    console.log("Current position: " + motion.getPosition())
+    console.log("Current position: " + motion.getPosition());
 }
 
 # Turtle draw implementation
 onFlag(){
     # Draw a square using turtle graphics
-    pen.down()
+    pen.down();
     for(i, range(4)){
-        motion.forward(100)
-        motion.turn(90)
+        motion.forward(100);
+        motion.turn(90);
     }
-    pen.up()
-    console.log("Square drawn!")
+    pen.up();
+    console.log("Square drawn!");
 
     # Draw squid
-    pen.down()
-    motion.forward(50)
-    motion.turn(45)
-    motion.forward(50)
+    pen.down();
+    motion.forward(50);
+    motion.turn(45);
+    motion.forward(50);
 }

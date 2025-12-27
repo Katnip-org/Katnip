@@ -1,37 +1,34 @@
+private i: str = op.letter(1, "test") + "h";
+
 # Scalar types
-private a: num = 42
-temp b: str = "Hello, World!"
-public c: bool = const.true
+private a: num = 42;
+temp b: str = "Hello, World!";
+public c: bool = const.true;
 
 # Container types
-private d: list<num | str> = [1, 2, 3, "4"]
-public e: dict<str, str> = {"key": "value"}
+private d: list<num | str> = [1, 2, 3, "4"];
+public e: dict<str, str> = {"key": "value"};
 
 # Custom types
-public f: nestedList<list<num | str>> = [[1, 2], [3, 4, "apple"]]
+public f: nestedList<list<num | str>> = [[1, 2 % 3 * 4], [3, 4, op.letter(1, "test")]];
 
-proc: log(@warp="true", msg: str = "default") -> void | num {
-    console.log(msg)
+proc log(@warp="true", msg: str = "default") -> void | num { # This comment is attached to the proc
+    console.log(msg); #! ignore me
 }
 
-enum: thing {
+enum thing {
     red,
     green,
     blue
 }
 
 events.onflag(){
-    motion.x.set(100)
+    motion.x.set(100);
 }
 
-private i: num = 0
+private i: num = 0;
 for (i, 10) {
-    console.log("Iteration: " + i)
-    motion.move(i * 10)
-    looks.say("hello")
+    console.log("Iteration: " + i);
+    motion.move(i * 10);
+    looks.say("hello");
 }
-
-#> big comment
-still inside it
-spanning multiple lines
-<#

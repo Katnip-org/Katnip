@@ -346,10 +346,8 @@ export class Lexer {
                 "[": "BracketOpen",
                 "]": "BracketClose"
             };
-
-            if (/[.,;:(){}\[\]]/.test(char)) {
-                this.buffer += this.advance(src);
-            } else {
+            
+            if (punctuationMap[this.buffer]) {
                 this.emit(punctuationMap[this.buffer] as UnitTokenType);
             }
         }
