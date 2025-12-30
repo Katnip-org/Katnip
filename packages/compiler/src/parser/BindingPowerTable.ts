@@ -38,6 +38,7 @@ export const bindingPowerTable: Record<string, BindingPower> = {
   // access/call
   "Dot":  { lbp: 100, rbp: 100 }, // member access, non-associative
   "ParenOpen": { lbp: 110, rbp: 110 }, // function call, non-associative
+  "BracketOpen": { lbp: 110, rbp: 110 }, // indexing, non-associative
 };
 
 export function getBindingPower(token: Token | null): BindingPower {

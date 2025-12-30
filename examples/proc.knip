@@ -1,8 +1,8 @@
-proc: log(msg: str) -> void {
+proc log(msg: str) -> void {
     console.log(msg)
 }
 
-proc: score(
+proc score(
     @proccode: "score %n %n",
     @path: "game.score",
     @constants: {"avogadro":6.022e23}

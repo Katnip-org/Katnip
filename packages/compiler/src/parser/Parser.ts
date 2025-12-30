@@ -29,6 +29,7 @@ export class Parser {
 
         const statements = [];
         while (!this.isAtEnd()) {
+            console.log("beginingggg");
             const stmt = this.parseStatement();
             if (stmt) statements.push(stmt);
         }
@@ -196,25 +197,29 @@ export class Parser {
      * @returns The parsed statement or an error token.
      */
     private parseStatement(): any {
-        if (this.checkToken("type", ["ProcedureDeclaration"])) return this.parseProcedureDefinition();
-        if (this.checkToken("type", ["EnumDeclaration"])) return this.parseEnumDefinition();
+        console.log(`parsing statement starting with token: ${this.peek()?.token.type}`);
+        if (this.checkToken("value", ["proc"])) return this.parseProcedureDefinition();
+        if (this.checkToken("value", ["enum"])) return this.parseEnumDefinition();
         if (this.checkToken("type", ["Identifier"])) {
             if (this.checkToken("value", ["private", "temp", "public"])) {
                 return this.parseVariableDeclaration();
             } else {
-                return this.parseExpression();
-            }
-        }
-        
-        if (this.checkToken("type", ["BraceOpen"])) {
-            return {
-                type: "BlockStatement",
-                body: this.parseBlockExpression(),
-                loc: {
-                    start: this.peek()?.start || { line: -1, column: -1 },
-                    end: this.peek()?.end || { line: -1, column: -1 }
+                // Parse an expression statement
+                const expression: ExpressionNode = this.parseExpression();
+                if (expression.type == "CallExpression" && this.checkToken("type", ["BraceOpen"])) { // Handler declaration
+                    const body = this.parseBlockExpression();
+                    return {
+                        type: "HandlerDeclaration",
+                        call: expression,
+                        body: body
+                    };
                 }
-            };
+                this.consume({ type: "Semicolon" }, "Expected semicolon at the end of an expression statement");
+                return {
+                    type: "ExpressionStatement",
+                    expression: expression
+                };
+            }
         }
 
         this.reporter.add(
@@ -239,8 +244,11 @@ export class Parser {
 
         if (this.tryConsume("type", ["ParenOpen"])) {
             while (!this.checkToken("type", ["ParenClose"])) {
-                if (this.tryConsume("type", ["AtSymbol"]) || this.checkToken("type", ["Identifier"])) {
-                    if (this.checkToken("type", ["Identifier"])) parsingDecorators = false;
+                console.log(`parsing proc param/decorator, next token: ${this.peek()?.token.type}`);
+                if (this.checkToken("type", ["AtSymbol"])) {
+                    this.advance();
+                } else if (this.checkToken("type", ["Identifier"])) {
+                    parsingDecorators = false;
                 } else {
                     this.reporter.add(
                         new KatnipError("Parser", "Expected decorator or parameter", this.peek()?.start || { line: -1, column: -1 })
@@ -251,11 +259,19 @@ export class Parser {
                     const decoratorNameToken = this.consume({ type: "Identifier" }, "Expected decorator name");
                     const decoratorName = decoratorNameToken.token.value;
 
-                    let decoratorValueToken = decoratorNameToken;
-                    let decoratorValue: string | number = 1;
-                    if (this.tryConsume("type", ["Equals"])) {
-                        decoratorValueToken = this.consume({ type: "Identifier" }, "Expected decorator value");
-                        decoratorValue = decoratorValueToken.token.value;
+                    let decoratorValue;
+                    if (this.tryConsume("type", ["Colon"])) {
+                        decoratorValue = this.parseExpression();
+                    } else {
+                        decoratorValue = {
+                            type: "Literal", 
+                            value: "true", 
+                            valueType: "string", 
+                            loc: { 
+                                start: decoratorNameToken.start, 
+                                end: decoratorNameToken.end 
+                            }
+                        } as ExpressionNode;
                     }
 
                     decorators.push({
@@ -263,8 +279,8 @@ export class Parser {
                             name: decoratorName,
                             value: decoratorValue,
                             loc: {
-                                start: decoratorNameToken.start,
-                                end: decoratorValueToken.end
+                                start: decoratorValue.loc.start,
+                                end: decoratorValue.loc.end
                             }
                         });
                 } else {
@@ -313,16 +329,15 @@ export class Parser {
         const returnType = this.parseTypeAnnotation();
 
         this.consume({ type: "BraceOpen" }, "Expected open curly brace '{' for procedure body");
-        this.consume({ type: "Newline" }, "Expected newline after '{'");
 
         const body: NodeBase[] = [];
         while (!this.isAtEnd() && !this.checkToken("type", ["BraceClose"])) {
+            console.log("i eat proc body");
             const stmt = this.parseStatement();
             if (stmt) body.push(stmt);
         }
 
         this.consume({ type: "BraceClose" }, "Expected closing curly brace '}' for procedure body");
-        this.consume({ type: "Newline" }, "Expected newline after closing '}'");
 
         return {
             type: "ProcedureDeclaration",
@@ -358,7 +373,6 @@ export class Parser {
                     new KatnipError("Parser", "Expected ',' or ')'", this.peek()?.start || { line: -1, column: -1 })
                 );
             }
-            this.tryConsume("type", ["Newline"]);
         }
         this.consume({ type: "BraceClose" }, "Expected closing brace for enum members");
 
@@ -402,23 +416,22 @@ export class Parser {
      * @returns The parsed expression node.
      */
     private parseExpression(minBP = 0): ExpressionNode {
-        if (this.checkToken("type", ["Semicolon", "Comma", "Brace"])) {
-            return { type: "ErrorToken", value: "", loc: { start: { line: -1, column: -1 }, end: { line: -1, column: -1 } } } as ExpressionNode;
-        }
+        console.log(`PREfix operator: ${this.peek()?.token.type}`);
         let left = this.parsePrefix();
 
         while (true) {
             const token = this.peek();
             if (!token) break;
 
-            if (["Newline", "BraceOpen", "BraceClose"].includes(token.token.type)) break;
-
             const bp = getBindingPower(token);
             if (!bp || bp.lbp <= minBP) break;
 
-            this.advance();
+            //this.advance();
+            console.log(`Infix operator: ${this.peek()?.token.type}`);
             left = this.parseInfix(left, bp);
         }
+
+        console.log(`QUIT on: ${this.peek()?.token.type}`);
 
         return left;
     }
@@ -491,8 +504,8 @@ export class Parser {
             } as ExpressionNode;
         }
 
-        // EOF or newline
-        if (this.checkToken("type", ["EOF", "Newline"])) {
+        // EOF
+        if (this.checkToken("type", ["EOF"])) {
             return { type: "ErrorToken", value: "", loc: { start: token.start, end: token.end } } as ExpressionNode;
         }
 
@@ -517,24 +530,16 @@ export class Parser {
         left: ExpressionNode,
         bp: { lbp: number; rbp: number }
     ): ExpressionNode {
-        const token = this.advance();
+        const token = this.peek();
         if (!token) {
             this.reporter.add(new KatnipError("Parser", "Unexpected end of input in infix expression", left.loc?.end || { line: -1, column: -1 }));
             return { type: "ErrorToken", value: "", loc: left.loc || { start: { line: -1, column: -1 }, end: { line: -1, column: -1 } } } as ExpressionNode;
         }
-
         const tokenType = token.token.type;
-        const operatorToken = this.previous();
-        if (!operatorToken) {
-            this.reporter.add(new KatnipError("Parser", "Unexpected end of input in infix expression", left.loc?.end || { line: -1, column: -1 }));
-            return { type: "ErrorToken", value: "", loc: left.loc || { start: { line: -1, column: -1 }, end: { line: -1, column: -1 } } } as ExpressionNode;
-        }
-        const tokenValue = isValuedTokenType(operatorToken.token.type)
-            ? (operatorToken.token as ValuedToken).value
-            : operatorToken.token.type;
 
         // Function call: token type is ParenOpen
         if (tokenType === "ParenOpen") {
+            this.advance();
             const args: ExpressionNode[] = [];
             if (!this.checkToken("type", ["ParenClose"])) {
                 do {
@@ -543,23 +548,17 @@ export class Parser {
             }
             this.consume({ type: "ParenClose" }, "Expected ')' after parameters");
 
-            // Check if the function call is followed by a block
-            let body: NodeBase[] = [];
-            if (this.checkToken("type", ["BraceOpen"])) {
-                body = this.parseBlockExpression();
-            }
-
             return {
                 type: "CallExpression",
                 callee: left,
                 arguments: args,
-                children: body,
                 loc: { start: left.loc.start, end: this.peek()?.end || token.end },
             };
         }
 
         // Member access: token type is Dot
         if (tokenType === "Dot") {
+            this.advance();
             const id = this.consume({ type: "Identifier" }, "Expected property name after '.'");
             return {
                 type: "MemberExpression",
@@ -570,6 +569,11 @@ export class Parser {
         }
 
         // Binary operator (fallback). Use binding power to parse right-hand side.
+        const tokenValue = isValuedTokenType(token.token.type)
+            ? (token.token as ValuedToken).value
+            : token.token.type;
+        
+        this.advance();
         const right = this.parseExpression(bp.rbp);
         return {
             type: "BinaryExpression",
@@ -586,10 +590,10 @@ export class Parser {
      */
     private parseBlockExpression(): NodeBase[] {
         this.consume({ type: "BraceOpen" }, "Expected '{' after method call");
-        this.consume({ type: "Newline" }, "Expected newline after '{'");
         const body: NodeBase[] = [];
 
         while (!this.isAtEnd() && !this.checkToken("type", ["BraceClose"])) {
+            console.log("i eat block");
             const stmt = this.parseStatement();
             if (stmt) body.push(stmt);
         }

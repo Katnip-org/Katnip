@@ -145,9 +145,9 @@ export class Lexer {
             this.colStart = this.col; // Reset column start for new token
             this.lineStart = this.line; // Reset line start for new token
 
-            if (char === '\n' && this.peek(src, 1) !== '\n') { // Check for single newline
-                this.emit("Newline");
-            }
+            // if (char === '\n' && this.peek(src, 1) !== '\n') { // Check for single newline
+            //     this.emit("Newline");
+            // }
 
             if (/\s/.test(char)) {
                 // Whitespace
@@ -157,9 +157,15 @@ export class Lexer {
                 this.currentState = LexerState.Identifier;
                 this.buffer += this.advance(src);
             } else if (/[-0-9]/.test(char)) {
-                // Number literal start
-                this.currentState = LexerState.Number;
-                this.buffer += this.advance(src);
+                if (/[.0-9]/.test(this.peek(src, 1)!)) {
+                    // Number literal start
+                    this.currentState = LexerState.Number;
+                    this.buffer += this.advance(src);
+                } else {
+                    // Just a minus sign
+                    this.currentState = LexerState.Operator;
+                    this.buffer += this.advance(src);
+                }
             } else if (char === '"' || char === "'") {
                 // String literal start
                 this.stringQuote = char;
@@ -323,9 +329,7 @@ export class Lexer {
                 "=": "Equals"
             };
 
-            if (/[+\-*/%&|^!<>?=]/.test(char)) {
-                this.buffer += this.advance(src);
-            } else {
+            if (operatorMap[this.buffer]) {
                 this.emit(operatorMap[this.buffer] as UnitTokenType);
                 this.currentState = LexerState.Start;
             }
@@ -349,6 +353,7 @@ export class Lexer {
             
             if (punctuationMap[this.buffer]) {
                 this.emit(punctuationMap[this.buffer] as UnitTokenType);
+                this.currentState = LexerState.Start;
             }
         }
 

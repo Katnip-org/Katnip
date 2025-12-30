@@ -4,7 +4,7 @@
 
 // Base node interfaces 
 export interface AST {
-    body: NodeBase[];
+    body: StatementNode[];
 }
 
 export interface NodeBase {
@@ -52,7 +52,7 @@ export interface ProcedureDeclarationNode extends NodeBase {
 export interface DecoratorNode extends NodeBase {
     type: "Decorator";
     name: string;
-    value: string | number;
+    value: ExpressionNode;
 }
 
 export interface ParameterNode extends NodeBase {
@@ -72,6 +72,24 @@ export interface EnumDeclarationNode extends NodeBase {
     type: "EnumDeclaration";
     name: string;
     members: (string | number)[];
+}
+
+// Statement Nodes
+export type StatementNode =
+    | ExpressionStatementNode
+    | HandlerDeclarationNode
+    | ProcedureDeclarationNode
+    | EnumDeclarationNode;
+
+export interface HandlerDeclarationNode extends NodeBase {
+    type: "HandlerDeclaration";
+    call: CallExpressionNode;
+    body: BlockNode;
+}
+
+export interface ExpressionStatementNode extends NodeBase {
+    type: "ExpressionStatement";
+    expression: ExpressionNode;
 }
 
 // Expression Nodes 
@@ -103,11 +121,15 @@ export interface BinaryExpressionNode extends NodeBase {
     right: ExpressionNode;
 }
 
+export interface BlockNode extends NodeBase {
+    type: "Block";
+    body: StatementNode[];
+}
+
 export interface CallExpressionNode extends NodeBase {
     type: "CallExpression";
     callee: ExpressionNode;
     arguments: ExpressionNode[];
-    children: NodeBase[];
 }
 
 export interface UnaryExpressionNode extends NodeBase {
