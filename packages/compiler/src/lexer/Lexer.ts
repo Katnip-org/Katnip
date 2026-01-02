@@ -156,8 +156,8 @@ export class Lexer {
                 // Identifier start
                 this.currentState = LexerState.Identifier;
                 this.buffer += this.advance(src);
-            } else if (/[-0-9]/.test(char)) {
-                if (/[.0-9]/.test(this.peek(src, 1)!)) {
+            } else if (/[-0-9]/.test(char) || (/[.]/.test(char) && /[0-9]/.test(this.peek(src, 1)!))) {
+                if (/[.0-9]/.test(this.peek(src, 1)!) || /[0-9]/.test(char)) {
                     // Number literal start
                     this.currentState = LexerState.Number;
                     this.buffer += this.advance(src);
@@ -203,6 +203,7 @@ export class Lexer {
      * @param src The source code being tokenized.
      */
     private processState(char: string, src: string): void {
+        this.logger.log(new KatnipLog( KatnipLogType.Debug, `Lexer state: ${LexerState[this.currentState]}, char: '${char}', buffer: '${this.buffer}'`, { line: this.line, column: this.col } ));
         // State: Identifier
         if (this.currentState === LexerState.Identifier) {
             if (/[a-zA-Z0-9_]/.test(char)) {
@@ -329,7 +330,10 @@ export class Lexer {
                 "=": "Equals"
             };
 
-            if (operatorMap[this.buffer]) {
+            // Check for multi-character operators (omit < and > from the checks, as those appear in types)
+            if (/[+\-*/%&|^!?=]/.test(char)) {
+                this.buffer += this.advance(src);
+            } else {
                 this.emit(operatorMap[this.buffer] as UnitTokenType);
                 this.currentState = LexerState.Start;
             }
@@ -351,13 +355,12 @@ export class Lexer {
                 "]": "BracketClose"
             };
             
-            if (punctuationMap[this.buffer]) {
-                this.emit(punctuationMap[this.buffer] as UnitTokenType);
-                this.currentState = LexerState.Start;
-            }
+            this.emit(punctuationMap[this.buffer] as UnitTokenType);
+            this.currentState = LexerState.Start;
         }
 
         else if (this.currentState === LexerState.Comment) {
+            this.logger.log(new KatnipLog( KatnipLogType.Debug, `In Comment state of type: '${this.commentType}', char: '${char}', buffer: '${this.buffer}'`, { line: this.line, column: this.col } ));
             const commentMap: Record<string, [ValuedTokenType, string]> = {
                 "none": ["Comment_SingleExpanded", "\n"],
                 "*": ["Comment_SingleCollapsed", "\n"],
@@ -379,15 +382,15 @@ export class Lexer {
 
                 // Multichar end delimiter
                 if (commentEnd.length === 2 && char + this.peek(src, 1) === commentEnd) {
-                    this.advance(src);
-                    this.advance(src);
+                    this.advance(src); // 1st char of delimiter
+                    this.advance(src); // 2nd char of delimiter
                     if (tokenType !== "Comment_MultilineIgnored") this.emit(tokenType);
                     this.currentState = LexerState.Start;
                     this.commentType = "";
                 }
                 // Single-char end delimiter
                 else if (commentEnd.length === 1 && char === commentEnd) {
-                    this.advance(src);
+                    this.advance(src); // Move past delimiter
                     if (tokenType !== "Comment_SingleIgnored") this.emit(tokenType);
                     this.currentState = LexerState.Start;
                     this.commentType = "";

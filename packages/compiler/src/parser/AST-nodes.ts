@@ -46,7 +46,7 @@ export interface ProcedureDeclarationNode extends NodeBase {
     decorators: DecoratorNode[];
     parameters: ParameterNode[];
     returnType: TypeNode | null;
-    body: NodeBase[];
+    body: StatementNode[];
 }
 
 export interface DecoratorNode extends NodeBase {
@@ -59,12 +59,7 @@ export interface ParameterNode extends NodeBase {
     type: "Parameter";
     name: string;
     paramType: TypeNode;
-    default?: ParameterDefaultNode;
-}
-
-export interface ParameterDefaultNode extends NodeBase {
-    type: "ParameterDefault";
-    value: string;
+    default?: ExpressionNode;
 }
 
 // Enum Nodes 
@@ -77,9 +72,11 @@ export interface EnumDeclarationNode extends NodeBase {
 // Statement Nodes
 export type StatementNode =
     | ExpressionStatementNode
+    | VariableDeclarationNode
     | HandlerDeclarationNode
     | ProcedureDeclarationNode
-    | EnumDeclarationNode;
+    | EnumDeclarationNode
+    | ErrorStatementNode;
 
 export interface HandlerDeclarationNode extends NodeBase {
     type: "HandlerDeclaration";
@@ -92,6 +89,25 @@ export interface ExpressionStatementNode extends NodeBase {
     expression: ExpressionNode;
 }
 
+export enum VariableDeclarationType {
+    private = "private",
+    public = "public",
+    temp = "temp"
+}
+
+export interface VariableDeclarationNode extends NodeBase {
+    type: "VariableDeclaration";
+    access: VariableDeclarationType;
+    name: string;
+    varType?: TypeNode;
+    initializer?: ExpressionNode;
+}
+
+export interface ErrorStatementNode extends NodeBase {
+    type: "ErrorStatement";
+    message: string;
+}
+
 // Expression Nodes 
 export type ExpressionNode =
     | IdentifierExpressionNode
@@ -100,6 +116,8 @@ export type ExpressionNode =
     | CallExpressionNode
     | UnaryExpressionNode
     | MemberExpressionNode
+    | ListExpressionNode
+    | DictExpressionNode
     | EmptyExpressionNode
     | ErrorExpressionNode;
 
@@ -143,6 +161,22 @@ export interface MemberExpressionNode extends NodeBase {
     object: ExpressionNode;
     property: IdentifierExpressionNode;
 }
+
+export interface ListExpressionNode extends NodeBase {
+    type: "ListExpression";
+    elements: ExpressionNode[];
+}
+
+export interface DictEntryNode {
+    key: ExpressionNode;
+    value: ExpressionNode;
+}
+
+export interface DictExpressionNode extends NodeBase {
+    type: "DictExpression";
+    entries: DictEntryNode[];
+}
+
 
 export interface EmptyExpressionNode extends NodeBase {
     type: "EmptyExpression";

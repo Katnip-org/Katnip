@@ -50,8 +50,8 @@ closing it now <#
 
 # Procedure: print a message to console
 proc log(
-    @proccode: "log %s",
-    @doc: "Logs a message to the console.",
+    @proccode = "log %s",
+    @doc = "Logs a message to the console.",
     msg = "No message."
 ) -> void {
     console.log(msg);
@@ -59,8 +59,8 @@ proc log(
 
 # Procedure: calculate score using exponentiation
 proc score(
-    @proccode: "score %n ^ %n",
-    @constants: {"avogadro":6.022e23},
+    @proccode = "score %n ^ %n",
+    @constants = {"avogadro":6.022e23},
     base: num,
     exp: num = 2
 ) -> num {

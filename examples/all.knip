@@ -12,8 +12,15 @@ public e: dict<str, str> = {"key": "value"};
 # Custom types
 public f: nestedList<list<num | str>> = [[1, 2 % 3 * 4], [3, 4, op.letter(1, "test")]];
 
+# Decorator set to true (errors on "msg: str = "default"")
 proc log(@warp="true", msg: str = "default") -> void | num { # This comment is attached to the proc
     console.log(msg); #! ignore me
+    a = b + c;
+}
+
+# Assumed decorator => true
+proc compute(@warp, value: num) -> num {
+    return(value * 2);
 }
 
 enum thing {

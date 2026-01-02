@@ -32,7 +32,7 @@ yargs(hideBin(process.argv))
                 const reporter = new ErrorReporter(fileContent, true);
                 const logger = new Logger();
                 
-                if (argv.logger && argv.logger === false) logger.disable();
+                if (argv.logger && argv.logger === "false") logger.disable();
                 else logger.enable();
 
                 const lexer = new Lexer(reporter, logger);
@@ -65,8 +65,10 @@ yargs(hideBin(process.argv))
                 const reporter = new ErrorReporter(fileContent, true);
                 const logger = new Logger();
 
-                if (argv.logger && argv.logger === false) logger.disable();
+                if (argv.logger && argv.logger === "false") logger.disable();
                 else logger.enable();
+
+                console.log("Starting lexing process...");
 
                 const lexer = new Lexer(reporter, logger);
                 const tokens = lexer.tokenize(fileContent);
@@ -76,6 +78,8 @@ yargs(hideBin(process.argv))
                     reporter.print();
                     return;
                 }
+
+                console.log("Tokens:", tokens);
 
                 const parser = new Parser(reporter, logger);
                 const ast = parser.parse(tokens);
