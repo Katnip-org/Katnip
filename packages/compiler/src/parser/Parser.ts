@@ -6,7 +6,7 @@ import { isValuedTokenType } from "../lexer/Token.js";
 import type { Token, TokenInfoFor, TokenPos, TokenType, ValuedToken, ValuedTokenType } from "../lexer/Token.js";
 import { ErrorReporter, KatnipError } from "../utils/ErrorReporter.js";
 import { Logger } from "../utils/Logger.js";
-import { type AST, type DecoratorNode, type NodeBase, type ParameterNode, type ProcedureDeclarationNode, type SingleTypeNode, type TypeNode, type UnionTypeNode, type ExpressionNode, type DictEntryNode, type StatementNode, type EnumDeclarationNode, type VariableDeclarationNode, VariableDeclarationType } from "./AST-nodes.js";
+import { type AST, type DecoratorNode, type NodeBase, type ParameterNode, type ProcedureDeclarationNode, type SingleTypeNode, type TypeNode, type UnionTypeNode, type ExpressionNode, type DictEntryNode, type StatementNode, type EnumDeclarationNode, type VariableDeclarationNode, VariableDeclarationType, type VariableAssignmentNode } from "./AST-nodes.js";
 import { bindingPowerTable, getBindingPower } from "./BindingPowerTable.js";
 
 export class Parser {
@@ -70,7 +70,7 @@ export class Parser {
      * @returns True if at the end, false otherwise.
      */
     private isAtEnd(): boolean {
-        return this.peek()?.token.type === "EOF";
+        return this.peek()?.token.type === "<EOF>";
     }
 
     /**
@@ -79,7 +79,7 @@ export class Parser {
      * @param patterns - The patterns to match against.
      * @returns True if the token matches, false otherwise.
      */
-    private checkToken(kind: "type" | "value", patterns: string[]): boolean {
+    private checkToken(kind: "type" | "value", patterns: (string | TokenType)[]): boolean {
         if (this.isAtEnd()) return false;
 
         const token = this.peek();
@@ -253,8 +253,7 @@ export class Parser {
             while (!this.checkToken("type", ["RightChevron"])) {
                 typeParams.push(this.parseTypeAnnotation());
 
-                if (
-!this.tryConsume("type", ["Comma"]) && !this.checkToken("type", ["RightChevron"])) {
+                if (!this.tryConsume("type", ["Comma"]) && !this.checkToken("type", ["RightChevron"])) {
                     this.reporter.add(
                         new KatnipError(
                             "Parser",
@@ -265,7 +264,7 @@ export class Parser {
                 }
             }
 
-            this.consume({ type: "RightChevron" }, "Expected closing '>'");
+            this.consume({ type: ">" }, "Expected closing '>'");
 
             return {
                 type: "Type",
@@ -299,29 +298,26 @@ export class Parser {
         if (this.checkToken("type", ["Identifier"])) {
             if (this.checkToken("value", ["private", "temp", "public"])) {
                 return this.parseVariableDeclaration();
-            } else {
-                // Parse an expression statement
-                const expression: ExpressionNode = this.parseExpression();
-                if (expression.type == "CallExpression" && this.checkToken("type", ["BraceOpen"])) { // Handler declaration
-                    const body = this.parseBlockExpression();
-                    return {
-                        type: "HandlerDeclaration",
-                        call: expression,
-                        body: {
-                            type: "Block",
-                            body: body,
-                            loc: { start: body[0]?.loc.start || expression.loc.start, end: body[body.length - 1]?.loc.end || expression.loc.end },
-                        },
-                        loc: { start: expression.loc.start, end: body[body.length - 1]?.loc.end || expression.loc.end }
-                    };
-                }
-                this.consume({ type: "Semicolon" }, "Expected semicolon at the end of an expression statement");
-                return {
-                    type: "ExpressionStatement",
-                    expression: expression,
-                    loc: { start: expression.loc.start, end: expression.loc.end }
-                };
             }
+
+            // Parse an expression statement
+            const expression: ExpressionNode = this.parseExpression();
+            const assignmentExpression = this.parseAssignmentExpression(expression);
+            if (assignmentExpression) {
+                return assignmentExpression;
+            }
+
+            const handlerDeclaration = this.parseHandlerDeclaration(expression);
+            if (handlerDeclaration) {
+                return handlerDeclaration;
+            }
+
+            this.consume({ type: ";" }, "Expected semicolon at the end of an expression statement");
+            return {
+                type: "ExpressionStatement",
+                expression: expression,
+                loc: { start: expression.loc.start, end: expression.loc.end }
+            };
         }
 
         this.reporter.add(
@@ -344,10 +340,10 @@ export class Parser {
         const decorators: DecoratorNode[] = [];
         const parameters: ParameterNode[] = [];
 
-        if (this.tryConsume("type", ["ParenOpen"])) {
-            while (!this.checkToken("type", ["ParenClose"])) {
+        if (this.tryConsume("type", ["("])) {
+            while (!this.checkToken("type", [")"])) {
                 console.log(`parsing proc param/decorator, next token: ${this.peek()?.token.type}, ${this.peek() && isValuedTokenType(this.peek()!.token.type) ? (this.peek()!.token as ValuedToken).value : "N/A"}`);
-                if (this.checkToken("type", ["AtSymbol"])) {
+                if (this.checkToken("type", ["@"])) {
                     this.advance();
                 } else if (this.checkToken("type", ["Identifier"])) {
                     parsingDecorators = false;
@@ -363,10 +359,10 @@ export class Parser {
                     const decoratorName = decoratorNameToken.token.value;
 
                     let decoratorValue;
-                    if (!this.expect({ type: ["Equals", "Comma"] }, "Expected '=' or ',' after decorator name")) {
-                        this.synchronize({ type: ["Comma", "Equals", "ParenClose"] }, "Failed to parse decorator value");
+                    if (!this.expect({ type: ["=", ","] }, "Expected '=' or ',' after decorator name")) {
+                        this.synchronize({ type: [",", "=", ")"] }, "Failed to parse decorator value");
                     }
-                    if (this.tryConsume("type", ["Equals"])) {
+                    if (this.tryConsume("type", ["="])) {
                         decoratorValue = this.parseExpression();
                     } else {
                         decoratorValue = {
@@ -393,12 +389,12 @@ export class Parser {
                     const parameterNameToken = this.consume({ type: "Identifier" }, "Expected parameter name");
                     const parameterName = parameterNameToken.token.value;
 
-                    this.consume({ type: "Colon" }, "Expected ':' after parameter name for type annotation");
+                    this.consume({ type: ":" }, "Expected ':' after parameter name for type annotation");
                     const parameterTypeToken = this.parseTypeAnnotation();
                     console.log(`Parsed parameter type: ${JSON.stringify(parameterTypeToken)}`);
 
                     let defaultValueToken;
-                    if (this.tryConsume("type", ["Equals"])) {
+                    if (this.tryConsume("type", ["="])) {
                         defaultValueToken = this.parseExpression();
                     }
 
@@ -416,22 +412,21 @@ export class Parser {
 
                 if (!this.checkToken("type", ["ParenClose"])) {
                     this.consume(
-                        { type: "Comma" },
+                        { type: "," },
                         "Expected ',' or ')'"
                     );
                 }
             }
-            this.consume({ type: "ParenClose" }, "Expected closing parenthesis for parameters");
+            this.consume({ type: ")" }, "Expected closing parenthesis for parameters");
         }
 
         console.log("❌ - Finished parsing parameters/decorators");
 
-        this.consume({ type: "Minus" }, "Expected arrow return symbol piece '-'");
-        this.consume({ type: "RightChevron" }, "Expected arrow return symbol piece '>' after '-'");
+        this.consume({ type: "->" }, "Expected arrow return symbol '->'");
 
         const returnType = this.parseTypeAnnotation();
 
-        this.consume({ type: "BraceOpen" }, "Expected open curly brace '{' for procedure body");
+        this.consume({ type: "{" }, "Expected open curly brace '{' for procedure body");
 
         const body: StatementNode[] = [];
         while (!this.isAtEnd() && !this.checkToken("type", ["BraceClose"])) {
@@ -439,7 +434,7 @@ export class Parser {
             if (stmt) body.push(stmt);
         }
 
-        this.consume({ type: "BraceClose" }, "Expected closing curly brace '}' for procedure body");
+        this.consume({ type: "}" }, "Expected closing curly brace '}' for procedure body");
 
         return {
             type: "ProcedureDeclaration",
@@ -464,19 +459,19 @@ export class Parser {
         const nameToken = this.consume({ type: "Identifier" }, "Expected enum name");
         const name = nameToken.token.value;
 
-        this.consume({ type: "BraceOpen" }, "Expected opening brace for enum members");
+        this.consume({ type: "{" }, "Expected opening brace for enum members");
         const members: string[] = [];
-        while (!this.checkToken("type", ["BraceClose"])) {
+        while (!this.checkToken("type", ["}"])) {
             const memberToken = this.consume({ type: "Identifier" }, "Expected enum member name");
             members.push(memberToken.token.value);
 
-            if (!this.tryConsume("type", ["Comma"]) && !this.checkToken("type", ["BraceClose"])) {
+            if (!this.tryConsume("type", [","]) && !this.checkToken("type", ["}"])) {
                 this.reporter.add(
                     new KatnipError("Parser", "Expected ',' or ')'", this.peek()?.start || { line: -1, column: -1 })
                 );
             }
         }
-        this.consume({ type: "BraceClose" }, "Expected closing brace for enum members");
+        this.consume({ type: "}" }, "Expected closing brace for enum members");
 
         return {
             type: "EnumDeclaration",
@@ -497,12 +492,11 @@ export class Parser {
         console.log(`parsing variable declaration starting with token: ${this.peek()?.token.type}`);
         const access = this.consume({ type: "Identifier", value: Object.values(VariableDeclarationType) }, "Expected 'private', 'temp', or 'public' keyword");
         const variableName = this.consume({ type: "Identifier" }, "Expected variable name");
-        this.consume({ type: "Colon" }, "Expected ':' after variable name for type annotation");
+        this.consume({ type: ":" }, "Expected ':' after variable name for type annotation");
         const typeAnnotation = this.parseTypeAnnotation();
-        this.consume({ type: "Equals" }, "Expected '=' after type annotation for variable declaration");
+        this.consume({ type: "=" }, "Expected '=' after type annotation for variable declaration");
         const initializer = this.parseExpression();
-        this.consume({ type: "Semicolon" }, "Expected ';' at the end of variable declaration");
-
+        this.consume({ type: ";" }, "Expected ';' at the end of variable declaration");
         return {
             type: "VariableDeclaration",
             access: access.token.value as VariableDeclarationType,
@@ -516,7 +510,37 @@ export class Parser {
         };
     }
 
-    // private parseVariableAssignment(): 
+    private parseAssignmentExpression(left: ExpressionNode): VariableAssignmentNode | null {
+        if (this.checkToken("type", ["="])) {
+            this.advance();
+            const right = this.parseExpression();
+            return {
+                type: "VariableAssignment",
+                operator: "=",
+                left: left,
+                right: right,
+                loc: { start: left.loc.start, end: right.loc.end }
+            };
+        }
+        return null;
+    }
+
+    private parseHandlerDeclaration(left: ExpressionNode): StatementNode | null {
+        if (left.type == "CallExpression" && this.checkToken("type", ["{"])) { // Handler declaration
+            const body = this.parseBlockExpression();
+            return {
+                type: "HandlerDeclaration",
+                call: left,
+                body: {
+                    type: "Block",
+                    body: body,
+                    loc: { start: body[0]?.loc.start || left.loc.start, end: body[body.length - 1]?.loc.end || left.loc.end },
+                },
+                loc: { start: left.loc.start, end: body[body.length - 1]?.loc.end || left.loc.end }
+            };
+        }
+        return null;
+    }
 
     /**
      * Parses an expression from the token list.
@@ -554,9 +578,9 @@ export class Parser {
         const value = token.token.type;
 
         // Unary operators
-        if (value === "Exclamation" || value === "Minus") {
+        if (value === "!" || value === "-") {
             this.advance();
-            const opKey = value === "Minus" ? "UnaryMinus" : value;
+            const opKey = value === "-" ? "UnaryMinus" : value;
             const { rbp } = bindingPowerTable[opKey];
             const right = this.parseExpression(rbp);
             return {
@@ -568,26 +592,26 @@ export class Parser {
         }
 
         // Parenthesized expression
-        if (this.tryConsume("type", ["ParenOpen"])) {
-            if (this.checkToken("type", ["ParenClose"])) {
+        if (this.tryConsume("type", ["("])) {
+            if (this.checkToken("type", [")"])) {
                 this.advance();
                 return { type: "EmptyExpression", loc: { start: token.start, end: this.previous()!.end } }
             }
 
             const expr = this.parseExpression();
-            this.consume({ type: "ParenClose" }, "Expected ')' after parenthesized expression");
+            this.consume({ type: ")" }, "Expected ')' after parenthesized expression");
             return expr;
         }
 
         // Bracket expression
-        if (this.tryConsume("type", ["BracketOpen"])) {
+        if (this.tryConsume("type", ["["])) {
             const listContents: ExpressionNode[] = [];
-            while (!this.checkToken("type", ["Comma", "BracketClose"])) {
+            while (!this.checkToken("type", [",", "]"])) {
                 listContents.push(this.parseExpression());
-                this.tryConsume("type", ["Comma"]);
+                this.tryConsume("type", [","]);
             }
 
-            this.consume({ type: "BracketClose" }, "Expected ']' after list expression");
+            this.consume({ type: "]" }, "Expected ']' after list expression");
             return {
                 type: "ListExpression",
                 elements: listContents,
@@ -596,17 +620,17 @@ export class Parser {
         }
 
         // Dictionary expression
-        if (this.tryConsume("type", ["BraceOpen"])) {
+        if (this.tryConsume("type", ["{"])) {
             const dictionaryContents: DictEntryNode[] = [];
-            while (!this.checkToken("type", ["Comma", "BraceClose"])) {
+            while (!this.checkToken("type", ["Comma", "}"])) {
                 const key = this.parseExpression();
-                this.consume({ type: "Colon" }, "Expected ':' between dictionary key and value");
+                this.consume({ type: ":" }, "Expected ':' between dictionary key and value");
                 const value = this.parseExpression();
                 dictionaryContents.push({ key, value });
-                this.tryConsume("type", ["Comma"]);
+                this.tryConsume("type", [","]);
             }
 
-            this.consume({ type: "BraceClose" }, "Expected '}' after dictionary expression");
+            this.consume({ type: "}" }, "Expected '}' after dictionary expression");
             return {
                 type: "DictExpression",
                 entries: dictionaryContents,
@@ -680,15 +704,15 @@ export class Parser {
         const tokenType = token.token.type;
 
         // Function call: token type is ParenOpen
-        if (tokenType === "ParenOpen") {
+        if (tokenType === "(") {
             this.advance();
             const args: ExpressionNode[] = [];
-            if (!this.checkToken("type", ["ParenClose"])) {
+            if (!this.checkToken("type", [")"])) {
                 do {
                     args.push(this.parseExpression());
-                } while (this.tryConsume("type", ["Comma"]));
+                } while (this.tryConsume("type", [","]));
             }
-            this.consume({ type: "ParenClose" }, "Expected ')' after parameters");
+            this.consume({ type: ")" }, "Expected ')' after parameters");
 
             return {
                 type: "CallExpression",
@@ -699,7 +723,7 @@ export class Parser {
         }
 
         // Member access: token type is Dot
-        if (tokenType === "Dot") {
+        if (tokenType === ".") {
             this.advance();
             const id = this.consume({ type: "Identifier" }, "Expected property name after '.'");
             return {
@@ -731,15 +755,15 @@ export class Parser {
      * @returns The parsed block expression node.
      */
     private parseBlockExpression(): StatementNode[] {
-        this.consume({ type: "BraceOpen" }, "Expected '{' after method call");
+        this.consume({ type: "{" }, "Expected '{' after method call");
         const body: StatementNode[] = [];
 
-        while (!this.isAtEnd() && !this.checkToken("type", ["BraceClose"])) {
+        while (!this.isAtEnd() && !this.checkToken("type", ["}"])) {
             const stmt = this.parseStatement();
             if (stmt) body.push(stmt);
         }
 
-        this.consume({ type: "BraceClose" }, "Expected '}' to close block");
+        this.consume({ type: "}" }, "Expected '}' to close block");
 
         return body;
     }

@@ -73,6 +73,7 @@ export interface EnumDeclarationNode extends NodeBase {
 export type StatementNode =
     | ExpressionStatementNode
     | VariableDeclarationNode
+    | VariableAssignmentNode
     | HandlerDeclarationNode
     | ProcedureDeclarationNode
     | EnumDeclarationNode
@@ -99,8 +100,16 @@ export interface VariableDeclarationNode extends NodeBase {
     type: "VariableDeclaration";
     access: VariableDeclarationType;
     name: string;
-    varType?: TypeNode;
+    varType: TypeNode;
     initializer?: ExpressionNode;
+}
+
+
+export interface VariableAssignmentNode extends NodeBase {
+    type: "VariableAssignment";
+    operator: string;
+    left: ExpressionNode;
+    right: ExpressionNode;
 }
 
 export interface ErrorStatementNode extends NodeBase {
@@ -113,6 +122,7 @@ export type ExpressionNode =
     | IdentifierExpressionNode
     | LiteralExpressionNode
     | BinaryExpressionNode
+    | BlockNode
     | CallExpressionNode
     | UnaryExpressionNode
     | MemberExpressionNode

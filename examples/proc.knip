@@ -1,5 +1,5 @@
 proc log(msg: str) -> void {
-    console.log(msg);
+    console.log(msg += 2);
 }
 
 proc score(
