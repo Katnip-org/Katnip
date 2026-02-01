@@ -6,7 +6,6 @@ import { isValuedTokenType, UnitTokenType } from "../lexer/Token.js";
 import type { Token, TokenInfoFor, TokenPos, TokenType, ValuedToken, ValuedTokenType } from "../lexer/Token.js";
 import { ErrorReporter, KatnipError } from "../utils/ErrorReporter.js";
 import { KatnipLog, KatnipLogType, Logger } from "../utils/Logger.js";
-import { isAssignmentOperator } from "./AssignmentOperators.js";
 import { type AST, type DecoratorNode, type NodeBase, type ParameterNode, type ProcedureDeclarationNode, type SingleTypeNode, type TypeNode, type UnionTypeNode, type ExpressionNode, type StatementNode, type EnumDeclarationNode, type VariableDeclarationNode, VariableDeclarationType, type VariableAssignmentNode, type DictEntryNode } from "./AST-nodes.js";
 import { bindingPowerTable, getBindingPower } from "./BindingPowerTable.js";
 
@@ -313,29 +312,6 @@ export class Parser {
                 return handlerDeclaration;
             }
 
-            if (this.checkToken("type", ["=", "+=", "-=", "*=", "/=", "%=", "**="])) {
-                const assginmentOperator = this.consume({ type: [
-                    UnitTokenType.Equals, 
-                    UnitTokenType.PlusEquals, 
-                    UnitTokenType.MinusEquals, 
-                    UnitTokenType.AsteriskEquals, 
-                    UnitTokenType.FwdSlashEquals, 
-                    UnitTokenType.PercentEquals, 
-                    UnitTokenType.PowerEquals
-                ] }, "Expected assignment operator").token.type;
-                
-                const right = this.parseExpression();
-                this.consume({ type: ";" }, "Expected semicolon at the end of an expression statement");
-                
-                return {
-                    type: "VariableAssignment",
-                    operator: assginmentOperator,
-                    left: expression,
-                    right: right,
-                    loc: { start: expression.loc.start, end: right.loc.end }
-                };
-            }
-
             this.consume({ type: ";" }, "Expected semicolon at the end of an expression statement");
             return {
                 type: "ExpressionStatement",
@@ -535,18 +511,30 @@ export class Parser {
     }
 
     private parseAssignmentExpression(left: ExpressionNode): VariableAssignmentNode | null {
-        if (this.checkToken("type", ["="])) {
-            this.advance();
-            const right = this.parseExpression();
-            return {
-                type: "VariableAssignment",
-                operator: "=",
-                left: left,
-                right: right,
-                loc: { start: left.loc.start, end: right.loc.end }
-            };
+        if (!this.checkToken("type", ["=", "+=", "-=", "*=", "/=", "%=", "**="])) {
+            return null;
         }
-        return null;
+
+        const assginmentOperator = this.consume({ type: [
+            UnitTokenType.Equals, 
+            UnitTokenType.PlusEquals, 
+            UnitTokenType.MinusEquals, 
+            UnitTokenType.AsteriskEquals, 
+            UnitTokenType.FwdSlashEquals, 
+            UnitTokenType.PercentEquals, 
+            UnitTokenType.PowerEquals
+        ] }, "Expected assignment operator").token.type;
+        
+        const right = this.parseExpression();
+        this.consume({ type: ";" }, "Expected semicolon at the end of an expression statement");
+        
+        return {
+            type: "VariableAssignment",
+            operator: assginmentOperator,
+            left: left,
+            right: right,
+            loc: { start: left.loc.start, end: right.loc.end }
+        };
     }
 
     private parseHandlerDeclaration(left: ExpressionNode): StatementNode | null {
