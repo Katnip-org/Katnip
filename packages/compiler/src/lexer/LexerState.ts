@@ -9,6 +9,7 @@ export enum LexerState {
 
     String,
     EscapedString,
+    InterpolatedExpression,
     Number,
 
     Operator,

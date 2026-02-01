@@ -119,19 +119,20 @@ export interface ErrorStatementNode extends NodeBase {
 
 // Expression Nodes 
 export type ExpressionNode =
-    | IdentifierExpressionNode
-    | LiteralExpressionNode
-    | BinaryExpressionNode
-    | BlockNode
-    | CallExpressionNode
-    | IndexerAccessNode
-    | SliceAccessNode
-    | UnaryExpressionNode
-    | MemberExpressionNode
-    | ListExpressionNode
-    | DictExpressionNode
-    | EmptyExpressionNode
-    | ErrorExpressionNode;
+  | IdentifierExpressionNode
+  | LiteralExpressionNode
+  | BinaryExpressionNode
+  | BlockNode
+  | CallExpressionNode
+  | IndexerAccessNode
+  | SliceAccessNode
+  | UnaryExpressionNode
+  | MemberExpressionNode
+  | ListExpressionNode
+  | DictExpressionNode
+  | TupleExpressionNode
+  | EmptyExpressionNode
+  | ErrorExpressionNode;
 
 export interface IdentifierExpressionNode extends NodeBase {
     type: "Identifier";
@@ -203,6 +204,10 @@ export interface DictExpressionNode extends NodeBase {
     entries: DictEntryNode[];
 }
 
+export interface TupleExpressionNode extends NodeBase {
+    type: "TupleExpression";
+    elements: ExpressionNode[];
+}
 
 export interface EmptyExpressionNode extends NodeBase {
     type: "EmptyExpression";

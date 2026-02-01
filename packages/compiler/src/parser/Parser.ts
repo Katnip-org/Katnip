@@ -30,9 +30,21 @@ export class Parser {
 
         const statements = [];
         while (!this.isAtEnd()) {
+            const before = this.position;
             this.logger.log(new KatnipLog(KatnipLogType.Debug, `Parsing statement at token: ${this.peek()?.token.type}`));
             const stmt = this.parseStatement();
             if (stmt) statements.push(stmt);
+
+            if (this.position === before) {
+                this.reporter.add(
+                    new KatnipError(
+                    "Parser",
+                    `Parser got stuck on token '${this.peek()?.token.type}'`,
+                    this.peek()?.start ?? { line: -1, column: -1 },
+                    ),
+                );
+                this.advance();
+            }
         }
 
         return { type: "Program", body: statements } as AST;
@@ -41,10 +53,12 @@ export class Parser {
     // -- Helper functions --
     /**
      * Retrieves the current token without advancing the position.
+     * @param lookAhead - Number of tokens to look ahead.
      * @returns The current token or null if at the end.
      */
-    private peek(): Token | null {
-        return this.position < this.tokens.length ? this.tokens[this.position] : null;
+    private peek(lookAhead: number = 0): Token | null {
+        const index = this.position + lookAhead;
+        return index < this.tokens.length ? this.tokens[index] : null;
     }
 
     /**
@@ -117,7 +131,8 @@ export class Parser {
      */
     private consume<T extends TokenType>(
         options: { type: T | T[]; value?: string | string[] },
-        message: string
+        message: string,
+        sync?: { type: TokenType | TokenType[]; value?: string | string[] }
     ): { token: TokenInfoFor<T>; start: TokenPos; end: TokenPos } {
         const types = options.type ? (Array.isArray(options.type) ? options.type : [options.type]) : [];
         const values = options.value ? (Array.isArray(options.value) ? options.value : [options.value]) : [];
@@ -148,6 +163,16 @@ export class Parser {
             this.reporter.add(
                 new KatnipError("Parser", message, currentToken.start)
             );
+        }
+
+        const before = this.position;
+
+        if (sync) {
+            this.synchronize(sync, "Failed to synchronize after consume error");
+        }
+
+        if (this.position === before && !this.isAtEnd()) {
+            this.advance();
         }
 
         return {
@@ -221,7 +246,13 @@ export class Parser {
             ? (Array.isArray(options.value) ? options.value : [options.value])
             : [];
 
+        const before = this.position;
+
         while (this.peek() != null && !this.checkToken("type", types) && !this.checkToken("value", values)) {
+            this.advance();
+        }
+
+        if (this.position === before && this.peek() != null) {
             this.advance();
         }
 
@@ -309,7 +340,7 @@ export class Parser {
      */
     private parseStatement(): StatementNode | null{
         this.logger.log(new KatnipLog(KatnipLogType.Debug, `parsing statement starting with token: ${this.peek()?.token.type} | value: ${isValuedTokenType(this.peek()?.token.type || "EOF") ? (this.peek()?.token as ValuedToken).value : "N/A"}`));
-        if (this.checkToken("value", ["proc"])) return this.parseProcedureDefinition();
+        if (this.checkToken("value", ["proc"]) && !(this.peek(1)?.token.type === ".")) return this.parseProcedureDefinition();
         if (this.checkToken("value", ["enum"])) return this.parseEnumDefinition();
         if (this.checkToken("type", ["Comment_SingleExpanded", "Comment_SingleCollapsed", "Comment_MultilineExpanded", "Comment_MultilineCollapsed"])) {
             const comment = (this.peek()?.token as ValuedToken).value;
@@ -643,6 +674,20 @@ export class Parser {
             }
 
             const expr = this.parseExpression();
+
+            if (this.checkToken("type", [","])) {
+                let tupleElements: ExpressionNode[] = [expr];
+                while (this.tryConsume("type", [","])) {
+                    tupleElements.push(this.parseExpression());
+                }
+                this.consume({ type: ")" }, "Expected ')' after parenthesized expression");
+                return {
+                    type: "TupleExpression",
+                    elements: tupleElements,
+                    loc: { start: token.start, end: this.previous()!.end }
+                };
+            }
+            
             this.consume({ type: ")" }, "Expected ')' after parenthesized expression");
             return expr;
         }

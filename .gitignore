@@ -33,3 +33,4 @@ coverage/
 
 # Katnip outputs
 packages/compiler/out/
+examples/

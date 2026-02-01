@@ -1,7 +1,23 @@
-private a: num = 1 + 2 % 3 * 4;
+# Single-pass “everything once” test
 
-proc log(@warp="true", msg: str = "default") -> void | num {
-    console.log(msg);
+private a: num = 42;
+temp b: str = "Hello " + op.letter(1, "test") + "h";
+public c: bool = const.true;
+
+private d: list<num | str> = [1, 2 % 3 * 4, "5"];
+public e: dict<str, str> = {"key": "value"};
+public f: nestedList<list<num | str>> = [[1], [op.letter(1, "test")]];
+
+enum thing { red, green, blue }
+
+proc log(@warp="true", msg: str = "default") -> void | num { # proc comment
+    console.log(msg); #! ignore me
+    a = 1;
 }
 
-events.onflag() { log("hi"); }
+proc compute(@warp, value: num) -> num { return(value * 2); }
+
+events.onflag() { motion.x.set(compute(10)); }
+
+temp i: num = 0;
+for (i, 10) { looks.say("i=" + i); motion.move(i * 10); }

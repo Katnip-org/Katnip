@@ -37,6 +37,9 @@ export class Lexer {
 
     private buffer: string = "";
     private stringQuote: "'" | '"' | null = null;
+    private isInterpolatedString: boolean = false;
+    private inInterpolatedExpression: boolean = false;
+    private interpolatedBraceDepth: number = 0;
     private commentType: string = "";
 
     private operatorNode: OperatorTrieNode | null = null;
@@ -74,6 +77,9 @@ export class Lexer {
 
         this.buffer = "";
         this.stringQuote = null;
+        this.isInterpolatedString = false;
+        this.inInterpolatedExpression = false;
+        this.interpolatedBraceDepth = 0;
         this.commentType = "";
         this.operatorNode = null;
 
@@ -101,8 +107,10 @@ export class Lexer {
      * @param type The type of token to emit.
      */
     private emit(type: TokenType): void {
-        this.buffer = this.buffer.trim();
         if (isValuedTokenType(type)) {
+            if (type !== "String" && type !== "InterpolatedString" && type !== "InsideInterpolatedString") {
+                this.buffer = this.buffer.trim();
+            }
             this.tokens.push({
                 token: { type, value: this.buffer },
                 start: { line: this.lineStart, column: this.colStart },
@@ -116,7 +124,7 @@ export class Lexer {
             });
         }
         this.buffer = ""; // Reset buffer after emitting
-        this.currentState = LexerState.Start;
+        this.currentState = this.inInterpolatedExpression ? LexerState.InterpolatedExpression : LexerState.Start;
     }
 
     /**
@@ -163,47 +171,52 @@ export class Lexer {
         this.logger.log(new KatnipLog( KatnipLogType.Debug, `Lexer state: ${LexerState[this.currentState]}, char: '${char}'`, { line: this.line, column: this.col } ));
 
         if (this.currentState === LexerState.Start) {
-            this.colStart = this.col; // Reset column start for new token
-            this.lineStart = this.line; // Reset line start for new token
-
-            if (/\s/.test(char)) {
-                // Whitespace
-                this.advance();
-            } else if (/[a-zA-Z_]/.test(char)) {
-                // Identifier start
-                this.currentState = LexerState.Identifier;
-                this.buffer += this.advance();
-            } else if (/[-0-9]/.test(char) || (/[.]/.test(char) && /[0-9]/.test(this.peek(1)!))) {
-                if (/[.0-9]/.test(this.peek(1)!) || /[0-9]/.test(char)) {
-                    // Number literal start
-                    this.currentState = LexerState.Number;
-                    this.buffer += this.advance();
-                } else {
-                    // Just a minus sign
-                    this.currentState = LexerState.Operator;
-                }
-            } else if (char === '"' || char === "'") {
-                // String literal start
-                this.stringQuote = char;
-                this.currentState = LexerState.String;
-                this.advance();
-            } else if (char === '#') {
-                // Comment start
-                this.currentState = LexerState.Comment;
-                this.advance();
-            } else if (singleCharUnitTokens.has(char as UnitTokenType)) {
-                this.currentState = LexerState.Operator;
-                this.operatorNode = operatorTrie.start();
-            } else if (char === '\x04') {
-                this.advance(); // Consume EOF character
-                this.emit("<EOF>");
-            } else {
-                this.reporter.add(
-                    new KatnipError("Lexer", `Unexpected character '${char}'`, { line: this.line, column: this.col })
-                );
-            }
+            this.processStartLike(char);
         } else {
             this.processState(char);
+        }
+    }
+
+    private processStartLike(char: string): void {
+        this.colStart = this.col; // Reset column start for new token
+        this.lineStart = this.line; // Reset line start for new token
+
+        if (/\s/.test(char)) {
+            // Whitespace
+            this.advance();
+        } else if (/[a-zA-Z_]/.test(char)) {
+            // Identifier start
+            this.currentState = LexerState.Identifier;
+            this.buffer += this.advance();
+        } else if (/[-0-9]/.test(char) || (/[.]/.test(char) && /[0-9]/.test(this.peek(1)!))) {
+            if (/[.0-9]/.test(this.peek(1)!) || /[0-9]/.test(char)) {
+                // Number literal start
+                this.currentState = LexerState.Number;
+                this.buffer += this.advance();
+            } else {
+                // Just a minus sign
+                this.currentState = LexerState.Operator;
+            }
+        } else if (char === '"' || char === "'") {
+            // String literal start
+            this.stringQuote = char;
+            this.isInterpolatedString = false;
+            this.currentState = LexerState.String;
+            this.advance();
+        } else if (char === '#') {
+            // Comment start
+            this.currentState = LexerState.Comment;
+            this.advance();
+        } else if (singleCharUnitTokens.has(char as UnitTokenType)) {
+            this.currentState = LexerState.Operator;
+            this.operatorNode = operatorTrie.start();
+        } else if (char === '\x04') {
+            this.advance(); // Consume EOF character
+            this.emit("<EOF>");
+        } else {
+            this.reporter.add(
+                new KatnipError("Lexer", `Unexpected character '${char}'`, { line: this.line, column: this.col })
+            );
         }
     }
 
@@ -217,18 +230,33 @@ export class Lexer {
         // State: Identifier
         switch (this.currentState) {
             case LexerState.Identifier:
-                if (/[a-zA-Z0-9_]/.test(char)) {
+                if (this.buffer === "f" && (char === '"' || char === "'")) {
+                    this.stringQuote = char;
+                    this.isInterpolatedString = true;
+                    this.buffer = "";
+                    this.currentState = LexerState.String;
+                    this.advance();
+                } else if (/[a-zA-Z0-9_]/.test(char)) {
                     this.buffer += this.advance();
                 } else {
                     this.emit("Identifier");
-                    this.currentState = LexerState.Start;
+                    this.currentState = this.inInterpolatedExpression ? LexerState.InterpolatedExpression : LexerState.Start;
                 }
                 break;
 
             case LexerState.String:
-                if (char === this.stringQuote) {
+                if (this.isInterpolatedString && char === "{") {
+                    this.emit("InterpolatedString");
+                    this.buffer = "";
+                    this.isInterpolatedString = true;
                     this.advance();
-                    this.emit("String");
+                    this.inInterpolatedExpression = true;
+                    this.interpolatedBraceDepth = 0;
+                    this.currentState = LexerState.InterpolatedExpression;
+                } else if (char === this.stringQuote) {
+                    this.advance();
+                    this.emit(this.isInterpolatedString ? "InterpolatedString" : "String");
+                    this.isInterpolatedString = false;
                 } else if (char === '\\') {
                     // Handle escape sequences
                     this.buffer += this.advance();
@@ -236,6 +264,24 @@ export class Lexer {
                 } else {
                     this.buffer += this.advance();
                 }
+                break;
+
+            case LexerState.InterpolatedExpression:
+                if (char === "}") {
+                    if (this.interpolatedBraceDepth === 0) {
+                        this.advance();
+                        this.inInterpolatedExpression = false;
+                        this.currentState = LexerState.String;
+                        this.colStart = this.col;
+                        this.lineStart = this.line;
+                        break;
+                    }
+                    this.interpolatedBraceDepth--;
+                } else if (char === "{") {
+                    this.interpolatedBraceDepth++;
+                }
+
+                this.processStartLike(char);
                 break;
 
             case LexerState.EscapedString:
@@ -284,7 +330,7 @@ export class Lexer {
                             new KatnipError("Lexer", `Invalid number format: Multiple decimal points`, { line: this.line, column: this.col })
                         );
                         this.emit("Number");
-                        this.currentState = LexerState.Start;
+                        this.currentState = this.inInterpolatedExpression ? LexerState.InterpolatedExpression : LexerState.Start;
                     } else {
                         this.buffer += this.advance();
                         this.currentState = LexerState.Number; // Still in number state
@@ -296,7 +342,7 @@ export class Lexer {
                             new KatnipError("Lexer", `Invalid number format: Multiple exponentional notation characters`, { line: this.line, column: this.col })
                         );
                         this.emit("Number");
-                        this.currentState = LexerState.Start;
+                        this.currentState = this.inInterpolatedExpression ? LexerState.InterpolatedExpression : LexerState.Start;
                     } else {
                         this.buffer += this.advance();
                         this.currentState = LexerState.Number; // Still in number state
@@ -307,7 +353,7 @@ export class Lexer {
                         this.buffer += this.advance();
                     } else {
                         this.emit("Number");
-                        this.currentState = LexerState.Start;
+                        this.currentState = this.inInterpolatedExpression ? LexerState.InterpolatedExpression : LexerState.Start;
                     }
                 } else if (/[xbo]/.test(char)) {
                     // Handle hexadecimal or binary prefixes
@@ -316,11 +362,11 @@ export class Lexer {
                         this.currentState = LexerState.Number; // stay in number state
                     } else {
                         this.emit("Number");
-                        this.currentState = LexerState.Start;
+                        this.currentState = this.inInterpolatedExpression ? LexerState.InterpolatedExpression : LexerState.Start;
                     }
                 } else {
                     this.emit("Number");
-                    this.currentState = LexerState.Start;
+                    this.currentState = this.inInterpolatedExpression ? LexerState.InterpolatedExpression : LexerState.Start;
                 }
                 break;
 
@@ -373,7 +419,7 @@ export class Lexer {
                 this.operatorNode = null;
                 this.lastValidOperatorNode = null;
                 this.buffer = "";
-                this.currentState = LexerState.Start;
+                this.currentState = this.inInterpolatedExpression ? LexerState.InterpolatedExpression : LexerState.Start;
                 break;
 
             case LexerState.Comment:
@@ -402,14 +448,14 @@ export class Lexer {
                         this.advance(); // 1st char of delimiter
                         this.advance(); // 2nd char of delimiter
                         if (tokenType !== "Comment_MultilineIgnored") this.emit(tokenType);
-                        this.currentState = LexerState.Start;
+                        this.currentState = this.inInterpolatedExpression ? LexerState.InterpolatedExpression : LexerState.Start;
                         this.commentType = "";
                     }
                     // Single-char end delimiter
                     else if (commentEnd.length === 1 && char === commentEnd) {
                         this.advance(); // Move past delimiter
                         if (tokenType !== "Comment_SingleIgnored") this.emit(tokenType);
-                        this.currentState = LexerState.Start;
+                        this.currentState = this.inInterpolatedExpression ? LexerState.InterpolatedExpression : LexerState.Start;
                         this.commentType = "";
                     }
                     // No end yet -> keep buffering

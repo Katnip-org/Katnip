@@ -69,9 +69,11 @@ yargs(hideBin(process.argv))
                 else logger.enable();
 
                 console.log("Starting lexing process...");
+                console.time("Lexing Time");
 
                 const lexer = new Lexer(reporter, logger);
                 const tokens = lexer.tokenize(fileContent);
+                console.timeEnd("Lexing Time");
 
                 // If lexer produced errors, print and abort
                 if (reporter.hasErrors()) {
@@ -79,10 +81,15 @@ yargs(hideBin(process.argv))
                     return;
                 }
 
-                console.log("Tokens:", tokens);
+                // console.log("Tokens:", tokens);
+
+                console.log("Starting parsing process...");
+                console.time("Parsing Time");
 
                 const parser = new Parser(reporter, logger);
                 const ast = parser.parse(tokens);
+
+                console.timeEnd("Parsing Time");
 
                 if (reporter.hasErrors()) {
                     reporter.print();

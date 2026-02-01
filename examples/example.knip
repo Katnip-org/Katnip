@@ -6,42 +6,43 @@ comment
 <#
 
 enum directions {
-    "UP",
-    "DOWN",
-    "LEFT",
-    "RIGHT"
+    UP,
+    DOWN,
+    LEFT,
+    RIGHT
 }
 
 enum flowers {
-    "Rose",
-    "Tulip",
-    "Daisy"
+    Rose,
+    Tulip,
+    Daisy
 }
 
 proc move(
-    dir: enums.directions,
+    dir: directions,
     amount: num
 ) -> void {
-    if(dir == enum.directions.UP){
+    if(dir == directions.UP){
         motion.changeY(amount);
     }
-    if(dir == enum.directions.DOWN){
+    if(dir == directions.DOWN){
         motion.changeY(-amount);
     }
-    if(dir == enum.directions.LEFT){
+    if(dir == directions.LEFT){
         motion.changeX(-amount);
     }
-    if(dir == enum.directions.RIGHT){
+    if(dir == directions.RIGHT){
         motion.changeX(amount);
     }
 }
+
 
 # Pose data (flat list: name, speed, power)
 poseList = [
     "Dash", 10, 7,
     "Smash", 4, 12,
     "Blast", 8, 9
-]
+];
 
 #> this is a collapsed comment
 and another line
@@ -52,7 +53,7 @@ closing it now <#
 proc log(
     @proccode = "log %s",
     @doc = "Logs a message to the console.",
-    msg = "No message."
+    msg: str = "No message."
 ) -> void {
     console.log(msg);
 }
@@ -92,7 +93,7 @@ proc start() -> void {
 
 onFlag(){
     # Call the start function
-    proc.start()
+    start();
 
     # Loop over pose list using tuple unpacking
     for((name, speed, power), poseList){
@@ -117,18 +118,18 @@ onFlag(){
         console.log(f"Basic logic constants, like {const.pi} work.");
     }
 
-    proc.thing(5.5e-4, 10);
+    thing(5.5e-4, 10);
 }
 
 onFlag(){
     # Move in different directions
-    proc.move(enum.directions.UP, 10);
-    proc.move(enum.directions.DOWN, 5);
-    proc.move(enum.directions.LEFT, 3);
-    proc.move(enum.directions.RIGHT, 8);
+    move(enum.directions.UP, 10);
+    move(enum.directions.DOWN, 5);
+    move(enum.directions.LEFT, 3);
+    move(enum.directions.RIGHT, 8);
 
     # Log the current position
-    console.log("Current position: " + motion.getPosition());
+    console.log(f"Current position: {motion.getPosition() + 5 ** 10}");
 }
 
 # Turtle draw implementation
