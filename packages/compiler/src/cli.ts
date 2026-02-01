@@ -32,7 +32,7 @@ yargs(hideBin(process.argv))
                 const reporter = new ErrorReporter(fileContent, true);
                 const logger = new Logger();
                 
-                if (argv.logger && argv.logger === "false") logger.disable();
+                if (argv.logger === false) logger.disable();
                 else logger.enable();
 
                 const lexer = new Lexer(reporter, logger);
@@ -65,7 +65,7 @@ yargs(hideBin(process.argv))
                 const reporter = new ErrorReporter(fileContent, true);
                 const logger = new Logger();
 
-                if (argv.logger && argv.logger === "false") logger.disable();
+                if (argv.logger === false) logger.disable();
                 else logger.enable();
 
                 console.log("Starting lexing process...");

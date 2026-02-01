@@ -1,41 +1,7 @@
-private i: str = op.letter(1, "test") + "h";
+private a: num = 1 + 2 % 3 * 4;
 
-# Scalar types
-private a: num = 42;
-temp b: str = "Hello, World!";
-public c: bool = const.true;
-
-# Container types
-private d: list<num | str> = [1, 2, 3, "4"];
-public e: dict<str, str> = {"key": "value"};
-
-# Custom types
-public f: nestedList<list<num | str>> = [[1, 2 % 3 * 4], [3, 4, op.letter(1, "test")]];
-
-# Decorator set to true (errors on "msg: str = "default"")
-proc log(@warp="true", msg: str = "default") -> void | num { # This comment is attached to the proc
-    console.log(msg); #! ignore me
-    a = b + c;
+proc log(@warp="true", msg: str = "default") -> void | num {
+    console.log(msg);
 }
 
-# Assumed decorator => true
-proc compute(@warp, value: num) -> num {
-    return(value * 2);
-}
-
-enum thing {
-    red,
-    green,
-    blue
-}
-
-events.onflag(){
-    motion.x.set(100);
-}
-
-private i: num = 0;
-for (i, 10) {
-    console.log("Iteration: " + i);
-    motion.move(i * 10);
-    looks.say("hello");
-}
+events.onflag() { log("hi"); }

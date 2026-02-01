@@ -185,7 +185,7 @@ export class Lexer {
                 // String literal start
                 this.stringQuote = char;
                 this.currentState = LexerState.String;
-                this.buffer += this.advance();
+                this.advance();
             } else if (char === '#') {
                 // Comment start
                 this.currentState = LexerState.Comment;
@@ -226,7 +226,7 @@ export class Lexer {
 
             case LexerState.String:
                 if (char === this.stringQuote) {
-                    this.buffer += this.advance();
+                    this.advance();
                     this.emit("String");
                 } else if (char === '\\') {
                     // Handle escape sequences
