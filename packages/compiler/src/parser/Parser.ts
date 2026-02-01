@@ -5,7 +5,7 @@
 import { isValuedTokenType, UnitTokenType } from "../lexer/Token.js";
 import type { Token, TokenInfoFor, TokenPos, TokenType, ValuedToken, ValuedTokenType } from "../lexer/Token.js";
 import { ErrorReporter, KatnipError } from "../utils/ErrorReporter.js";
-import { Logger } from "../utils/Logger.js";
+import { KatnipLog, KatnipLogType, Logger } from "../utils/Logger.js";
 import { isAssignmentOperator } from "./AssignmentOperators.js";
 import { type AST, type DecoratorNode, type NodeBase, type ParameterNode, type ProcedureDeclarationNode, type SingleTypeNode, type TypeNode, type UnionTypeNode, type ExpressionNode, type StatementNode, type EnumDeclarationNode, type VariableDeclarationNode, VariableDeclarationType, type VariableAssignmentNode, type DictEntryNode } from "./AST-nodes.js";
 import { bindingPowerTable, getBindingPower } from "./BindingPowerTable.js";
@@ -30,7 +30,7 @@ export class Parser {
 
         const statements = [];
         while (!this.isAtEnd()) {
-            console.log(`Parsing statement at token: ${this.peek()?.token.type}`);
+            this.logger.log(new KatnipLog(KatnipLogType.Debug, `Parsing statement at token: ${this.peek()?.token.type}`));
             const stmt = this.parseStatement();
             if (stmt) statements.push(stmt);
         }
@@ -287,7 +287,7 @@ export class Parser {
      * @returns The parsed statement or an error token.
      */
     private parseStatement(): StatementNode | null{
-        console.log(`parsing statement starting with token: ${this.peek()?.token.type} | value: ${isValuedTokenType(this.peek()?.token.type || "EOF") ? (this.peek()?.token as ValuedToken).value : "N/A"}`);
+        this.logger.log(new KatnipLog(KatnipLogType.Debug, `parsing statement starting with token: ${this.peek()?.token.type} | value: ${isValuedTokenType(this.peek()?.token.type || "EOF") ? (this.peek()?.token as ValuedToken).value : "N/A"}`));
         if (this.checkToken("value", ["proc"])) return this.parseProcedureDefinition();
         if (this.checkToken("value", ["enum"])) return this.parseEnumDefinition();
         if (this.checkToken("type", ["Comment_SingleExpanded", "Comment_SingleCollapsed", "Comment_MultilineExpanded", "Comment_MultilineCollapsed"])) {
@@ -366,7 +366,7 @@ export class Parser {
 
         if (this.tryConsume("type", ["("])) {
             while (!this.checkToken("type", [")"])) {
-                console.log(`parsing proc param/decorator, next token: ${this.peek()?.token.type}, ${this.peek() && isValuedTokenType(this.peek()!.token.type) ? (this.peek()!.token as ValuedToken).value : "N/A"}`);
+                this.logger.log(new KatnipLog(KatnipLogType.Debug, `parsing proc param/decorator, next token: ${this.peek()?.token.type}, ${this.peek() && isValuedTokenType(this.peek()!.token.type) ? (this.peek()!.token as ValuedToken).value : "N/A"}`));
                 if (this.checkToken("type", ["@"])) {
                     this.advance();
                 } else if (this.checkToken("type", ["Identifier"])) {
@@ -378,7 +378,7 @@ export class Parser {
                 }
 
                 if (parsingDecorators) {
-                    console.log("parsing decorators");
+                    this.logger.log(new KatnipLog(KatnipLogType.Debug, "parsing decorators"));
                     const decoratorNameToken = this.consume({ type: "Identifier" }, "Expected decorator name");
                     const decoratorName = decoratorNameToken.token.value;
 
@@ -415,7 +415,7 @@ export class Parser {
 
                     this.consume({ type: ":" }, "Expected ':' after parameter name for type annotation");
                     const parameterTypeToken = this.parseTypeAnnotation();
-                    console.log(`Parsed parameter type: ${JSON.stringify(parameterTypeToken)}`);
+                    this.logger.log(new KatnipLog(KatnipLogType.Debug, `Parsed parameter type: ${JSON.stringify(parameterTypeToken)}`));
 
                     let defaultValueToken;
                     if (this.tryConsume("type", ["="])) {
@@ -444,7 +444,7 @@ export class Parser {
             this.consume({ type: ")" }, "Expected closing parenthesis for parameters");
         }
 
-        console.log("❌ - Finished parsing parameters/decorators");
+        this.logger.log(new KatnipLog(KatnipLogType.Debug, "❌ - Finished parsing parameters/decorators"));
 
         this.consume({ type: "->" }, "Expected arrow return symbol '->'");
 
@@ -513,7 +513,7 @@ export class Parser {
      * @returns The parsed variable declaration node.
      */
     private parseVariableDeclaration(): VariableDeclarationNode {
-        console.log(`parsing variable declaration starting with token: ${this.peek()?.token.type}`);
+        this.logger.log(new KatnipLog(KatnipLogType.Debug, `parsing variable declaration starting with token: ${this.peek()?.token.type}`));
         const access = this.consume({ type: "Identifier", value: Object.values(VariableDeclarationType) }, "Expected 'private', 'temp', or 'public' keyword");
         const variableName = this.consume({ type: "Identifier" }, "Expected variable name");
         this.consume({ type: ":" }, "Expected ':' after variable name for type annotation");
@@ -571,7 +571,7 @@ export class Parser {
      * @returns The parsed expression node.
      */
     private parseExpression(minBP = 0): ExpressionNode {
-        console.log(`PREfix operator: ${this.peek()?.token.type}`);
+        this.logger.log(new KatnipLog(KatnipLogType.Debug, `PREfix operator: ${this.peek()?.token.type}`));
         let left = this.parsePrefix();
 
         while (true) {
@@ -582,11 +582,11 @@ export class Parser {
             if (!bp || bp.lbp <= minBP) break;
 
             //this.advance();
-            console.log(`Infix operator: ${this.peek()?.token.type}`);
+            this.logger.log(new KatnipLog(KatnipLogType.Debug, `Infix operator: ${this.peek()?.token.type}`));
             left = this.parseInfix(left, bp);
         }
 
-        console.log(`QUIT on: ${this.peek()?.token.type}`);
+        this.logger.log(new KatnipLog(KatnipLogType.Debug, `QUIT on: ${this.peek()?.token.type}`));
 
         return left;
     }
