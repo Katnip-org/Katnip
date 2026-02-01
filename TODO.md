@@ -2,7 +2,7 @@
 
 ## High priority
 - [x] Implement utils
-- [ ] Implement parser
+- [x] Implement parser
 - [ ] Implement semantic analysis
 - [ ] Implement ir
 - [ ] Implement codegen
@@ -14,5 +14,6 @@
 ## Misc
 - [x] Add list and dictionary literal functionality to expression parsing
 - [ ] Implement comment attaching funcitonality
-- [ ] Overhaul token system. Use enums, and change overall interface with them
+- [x] Overhaul token system. Use enums, and change overall interface with them
 - [ ] Fix redudant "src" pass in inside of `lexer.ts`
+- [ ] Fix allowing named argument inputs to procs

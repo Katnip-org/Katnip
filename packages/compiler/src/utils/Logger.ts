@@ -1,3 +1,5 @@
+import fs from "node:fs";
+import path from "node:path";
 import pc from "picocolors";
 
 export enum KatnipLogType {
@@ -19,6 +21,7 @@ export class KatnipLog {
 export class Logger {
     enabled: boolean = false;
     logs: KatnipLog[] = [];
+    private logFilePath: string;
 
     private formatters: Record<KatnipLogType, (msg: string) => string> = {
         [KatnipLogType.Info]: (msg) => pc.cyan(msg),
@@ -26,6 +29,10 @@ export class Logger {
         [KatnipLogType.Error]: (msg) => pc.red(msg),
         [KatnipLogType.Debug]: (msg) => pc.gray(msg)
     };
+
+    constructor(private writeToFile: boolean = false) {
+        this.logFilePath = path.resolve(process.cwd(), "examples", "log.txt");
+    }
 
     private sanitizeForLog(value: any): string {
         if (typeof value === "string") {
@@ -37,11 +44,13 @@ export class Logger {
     print(log: KatnipLog) {
         if (this.enabled) {
             const formatter = this.formatters[log.type];
-            const formattedMessage = formatter(
+            const baseMessage =
                 `${log.timestamp} - [${log.type}] ${this.sanitizeForLog(log.message)}` +
-                (log.location ? ` at line ${log.location.line}, column ${log.location.column}` : "")
-            );
-            console.log(formattedMessage);
+                (log.location ? ` at line ${log.location.line}, column ${log.location.column}` : "");
+            const formattedMessage = formatter(baseMessage);
+            if (this.writeToFile) {
+                fs.appendFileSync(this.logFilePath, `${baseMessage}\n`, { encoding: "utf8" });
+            }
         }
     }
 

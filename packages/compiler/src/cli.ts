@@ -30,7 +30,7 @@ yargs(hideBin(process.argv))
             .then((fileContent: string) => {
                 // Create an error reporter instance
                 const reporter = new ErrorReporter(fileContent, true);
-                const logger = new Logger();
+                const logger = new Logger(true);
                 
                 if (argv.logger === false) logger.disable();
                 else logger.enable();
@@ -63,7 +63,7 @@ yargs(hideBin(process.argv))
         fs.readFile(argv.source as PathLike, { encoding: 'utf-8' })
             .then((fileContent: string) => {
                 const reporter = new ErrorReporter(fileContent, true);
-                const logger = new Logger();
+                const logger = new Logger(true);
 
                 if (argv.logger === false) logger.disable();
                 else logger.enable();

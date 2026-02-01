@@ -24,6 +24,7 @@ export class Parser {
      * @returns The resulting AST or void if parsing fails.
      */
     parse(tokens: Token[]): AST | void {
+        this.logger.print(new KatnipLog(KatnipLogType.Info, `--- Parsing started with ${tokens.length} tokens ---`));
         this.tokens = tokens;
         this.position = 0;
 
@@ -156,6 +157,13 @@ export class Parser {
         };
     }
 
+    /**
+     * Checks whether the current token matches without consuming it.
+     * Reports an error if it does not match.
+     * @param options - Token type/value options to check.
+     * @param message - Error message to report on failure.
+     * @returns True when the token matches, false otherwise.
+     */
     private expect<T extends TokenType>(
         options: { type: T | T[]; value?: string | string[] },
         message: string
@@ -195,6 +203,12 @@ export class Parser {
         return false;
     }
 
+    /**
+     * Advances tokens until a matching type/value is found or EOF is reached.
+     * Reports an error if the end is reached without finding a match.
+     * @param options - Token type/value options to synchronize on.
+     * @param message - Error message to report on failure.
+     */
     private synchronize<T extends TokenType>(
         options: { type: T | T[]; value?: string | string[] },
         message: string
@@ -227,6 +241,10 @@ export class Parser {
         return this.parseUnionType();
     }
     
+    /**
+     * Parses a union type expression (e.g., A | B).
+     * @returns The parsed type node.
+     */
     private parseUnionType(): TypeNode {
         let left = this.parsePrimaryType();
 
@@ -243,6 +261,10 @@ export class Parser {
         return left;
     }
 
+    /**
+     * Parses a primary type, including optional generic parameters.
+     * @returns The parsed type node.
+     */
     private parsePrimaryType(): TypeNode {
         const typeNameToken = this.consume({ type: "Identifier" }, "Expected type name");
         const typeName = typeNameToken.token.value;
@@ -510,6 +532,11 @@ export class Parser {
         };
     }
 
+    /**
+     * Parses an assignment expression using a previously parsed left-hand side.
+     * @param left - The expression to assign into.
+     * @returns The assignment node or null if no assignment operator follows.
+     */
     private parseAssignmentExpression(left: ExpressionNode): VariableAssignmentNode | null {
         if (!this.checkToken("type", ["=", "+=", "-=", "*=", "/=", "%=", "**="])) {
             return null;
@@ -537,6 +564,11 @@ export class Parser {
         };
     }
 
+    /**
+     * Parses a handler declaration following a call expression.
+     * @param left - The call expression that starts the handler declaration.
+     * @returns The handler declaration node or null if not applicable.
+     */
     private parseHandlerDeclaration(left: ExpressionNode): StatementNode | null {
         if (left.type == "CallExpression" && this.checkToken("type", ["{"])) { // Handler declaration
             const body = this.parseBlockExpression();

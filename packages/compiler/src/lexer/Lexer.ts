@@ -60,6 +60,7 @@ export class Lexer {
      * @returns The tokens extracted from the source code.
      */
     tokenize(src: string): Token[] {
+        this.logger.print(new KatnipLog(KatnipLogType.Info, `--- Lexing started with ${src.length} characters ---`));
         this.src = src.replaceAll(/\x04/g, "").replaceAll("\r", ""); // Remove any existing EOF characters
         this.src += "\x04"; // EOF Sentinel
 
