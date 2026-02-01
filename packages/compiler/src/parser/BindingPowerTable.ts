@@ -7,38 +7,39 @@ interface BindingPower {
 
 export const bindingPowerTable: Record<string, BindingPower> = {
   // logical operators
-  "OR": { lbp: 20, rbp: 19 },
-  "AND": { lbp: 30, rbp: 29 },
-  "NOR": { lbp: 25, rbp: 24 },
-  "NAND": { lbp: 25, rbp: 24 },
-  "XNOR": { lbp: 25, rbp: 24 },
-  "Caret":  { lbp: 25, rbp: 24 },
+  "||": { lbp: 20, rbp: 19 },
+  "&&": { lbp: 30, rbp: 29 },
+  "!|": { lbp: 25, rbp: 24 },
+  "!&": { lbp: 25, rbp: 24 },
+  "!^": { lbp: 25, rbp: 24 },
+  "^":  { lbp: 25, rbp: 24 },
 
   // comparison operators
-  "EqualsTo": { lbp: 45, rbp: 44 },
-  "LeftChevron":  { lbp: 50, rbp: 49 },
-  "RightChevron":  { lbp: 50, rbp: 49 },
-  "LessThanOrEqualsTo": { lbp: 50, rbp: 49 },
-  "GreaterThanOrEqualsTo": { lbp: 50, rbp: 49 },
+  "==": { lbp: 45, rbp: 44 },
+  "<":  { lbp: 50, rbp: 49 },
+  ">":  { lbp: 50, rbp: 49 },
+  "<=": { lbp: 50, rbp: 49 },
+  ">=": { lbp: 50, rbp: 49 },
 
   // arithmetic operators
-  "Plus":  { lbp: 60, rbp: 59 },
-  "Minus":  { lbp: 60, rbp: 59 },
-  "Asterisk":  { lbp: 70, rbp: 69 },
-  "FwdSlash":  { lbp: 70, rbp: 69 },
-  "Percent":  { lbp: 70, rbp: 69 },
+  "+":  { lbp: 60, rbp: 59 },
+  "-":  { lbp: 60, rbp: 59 },
+  "*":  { lbp: 70, rbp: 69 },
+  "/":  { lbp: 70, rbp: 69 },
+  "%":  { lbp: 70, rbp: 69 },
 
   // right associative
-  "Power": { lbp: 80, rbp: 81 },
+  "**": { lbp: 80, rbp: 81 },
 
   // unary operators
-  "Exclamation":  { lbp: 0, rbp: 79 }, // logical not
+  "!":  { lbp: 0, rbp: 79 },
   "UnaryMinus": { lbp: 0, rbp: 79 }, // unary minus
 
   // access/call
-  "Dot":  { lbp: 100, rbp: 100 }, // member access, non-associative
-  "ParenOpen": { lbp: 110, rbp: 110 }, // function call, non-associative
-  "BracketOpen": { lbp: 110, rbp: 110 }, // indexing, non-associative
+  ".":  { lbp: 100, rbp: 100 }, // member access, non-associative
+  "(": { lbp: 110, rbp: 110 }, // function call, non-associative
+  "[": { lbp: 110, rbp: 110 }, // indexing, non-associative
+  "{": { lbp: 110, rbp: 110 }, // indexing, non-associative
 };
 
 export function getBindingPower(token: Token | null): BindingPower {

@@ -124,6 +124,8 @@ export type ExpressionNode =
     | BinaryExpressionNode
     | BlockNode
     | CallExpressionNode
+    | IndexerAccessNode
+    | SliceAccessNode
     | UnaryExpressionNode
     | MemberExpressionNode
     | ListExpressionNode
@@ -139,7 +141,7 @@ export interface IdentifierExpressionNode extends NodeBase {
 export interface LiteralExpressionNode extends NodeBase {
     type: "Literal";
     value: string | number | null;
-    valueType: "string" | "number" | "null";
+    valueType: "String" | "Number" | "Null";
 }
 
 export interface BinaryExpressionNode extends NodeBase {
@@ -156,8 +158,22 @@ export interface BlockNode extends NodeBase {
 
 export interface CallExpressionNode extends NodeBase {
     type: "CallExpression";
-    callee: ExpressionNode;
+    object: ExpressionNode;
     arguments: ExpressionNode[];
+}
+
+export interface IndexerAccessNode extends NodeBase {
+    type: "IndexerAccess";
+    object: ExpressionNode;
+    index: ExpressionNode;
+}
+
+export interface SliceAccessNode extends NodeBase {
+    type: "SliceAccess";
+    object: ExpressionNode;
+    start: ExpressionNode;
+    end: ExpressionNode;
+    step: ExpressionNode | null;
 }
 
 export interface UnaryExpressionNode extends NodeBase {

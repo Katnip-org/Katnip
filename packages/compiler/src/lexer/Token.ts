@@ -79,6 +79,7 @@ export const UnitTokenType = {
     PlusEquals: "+=",
     MinusEquals: "-=",
     AsteriskEquals: "*=",
+    PowerEquals: "**=",
     FwdSlashEquals: "/=",
     PercentEquals: "%=",
 

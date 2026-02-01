@@ -1,5 +1,6 @@
 proc log(msg: str) -> void {
-    console.log(msg += 2);
+    msg += 2;
+    console.log(msg);
 }
 
 proc score(
@@ -13,4 +14,6 @@ proc score(
     exponent: num
 ) -> num {
     return(math.pow(base, exponent));
+    # OR
+    return(base ** exponent);
 }

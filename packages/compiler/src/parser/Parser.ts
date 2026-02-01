@@ -2,11 +2,12 @@
  * @fileoverview Contains the main parser class for the Katnip compiler.
  */
 
-import { isValuedTokenType } from "../lexer/Token.js";
+import { isValuedTokenType, UnitTokenType } from "../lexer/Token.js";
 import type { Token, TokenInfoFor, TokenPos, TokenType, ValuedToken, ValuedTokenType } from "../lexer/Token.js";
 import { ErrorReporter, KatnipError } from "../utils/ErrorReporter.js";
 import { Logger } from "../utils/Logger.js";
-import { type AST, type DecoratorNode, type NodeBase, type ParameterNode, type ProcedureDeclarationNode, type SingleTypeNode, type TypeNode, type UnionTypeNode, type ExpressionNode, type DictEntryNode, type StatementNode, type EnumDeclarationNode, type VariableDeclarationNode, VariableDeclarationType, type VariableAssignmentNode } from "./AST-nodes.js";
+import { isAssignmentOperator } from "./AssignmentOperators.js";
+import { type AST, type DecoratorNode, type NodeBase, type ParameterNode, type ProcedureDeclarationNode, type SingleTypeNode, type TypeNode, type UnionTypeNode, type ExpressionNode, type StatementNode, type EnumDeclarationNode, type VariableDeclarationNode, VariableDeclarationType, type VariableAssignmentNode, type DictEntryNode } from "./AST-nodes.js";
 import { bindingPowerTable, getBindingPower } from "./BindingPowerTable.js";
 
 export class Parser {
@@ -230,7 +231,7 @@ export class Parser {
     private parseUnionType(): TypeNode {
         let left = this.parsePrimaryType();
 
-        while (this.tryConsume("type", ["Pipe"])) {
+        while (this.tryConsume("type", ["|"])) {
             const right = this.parsePrimaryType();
             left = {
                 type: "UnionType",
@@ -247,13 +248,13 @@ export class Parser {
         const typeNameToken = this.consume({ type: "Identifier" }, "Expected type name");
         const typeName = typeNameToken.token.value;
 
-        if (this.tryConsume("type", ["LeftChevron"])) {
+        if (this.tryConsume("type", ["<"])) {
             const typeParams: TypeNode[] = [];
 
-            while (!this.checkToken("type", ["RightChevron"])) {
+            while (!this.checkToken("type", [">"])) {
                 typeParams.push(this.parseTypeAnnotation());
 
-                if (!this.tryConsume("type", ["Comma"]) && !this.checkToken("type", ["RightChevron"])) {
+                if (!this.tryConsume("type", [","]) && !this.checkToken("type", [">"])) {
                     this.reporter.add(
                         new KatnipError(
                             "Parser",
@@ -312,6 +313,29 @@ export class Parser {
                 return handlerDeclaration;
             }
 
+            if (this.checkToken("type", ["=", "+=", "-=", "*=", "/=", "%=", "**="])) {
+                const assginmentOperator = this.consume({ type: [
+                    UnitTokenType.Equals, 
+                    UnitTokenType.PlusEquals, 
+                    UnitTokenType.MinusEquals, 
+                    UnitTokenType.AsteriskEquals, 
+                    UnitTokenType.FwdSlashEquals, 
+                    UnitTokenType.PercentEquals, 
+                    UnitTokenType.PowerEquals
+                ] }, "Expected assignment operator").token.type;
+                
+                const right = this.parseExpression();
+                this.consume({ type: ";" }, "Expected semicolon at the end of an expression statement");
+                
+                return {
+                    type: "VariableAssignment",
+                    operator: assginmentOperator,
+                    left: expression,
+                    right: right,
+                    loc: { start: expression.loc.start, end: right.loc.end }
+                };
+            }
+
             this.consume({ type: ";" }, "Expected semicolon at the end of an expression statement");
             return {
                 type: "ExpressionStatement",
@@ -368,7 +392,7 @@ export class Parser {
                         decoratorValue = {
                             type: "Literal", 
                             value: "true", 
-                            valueType: "string", 
+                            valueType: "String", 
                             loc: { 
                                 start: decoratorNameToken.start, 
                                 end: decoratorNameToken.end 
@@ -410,7 +434,7 @@ export class Parser {
                     });
                 }
 
-                if (!this.checkToken("type", ["ParenClose"])) {
+                if (!this.checkToken("type", [")"])) {
                     this.consume(
                         { type: "," },
                         "Expected ',' or ')'"
@@ -429,7 +453,7 @@ export class Parser {
         this.consume({ type: "{" }, "Expected open curly brace '{' for procedure body");
 
         const body: StatementNode[] = [];
-        while (!this.isAtEnd() && !this.checkToken("type", ["BraceClose"])) {
+        while (!this.isAtEnd() && !this.checkToken("type", ["}"])) {
             const stmt = this.parseStatement();
             if (stmt) body.push(stmt);
         }
@@ -467,7 +491,7 @@ export class Parser {
 
             if (!this.tryConsume("type", [","]) && !this.checkToken("type", ["}"])) {
                 this.reporter.add(
-                    new KatnipError("Parser", "Expected ',' or ')'", this.peek()?.start || { line: -1, column: -1 })
+                    new KatnipError("Parser", "Expected ',' or '}'", this.peek()?.start || { line: -1, column: -1 })
                 );
             }
         }
@@ -606,10 +630,10 @@ export class Parser {
         // Bracket expression
         if (this.tryConsume("type", ["["])) {
             const listContents: ExpressionNode[] = [];
-            while (!this.checkToken("type", [",", "]"])) {
+            do {
                 listContents.push(this.parseExpression());
                 this.tryConsume("type", [","]);
-            }
+            } while (!this.checkToken("type", ["]"]));
 
             this.consume({ type: "]" }, "Expected ']' after list expression");
             return {
@@ -621,20 +645,35 @@ export class Parser {
 
         // Dictionary expression
         if (this.tryConsume("type", ["{"])) {
-            const dictionaryContents: DictEntryNode[] = [];
-            while (!this.checkToken("type", ["Comma", "}"])) {
-                const key = this.parseExpression();
-                this.consume({ type: ":" }, "Expected ':' between dictionary key and value");
-                const value = this.parseExpression();
-                dictionaryContents.push({ key, value });
-                this.tryConsume("type", [","]);
-            }
+            const curlyArgs: DictEntryNode[] = [];
+            if (!this.checkToken("type", ["}"])) {
+                do {
+                    const keyToken = this.consume({ type: ["String", "Number", "Identifier"] }, "Expected string or number literal or identifier as dictionary key").token;
+                    this.consume({ type: ":" }, "Expected ':' after dictionary key" );
+                    const value = this.parseExpression();
 
-            this.consume({ type: "}" }, "Expected '}' after dictionary expression");
+                    let type: "String" | "Number" | "Null" = "Null";
+                    if (
+                        keyToken.type === "String" ||
+                        keyToken.type === "Identifier"
+                    ) {
+                        type = "String";
+                    } else if (keyToken.type === "Number") {
+                        type = "Number";
+                    }
+
+                    curlyArgs.push({ key: { type: "Literal", value: keyToken.value, valueType: type, loc: { start: token.start, end: token.end } }, value });
+                } while (this.tryConsume("type", [","]));
+            }
+            this.consume({ type: "}" }, "Expected '}' after parameters");
+
             return {
                 type: "DictExpression",
-                entries: dictionaryContents,
-                loc: { start: token.start, end: this.previous()!.end }
+                entries: curlyArgs,
+                loc: {
+                    start: token.start,
+                    end: this.previous()!.end,
+                },
             };
         }
 
@@ -654,7 +693,7 @@ export class Parser {
             return {
                 type: "Literal",
                 value: lit.token.value,
-                valueType: "string",
+                valueType: "String",
                 loc: { start: lit.start, end: lit.end },
             } as ExpressionNode;
         }
@@ -665,7 +704,7 @@ export class Parser {
             return {
                 type: "Literal",
                 value: Number(lit.token.value),
-                valueType: "number",
+                valueType: "Number",
                 loc: { start: lit.start, end: lit.end },
             } as ExpressionNode;
         }
@@ -701,37 +740,86 @@ export class Parser {
             this.reporter.add(new KatnipError("Parser", "Unexpected end of input in infix expression", left.loc?.end || { line: -1, column: -1 }));
             return { type: "ErrorToken", value: "", loc: left.loc || { start: { line: -1, column: -1 }, end: { line: -1, column: -1 } } } as ExpressionNode;
         }
-        const tokenType = token.token.type;
 
-        // Function call: token type is ParenOpen
-        if (tokenType === "(") {
+        if (this.checkToken("type", ["("])) {
             this.advance();
-            const args: ExpressionNode[] = [];
+            const parenArgs: ExpressionNode[] = [];
             if (!this.checkToken("type", [")"])) {
                 do {
-                    args.push(this.parseExpression());
+                    parenArgs.push(this.parseExpression());
                 } while (this.tryConsume("type", [","]));
             }
             this.consume({ type: ")" }, "Expected ')' after parameters");
 
             return {
                 type: "CallExpression",
-                callee: left,
-                arguments: args,
-                loc: { start: left.loc.start, end: this.peek()?.end || token.end },
+                object: left,
+                arguments: parenArgs,
+                loc: {
+                    start: left.loc.start,
+                    end: this.peek()?.end || token.end,
+                },
+            };
+        }
+    
+        if (this.checkToken("type", ["["])) {
+            this.advance();
+
+            const sliceStart = this.parseExpression();
+            let sliceEnd: ExpressionNode | null = null;
+            let sliceStep: ExpressionNode | null = null;
+            if (this.tryConsume("type", [":"])) {
+                sliceEnd = this.parseExpression();
+                if (this.tryConsume("type", [":"])) {
+                    sliceStep = this.parseExpression();
+                }
+            }
+            this.consume({ type: "]" }, "Expected ']' after parameters");
+
+            if (sliceEnd === null && sliceStep === null) {
+                return {
+                    type: "IndexerAccess",
+                    object: left,
+                    index: sliceStart,
+                    loc: {
+                        start: left.loc.start,
+                        end: this.peek()?.end || token.end,
+                    },
+                }
+            }
+
+            return {
+                type: "SliceAccess",
+                object: left,
+                start: sliceStart,
+                end: sliceEnd!,
+                step: sliceStep,
+                loc: {
+                    start: left.loc.start,
+                    end: this.peek()?.end || token.end,
+                },
             };
         }
 
-        // Member access: token type is Dot
-        if (tokenType === ".") {
-            this.advance();
-            const id = this.consume({ type: "Identifier" }, "Expected property name after '.'");
-            return {
+        if (this.checkToken("type", ["."])) {
+            // Member access
+            if (this.checkToken("type", ["."])) {
+              this.advance();
+              const id = this.consume(
+                { type: "Identifier" },
+                "Expected property name after '.'",
+              );
+              return {
                 type: "MemberExpression",
                 object: left,
-                property: { type: "Identifier", name: id.token.value, loc: { start: id.start, end: id.end } },
+                property: {
+                  type: "Identifier",
+                  name: id.token.value,
+                  loc: { start: id.start, end: id.end },
+                },
                 loc: { start: left.loc.start, end: id.end },
-            } as ExpressionNode;
+              } as ExpressionNode;
+            }
         }
 
         // Binary operator (fallback). Use binding power to parse right-hand side.
