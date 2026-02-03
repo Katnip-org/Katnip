@@ -17,3 +17,5 @@
 - [x] Overhaul token system. Use enums, and change overall interface with them
 - [ ] Fix redudant "src" pass in inside of `lexer.ts`
 - [ ] Fix allowing named argument inputs to procs
+- [ ] Fix 'else' and 'elif' keywords (aka implement logic or them)
+- [x] Finish implementing interpolated strings in parser

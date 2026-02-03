@@ -101,6 +101,8 @@ onFlag(){
 
         if(speed > 6 && power > 6){
             console.log("Strong move!");
+        } elif (speed < 5) {
+            console.log("Fast move!");
         } else {
             console.log("Weak stats.");
         }
@@ -129,7 +131,7 @@ onFlag(){
     move(enum.directions.RIGHT, 8);
 
     # Log the current position
-    console.log(f"Current position: {motion.getPosition() + 5 ** 10}");
+    # console.log(f"Current position: {motion.getPosition() + 5 ** 10}");
 }
 
 # Turtle draw implementation

@@ -339,7 +339,7 @@ export class Parser {
      * @returns The parsed statement or an error token.
      */
     private parseStatement(): StatementNode | null{
-        this.logger.log(new KatnipLog(KatnipLogType.Debug, `parsing statement starting with token: ${this.peek()?.token.type} | value: ${isValuedTokenType(this.peek()?.token.type || "EOF") ? (this.peek()?.token as ValuedToken).value : "N/A"}`));
+        this.logger.log(new KatnipLog(KatnipLogType.Debug, `parsing statement starting with token: ${this.peek()?.token.type} | value: ${isValuedTokenType(this.peek()?.token.type || "<EOF>") ? (this.peek()?.token as ValuedToken).value : "N/A"}`));
         if (this.checkToken("value", ["proc"]) && !(this.peek(1)?.token.type === ".")) return this.parseProcedureDefinition();
         if (this.checkToken("value", ["enum"])) return this.parseEnumDefinition();
         if (this.checkToken("type", ["Comment_SingleExpanded", "Comment_SingleCollapsed", "Comment_MultilineExpanded", "Comment_MultilineCollapsed"])) {
@@ -642,6 +642,64 @@ export class Parser {
         return left;
     }
 
+    private canStartExpression(token: Token | null): boolean {
+        if (!token) return false;
+        const type = token.token.type;
+        return (
+            type === "Identifier" ||
+            type === "Number" ||
+            type === "String" ||
+            type === "InterpolatedString" ||
+            type === "(" ||
+            type === "[" ||
+            type === "{" ||
+            type === "!" ||
+            type === "-"
+        );
+    }
+
+    private parseInterpolatedString(): ExpressionNode {
+        const startToken = this.consume({ type: "InterpolatedString" }, "Expected interpolated string literal");
+        const parts: (string | ExpressionNode)[] = [];
+        parts.push(startToken.token.value);
+
+        let end = startToken.end;
+
+        while (this.canStartExpression(this.peek())) {
+            const expr = this.parseExpression();
+            parts.push(expr);
+            end = expr.loc.end;
+
+            if (!this.checkToken("type", ["InterpolatedStringEnd"])) {
+                this.reporter.add(
+                    new KatnipError(
+                        "Parser",
+                        "Expected end of interpolated expression '}'",
+                        this.peek()?.start ?? expr.loc.end
+                    )
+                );
+                break;
+            }
+
+            const endToken = this.consume({ type: "InterpolatedStringEnd" }, "Expected end of interpolated expression '}'");
+            end = endToken.end;
+
+            if (!this.checkToken("type", ["InterpolatedString"])) {
+                break;
+            }
+
+            const nextChunk = this.consume({ type: "InterpolatedString" }, "Expected interpolated string chunk");
+            parts.push(nextChunk.token.value);
+            end = nextChunk.end;
+        }
+
+        return {
+            type: "InterpolatedString",
+            parts,
+            loc: { start: startToken.start, end }
+        } as ExpressionNode;
+    }
+
     /**
      * Parses the prefix part of an expression.
      * @returns The parsed expression node.
@@ -763,6 +821,10 @@ export class Parser {
             } as ExpressionNode;
         }
 
+        if (this.checkToken("type", ["InterpolatedString"])) {
+            return this.parseInterpolatedString();
+        }
+
         // Number literal
         if (this.checkToken("type", ["Number"])) {
             const lit = this.consume({ type: "Number" }, "Expected number literal");
@@ -775,7 +837,7 @@ export class Parser {
         }
 
         // EOF
-        if (this.checkToken("type", ["EOF"])) {
+        if (this.checkToken("type", ["<EOF>"])) {
             return { type: "ErrorToken", value: "", loc: { start: token.start, end: token.end } } as ExpressionNode;
         }
 

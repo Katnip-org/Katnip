@@ -96,8 +96,6 @@ export class Lexer {
             this.processChar(char);
         }
 
-        this.buffer = "\x04";
-        this.emit("<EOF>"); // Emit EOF token at the end
         return this.tokens;
     }
 
@@ -108,7 +106,7 @@ export class Lexer {
      */
     private emit(type: TokenType): void {
         if (isValuedTokenType(type)) {
-            if (type !== "String" && type !== "InterpolatedString" && type !== "InsideInterpolatedString") {
+            if (type !== "String" && type !== "InterpolatedString" && type !== "InterpolatedStringEnd") {
                 this.buffer = this.buffer.trim();
             }
             this.tokens.push({
@@ -269,8 +267,11 @@ export class Lexer {
             case LexerState.InterpolatedExpression:
                 if (char === "}") {
                     if (this.interpolatedBraceDepth === 0) {
+                        this.lineStart = this.line;
+                        this.colStart = this.col;
                         this.advance();
                         this.inInterpolatedExpression = false;
+                        this.emit("InterpolatedStringEnd");
                         this.currentState = LexerState.String;
                         this.colStart = this.col;
                         this.lineStart = this.line;

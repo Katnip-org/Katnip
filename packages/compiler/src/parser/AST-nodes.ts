@@ -104,7 +104,6 @@ export interface VariableDeclarationNode extends NodeBase {
     initializer?: ExpressionNode;
 }
 
-
 export interface VariableAssignmentNode extends NodeBase {
     type: "VariableAssignment";
     operator: string;
@@ -121,6 +120,7 @@ export interface ErrorStatementNode extends NodeBase {
 export type ExpressionNode =
   | IdentifierExpressionNode
   | LiteralExpressionNode
+  | InterpolatedStringExpressionNode
   | BinaryExpressionNode
   | BlockNode
   | CallExpressionNode
@@ -143,6 +143,11 @@ export interface LiteralExpressionNode extends NodeBase {
     type: "Literal";
     value: string | number | null;
     valueType: "String" | "Number" | "Null";
+}
+
+export interface InterpolatedStringExpressionNode extends NodeBase {
+    type: "InterpolatedString";
+    parts: (string | ExpressionNode)[];
 }
 
 export interface BinaryExpressionNode extends NodeBase {

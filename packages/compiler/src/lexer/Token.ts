@@ -7,7 +7,7 @@ export const ValuedTokenType = {
     // Literals
     String: "String",
     InterpolatedString: "InterpolatedString",
-    InsideInterpolatedString: "InsideInterpolatedString",
+    InterpolatedStringEnd: "InterpolatedStringEnd",
     Number: "Number",
 
     // Comments
