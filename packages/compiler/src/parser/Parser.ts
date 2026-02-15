@@ -6,7 +6,7 @@ import { isValuedTokenType, UnitTokenType } from "../lexer/Token.js";
 import type { Token, TokenInfoFor, TokenPos, TokenType, ValuedToken, ValuedTokenType } from "../lexer/Token.js";
 import { ErrorReporter, KatnipError } from "../utils/ErrorReporter.js";
 import { KatnipLog, KatnipLogType, Logger } from "../utils/Logger.js";
-import { type AST, type DecoratorNode, type NodeBase, type ParameterNode, type ProcedureDeclarationNode, type SingleTypeNode, type TypeNode, type UnionTypeNode, type ExpressionNode, type StatementNode, type EnumDeclarationNode, type VariableDeclarationNode, VariableDeclarationType, type VariableAssignmentNode, type DictEntryNode } from "./AST-nodes.js";
+import { type AST, type DecoratorNode, type NodeBase, type ParameterNode, type ProcedureDeclarationNode, type SingleTypeNode, type TypeNode, type UnionTypeNode, type ExpressionNode, type StatementNode, type EnumDeclarationNode, type VariableDeclarationNode, VariableDeclarationType, type VariableAssignmentNode, type DictEntryNode, type ElifClauseNode, type BlockNode } from "./AST-nodes.js";
 import { bindingPowerTable, getBindingPower } from "./BindingPowerTable.js";
 
 export class Parser {
@@ -353,6 +353,12 @@ export class Parser {
                 return this.parseVariableDeclaration();
             }
 
+            if (this.checkToken("value", ["if"])) return this.parseIfStatement();
+            if (this.checkToken("value", ["for"])) return this.parseForStatement();
+            if (this.checkToken("value", ["while"])) return this.parseWhileStatement();
+            if (this.checkToken("value", ["do"])) return this.parseDoWhileStatement();
+
+
             // Parse an expression statement
             const expression: ExpressionNode = this.parseExpression();
             const assignmentExpression = this.parseAssignmentExpression(expression);
@@ -601,20 +607,214 @@ export class Parser {
      * @returns The handler declaration node or null if not applicable.
      */
     private parseHandlerDeclaration(left: ExpressionNode): StatementNode | null {
-        if (left.type == "CallExpression" && this.checkToken("type", ["{"])) { // Handler declaration
+        if (left.type == "CallExpression" && this.checkToken("type", ["{"])) {
             const body = this.parseBlockExpression();
+            
             return {
-                type: "HandlerDeclaration",
+                type: "HandlerStatement",
                 call: left,
                 body: {
                     type: "Block",
                     body: body,
-                    loc: { start: body[0]?.loc.start || left.loc.start, end: body[body.length - 1]?.loc.end || left.loc.end },
+                    loc: {
+                        start: body[0]?.loc.start || left.loc.start,
+                        end: body[body.length - 1]?.loc.end || left.loc.end,
+                    },
                 },
-                loc: { start: left.loc.start, end: body[body.length - 1]?.loc.end || left.loc.end }
+                loc: {
+                    start: left.loc.start,
+                    end: body[body.length - 1]?.loc.end || left.loc.end,
+                },
             };
         }
         return null;
+    }
+
+    /**
+     * Parses a for statement from the token list.
+     * @returns The parsed for statement node.
+     */
+    private parseForStatement(): StatementNode {
+        this.consume({ type: "Identifier", value: "for" }, "Expected 'for' keyword");
+        this.consume({ type: "(" }, "Expected '(' after 'for'");
+
+        const rawPattern = this.parseExpression();
+        let pattern: ExpressionNode;
+        if (rawPattern.type === "Identifier" || rawPattern.type === "TupleExpression") {
+            pattern = rawPattern;
+        } else {
+            this.reporter.add(
+                new KatnipError(
+                    "Parser",
+                    "Expected identifier or tuple pattern in for loop",
+                    rawPattern.loc.start
+                )
+            );
+            pattern = {
+                type: "Identifier",
+                name: "_",
+                loc: rawPattern.loc
+            } as ExpressionNode;
+        }
+
+        this.consume({ type: "," }, "Expected ',' after for loop pattern");
+        const iterable = this.parseExpression();
+        this.consume({ type: ")" }, "Expected ')' after for loop iterable");
+
+        const bodyExpression = this.parseBlockExpression();
+        const body = {
+            type: "Block",
+            body: bodyExpression,
+            loc: {
+                start: bodyExpression[0]?.loc.start || iterable.loc.end,
+                end: bodyExpression[bodyExpression.length - 1]?.loc.end || iterable.loc.end
+            }
+        } satisfies BlockNode;
+
+        return {
+            type: "ForStatement",
+            pattern: pattern as Extract<ExpressionNode, { type: "Identifier" | "TupleExpression" }>,
+            iterable,
+            body,
+            loc: {
+                start: pattern.loc.start,
+                end: body.loc.end
+            }
+        };
+    }
+
+    /**
+     * Parses a while statement from the token list.
+     * @returns The parsed while statement node.
+     */
+    private parseWhileStatement(): StatementNode {
+        this.consume({ type: "Identifier", value: "while" }, "Expected 'while' keyword");
+        this.consume({ type: "(" }, "Expected '(' after 'while'");
+        const condition = this.parseExpression();
+        this.consume({ type: ")" }, "Expected ')' after while condition");
+
+        const bodyExpression = this.parseBlockExpression();
+        const body = {
+            type: "Block",
+            body: bodyExpression,
+            loc: {
+                start: bodyExpression[0]?.loc.start || condition.loc.end,
+                end: bodyExpression[bodyExpression.length - 1]?.loc.end || condition.loc.end
+            }
+        } satisfies BlockNode;
+
+        return {
+            type: "WhileStatement",
+            condition,
+            body,
+            loc: {
+                start: condition.loc.start,
+                end: body.loc.end
+            }
+        };
+    }
+
+    /**
+     * Parses a do-while statement from the token list.
+     * @returns The parsed do-while statement node.
+     */
+    private parseDoWhileStatement(): StatementNode {
+        this.consume({ type: "Identifier", value: "do" }, "Expected 'do' keyword");
+
+        const bodyExpression = this.parseBlockExpression();
+        const body = {
+            type: "Block",
+            body: bodyExpression,
+            loc: {
+                start: bodyExpression[0]?.loc.start || this.previous()?.start || { line: -1, column: -1 },
+                end: bodyExpression[bodyExpression.length - 1]?.loc.end || this.previous()?.end || { line: -1, column: -1 }
+            }
+        } satisfies BlockNode;
+
+        this.consume({ type: "Identifier", value: "while" }, "Expected 'while' after do block");
+        this.consume({ type: "(" }, "Expected '(' after 'while'");
+        const condition = this.parseExpression();
+        this.consume({ type: ")" }, "Expected ')' after do-while condition");
+        this.tryConsume("type", [";"]);
+
+        return {
+            type: "DoWhileStatement",
+            condition,
+            body,
+            loc: {
+                start: body.loc.start,
+                end: this.previous()?.end || condition.loc.end
+            }
+        };
+    }
+
+    /**
+     * Parses an if/elif/else statement from the token list.
+     * @returns The parsed if statement node.
+     */
+    private parseIfStatement(): StatementNode {
+        this.consume({ type: "Identifier", value: "if" }, "Expected 'if' keyword");
+        this.consume({ type: "(" }, "Expected '(' after 'if'");
+        const condition = this.parseExpression();
+        this.consume({ type: ")" }, "Expected ')' after if condition");
+        const thenBlockExpression = this.parseBlockExpression();
+        const thenBlock = {
+            type: "Block",
+            body: thenBlockExpression,
+            loc: {
+                start: thenBlockExpression[0]?.loc.start || condition.loc.end,
+                end: thenBlockExpression[thenBlockExpression.length - 1]?.loc.end || condition.loc.end
+            }
+        } satisfies BlockNode;
+        
+        const elifs: ElifClauseNode[] = [];
+        while (this.tryConsume("value", ["elif"])) {
+            this.consume({ type: "(" }, "Expected '(' after 'elif'");
+            const elifCondition = this.parseExpression();
+            this.consume({ type: ")" }, "Expected ')' after elif condition");
+            const elifBlock = this.parseBlockExpression();
+            elifs.push({
+                type: "ElifClause",
+                condition: elifCondition,
+                block: {
+                    type: "Block",
+                    body: elifBlock,
+                    loc: {
+                        start: elifBlock[0]?.loc.start || elifCondition.loc.start,
+                        end: elifBlock[elifBlock.length - 1]?.loc.end || elifCondition.loc.end
+                    }
+                },
+                loc: {
+                    start: elifCondition.loc.start,
+                    end: elifBlock[elifBlock.length - 1]?.loc.end || elifCondition.loc.end
+                }
+            });
+        }
+
+        let elseBlock  = null;
+        if (this.tryConsume("value", ["else"])) {
+            const elseBlockExpression = this.parseBlockExpression();
+            elseBlock = {
+                type: "Block",
+                body: elseBlockExpression,
+                loc: {
+                    start: elseBlockExpression[0]?.loc.start || this.peek()?.start || condition.loc.end,
+                    end: elseBlockExpression[elseBlockExpression.length - 1]?.loc.end || this.peek()?.end || condition.loc.end
+                }
+            } satisfies BlockNode;
+        }
+
+        return {
+            type: "IfStatement",
+            condition,
+            thenBlock,
+            elifs,
+            elseBlock,
+            loc: {
+                start: condition.loc.start,
+                end: elseBlock ? elseBlock.loc.end : thenBlock.loc.end
+            }
+        };
     }
 
     /**
@@ -642,6 +842,11 @@ export class Parser {
         return left;
     }
 
+    /**
+     * Checks whether a token can begin an expression.
+     * @param token - The token to evaluate.
+     * @returns True when the token can start an expression, otherwise false.
+     */
     private canStartExpression(token: Token | null): boolean {
         if (!token) return false;
         const type = token.token.type;
@@ -658,6 +863,10 @@ export class Parser {
         );
     }
 
+    /**
+     * Parses an interpolated string expression.
+     * @returns The parsed interpolated string expression node.
+     */
     private parseInterpolatedString(): ExpressionNode {
         const startToken = this.consume({ type: "InterpolatedString" }, "Expected interpolated string literal");
         const parts: (string | ExpressionNode)[] = [];

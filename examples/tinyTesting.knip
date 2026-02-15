@@ -1,3 +1,0 @@
-events.onflag() {
-    looks.say(f"{const.pi} Hello from tinyTesting.knip! ");
-}

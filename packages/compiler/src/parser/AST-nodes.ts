@@ -71,18 +71,60 @@ export interface EnumDeclarationNode extends NodeBase {
 
 // Statement Nodes
 export type StatementNode =
-    | ExpressionStatementNode
-    | VariableDeclarationNode
-    | VariableAssignmentNode
-    | HandlerDeclarationNode
-    | ProcedureDeclarationNode
-    | EnumDeclarationNode
-    | ErrorStatementNode;
+  | ExpressionStatementNode
+  | VariableDeclarationNode
+  | VariableAssignmentNode
+  | HandlerStatementNode
+  | IfStatementNode
+  | WhileStatementNode
+  | DoWhileStatementNode
+  | ForStatementNode
+  | ProcedureDeclarationNode
+  | EnumDeclarationNode
+  | ErrorStatementNode;
 
-export interface HandlerDeclarationNode extends NodeBase {
-    type: "HandlerDeclaration";
-    call: CallExpressionNode;
+export interface BlockNode extends NodeBase {
+    type: "Block";
+    body: StatementNode[];
+}
+
+export interface BlockStatementBase extends NodeBase {
     body: BlockNode;
+}
+
+export interface HandlerStatementNode extends BlockStatementBase {
+    type: "HandlerStatement";
+    call: CallExpressionNode;
+}
+
+export interface ElifClauseNode extends NodeBase {
+    type: "ElifClause";
+    condition: ExpressionNode;
+    block: BlockNode;
+}
+
+export interface IfStatementNode extends NodeBase {
+    type: "IfStatement";
+    condition: ExpressionNode;
+    thenBlock: BlockNode;
+    elifs: ElifClauseNode[];
+    elseBlock: BlockNode | null;
+}
+
+export interface WhileStatementNode extends BlockStatementBase {
+    type: "WhileStatement";
+    condition: ExpressionNode;
+}
+
+export interface DoWhileStatementNode extends BlockStatementBase {
+    type: "DoWhileStatement";
+    condition: ExpressionNode;
+}
+
+export interface ForStatementNode extends BlockStatementBase {
+    type: "ForStatement";
+    pattern: (IdentifierExpressionNode | TupleExpressionNode);
+    iterable: ExpressionNode;
 }
 
 export interface ExpressionStatementNode extends NodeBase {
@@ -122,7 +164,6 @@ export type ExpressionNode =
   | LiteralExpressionNode
   | InterpolatedStringExpressionNode
   | BinaryExpressionNode
-  | BlockNode
   | CallExpressionNode
   | IndexerAccessNode
   | SliceAccessNode
@@ -157,15 +198,16 @@ export interface BinaryExpressionNode extends NodeBase {
     right: ExpressionNode;
 }
 
-export interface BlockNode extends NodeBase {
-    type: "Block";
-    body: StatementNode[];
+export interface NamedArgumentNode extends NodeBase {
+    type: "NamedArgument";
+    name: string;
+    value: ExpressionNode;
 }
 
 export interface CallExpressionNode extends NodeBase {
     type: "CallExpression";
     object: ExpressionNode;
-    arguments: ExpressionNode[];
+    arguments: (ExpressionNode | NamedArgumentNode)[];
 }
 
 export interface IndexerAccessNode extends NodeBase {
