@@ -1,0 +1,6 @@
+#!/bin/sh
+
+git log --pretty=format:"%h %ad %s" --date=short > commit_log.txt
+git add commit_log.txt
+
+exit 0

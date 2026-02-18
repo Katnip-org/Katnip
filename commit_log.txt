@@ -1,0 +1,53 @@
+3a64e03 2026-02-15 Implemented for loops, if and if-else statements, do while and while statements, as well as added support for named parameters
+679b0b1 2026-02-02 Finished adding interpolated strings into the parser
+9baa264 2026-02-01 Implemented tuples in parser, and finished lexer implementation of interpolated (f) strings. Need to finish parser implmeentation of them though
+a098f51 2026-02-01 Implemented tuples in parser, and finished lexer implementation of interpolated (f) strings. Need to finish parser implmeentation of them though
+813fdcb 2026-01-31 Updated logger statements to log to a file with a flag inside Logger construcutor
+7de458c 2026-01-31 Removed quotes from string capture, fixed cli to correctly check for debugger flag
+8566065 2026-01-31 Fixed bug with having { inside pratt parser binding table, and consolidated assignment operator logic
+28da4cd 2026-01-31 Changed print statements into logger statements to avoid clutter in terminal
+b517cf2 2026-01-31 Added updated prefix support for dictionaries, added infix support for list indexing, added assignment operators
+669fa5f 2026-01-26 Implemented tries to consume largest possible operator thats still valid. Hopefully the last time I make a big change to the lexer
+44daecc 2026-01-02 Fixed consumption error with parameters. Fixed multi-character emissions
+81a118f 2025-12-29 Very functional parser now, with bug fixes in parser for numbers and repeating symbols causing issues. Fixed token consuming causing errors in parser. Implemented stack trace for errors for debugging purposes.
+8c1ff33 2025-12-27 Fixed some of the errors, though it feels hacky. A small check for opening braces was put inside the parseStatement function
+b3e3725 2025-12-26 Partial fix to parser - Still parser errors on newline and end of line tokens
+96f9f9e 2025-08-19 Lexer structure overhaul to better match the parser
+980bb55 2025-08-18 Fixed logging function to sanitize. Added typing and type understanding to the parser. Added newline tokens as well for end of expression testing.
+56c7b3e 2025-08-16 Finished implementing enum parsing; finalized enum syntax
+1cc85a3 2025-08-16 Finished parseProcedureDefinition method; Refactored many parser helper functions to better fit the style of tokens, condensing redundancy
+2b0040a 2025-08-15 Working on parser - added examples to parse. Parser currently disfunctional, but has many functions outlined
+7a54250 2025-08-03 Fixed +/- token seperation in exponential notation numbers
+5dc5687 2025-08-03 Renamed SembolTable to SymbolTable, edited cli and index to work better together, added error msgs and log messages, case checking for numbers with more than 1 "e" for exponential notation
+7d015d9 2025-08-03 Add initial project structure with TypeScript setup, lexer implementation, and basic CLI commands
+e8af994 2025-07-18 Cleaned branch for svelte project creation. Overhaul start
+aca305c 2025-05-06 created some settings stuff, and updated app a bit - moving to new ide so im packing up
+b367d28 2025-04-18 further progress on typing and tokenizer
+a7a5b38 2025-02-24 further progress. added liscense and typing syntax
+60c2d3b 2025-02-09 Finished tokenizer, working on parser. Overhauled error system to be a class, which stores project ID
+8a58319 2025-01-23 Formatting and directory errors fixed
+9702754 2025-01-22 Fixed paths to use os.path.join to allow mac and linux support
+37c4ea9 2025-01-22 Partial release for the website. Complete file overhaul, and structure rearrange. Added functions, and more examples to follow. Added flask app + created an editor
+1805606 2024-12-15 Comment fix with extension_stack blocks with the way they handle their argument heights
+57f868d 2024-12-14 fixed commands. Slight misrecording of hacked blocks
+b9010e3 2024-12-14 README.md completed
+ee8ff9a 2024-12-13 updated readme with links
+d3751da 2024-12-13 added readme. Will make better later
+eed50a4 2024-12-13 slight edits to miswritten code
+5ba9f61 2024-12-13 DONE! Else implemented. Gonna release here in a sec. Custom blocks for next tiny update!
+92e8506 2024-12-11 technically everything works now. I don't like how else statements work, so I am going to rework that
+f6f4a69 2024-12-10 comment fixes
+6159a9f 2024-12-08 Added comment support. Added a couple more script tests as well
+d791ee2 2024-12-07 fully (ish) functional. Just need to add custom blocks, but then everything is in order
+04f9b0a 2024-12-07 Updated commands.txt to contain menus and options (which apparently use their own block with opcode) as well as adding some missing blocks
+600debc 2024-12-06 Added {} in commands.txt to denote possible options. This might potentially be used later when making an editor for it. Also fixed some errors in commands.txt found by my validation code 😄
+4f48b07 2024-12-06 Added (almost) every single block in scratch to commands.txt to be used. Still working on custom blocks
+39db209 2024-12-06 Reorganized code, as well as documenting functions, and added comments. Big commit!!
+5ca95b2 2024-12-06 Re-added projects to gitignore to stop updating
+f94d7cb 2024-12-06 Added projects folder to project (took out of gitignore)
+96cb879 2024-12-06 All block types functional. Duplicated blocks fixed. Issue was setting "top of stack" to true for the substack blocks. Still need to add +-/*<> operators though
+d82435b 2024-12-05 Mostly functional. Not all blocks added, but all types supported. Weird bug with duplicated substack blocks exists currently.
+96bef08 2024-12-04 reporter (at least at depth 2), stack, cap - all are now supported
+ab27c15 2024-12-04 Partially functional. Built up interpreter, so it can currently process stack-blocks. Have not tested hat, reporter, c, or cap. I also brough over the "gui" aka turbowarp editor to display the resulting project. I would say that I am 50% of the way to fully functional
+d5bd48d 2024-12-04 added .gitignore
+6a9fe05 2024-12-04 first commit

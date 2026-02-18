@@ -340,8 +340,6 @@ export class Parser {
      */
     private parseStatement(): StatementNode | null{
         this.logger.log(new KatnipLog(KatnipLogType.Debug, `parsing statement starting with token: ${this.peek()?.token.type} | value: ${isValuedTokenType(this.peek()?.token.type || "<EOF>") ? (this.peek()?.token as ValuedToken).value : "N/A"}`));
-        if (this.checkToken("value", ["proc"]) && !(this.peek(1)?.token.type === ".")) return this.parseProcedureDefinition();
-        if (this.checkToken("value", ["enum"])) return this.parseEnumDefinition();
         if (this.checkToken("type", ["Comment_SingleExpanded", "Comment_SingleCollapsed", "Comment_MultilineExpanded", "Comment_MultilineCollapsed"])) {
             const comment = (this.peek()?.token as ValuedToken).value;
             this.advance();
@@ -349,9 +347,10 @@ export class Parser {
             // return comment;
         }
         if (this.checkToken("type", ["Identifier"])) {
-            if (this.checkToken("value", ["private", "temp", "public"])) {
-                return this.parseVariableDeclaration();
-            }
+            if (this.checkToken("value", ["proc"]) && !(this.peek(1)?.token.type === ".")) return this.parseProcedureDefinition();
+            if (this.checkToken("value", ["enum"])) return this.parseEnumDefinition();
+            if (this.checkToken("value", ["private", "temp", "public"])) return this.parseVariableDeclaration();
+            if (this.checkToken("value", ["sprite"])) return this.parseSpriteDefinition();
 
             if (this.checkToken("value", ["if"])) return this.parseIfStatement();
             if (this.checkToken("value", ["for"])) return this.parseForStatement();
@@ -567,6 +566,27 @@ export class Parser {
                 end: this.peek()?.end || { line: -1, column: -1 }
             }
         };
+    }
+
+    private parseSpriteDefinition(): StatementNode {
+        this.consume({ type: "Identifier", value: "sprite" }, "Expected 'sprite' keyword");
+        const nameToken = this.consume({ type: "Identifier" }, "Expected sprite name");
+        const name = nameToken.token.value;
+
+        this.consume({ type: "{" }, "Expected opening brace for sprite body");
+        const body: StatementNode[] = [];
+        while (!this.checkToken("type", ["}"])) {
+            const stmt = this.parseStatement();
+            if (stmt) body.push(stmt);
+        }
+        this.consume({ type: "}" }, "Expected closing brace for sprite body");
+
+        return {
+            type: "SpriteDeclaration",
+            name,
+            body,
+            loc: { start: nameToken.start, end: this.peek()?.end || { line: -1, column: -1 } }
+        }
     }
 
     /**

@@ -81,6 +81,7 @@ export type StatementNode =
   | ForStatementNode
   | ProcedureDeclarationNode
   | EnumDeclarationNode
+  | SpriteDeclarationNode
   | ErrorStatementNode;
 
 export interface BlockNode extends NodeBase {
@@ -151,6 +152,12 @@ export interface VariableAssignmentNode extends NodeBase {
     operator: string;
     left: ExpressionNode;
     right: ExpressionNode;
+}
+
+export interface SpriteDeclarationNode extends NodeBase {
+  type: "SpriteDeclaration";
+  name: string;
+  body: StatementNode[];
 }
 
 export interface ErrorStatementNode extends NodeBase {
