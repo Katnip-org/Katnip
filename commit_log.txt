@@ -1,3 +1,4 @@
+b2cbeec 2026-02-18 Added pre-commit commands, added changelog file for tracking changes, and added "sprite" construct
 3a64e03 2026-02-15 Implemented for loops, if and if-else statements, do while and while statements, as well as added support for named parameters
 679b0b1 2026-02-02 Finished adding interpolated strings into the parser
 9baa264 2026-02-01 Implemented tuples in parser, and finished lexer implementation of interpolated (f) strings. Need to finish parser implmeentation of them though
