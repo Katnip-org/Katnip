@@ -6,7 +6,7 @@ public c: bool = const.true;
 
 private d: list<num | str> = [1, 2 % 3 * 4, "5"];
 public e: dict<str, str> = {"key": "value"};
-public f: nestedList<list<num | str>> = [[1], [op.letter(1, "test")]];
+public f: nestedList<num | str> = [[1], [op.letter(1, "test")]];
 
 enum thing { red, green, blue }
 

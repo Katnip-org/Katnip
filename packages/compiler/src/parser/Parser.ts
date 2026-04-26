@@ -349,7 +349,7 @@ export class Parser {
         if (this.checkToken("type", ["Identifier"])) {
             if (this.checkToken("value", ["proc"]) && !(this.peek(1)?.token.type === ".")) return this.parseProcedureDefinition();
             if (this.checkToken("value", ["enum"])) return this.parseEnumDefinition();
-            if (this.checkToken("value", ["private", "temp", "public"])) return this.parseVariableDeclaration();
+            if (this.checkToken("value", Object.values(VariableDeclarationType))) return this.parseVariableDeclaration();
             if (this.checkToken("value", ["sprite"])) return this.parseSpriteDefinition();
 
             if (this.checkToken("value", ["if"])) return this.parseIfStatement();
@@ -551,7 +551,7 @@ export class Parser {
      */
     private parseVariableDeclaration(): VariableDeclarationNode {
         this.logger.log(new KatnipLog(KatnipLogType.Debug, `parsing variable declaration starting with token: ${this.peek()?.token.type}`));
-        const access = this.consume({ type: "Identifier", value: Object.values(VariableDeclarationType) }, "Expected 'private', 'temp', or 'public' keyword");
+        const access = this.consume({ type: "Identifier", value: Object.values(VariableDeclarationType) }, "Expected 'private', 'public', 'global', or 'temp' keyword");
         const variableName = this.consume({ type: "Identifier" }, "Expected variable name");
 
         // Valid fomations: no type + yes init, yes type + yes init, yes type + no init

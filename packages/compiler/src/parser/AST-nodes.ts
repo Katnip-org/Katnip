@@ -141,6 +141,7 @@ export interface ExpressionStatementNode extends NodeBase {
 export enum VariableDeclarationType {
     private = "private",
     public = "public",
+    global = "global",
     temp = "temp"
 }
 

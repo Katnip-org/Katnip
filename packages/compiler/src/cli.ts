@@ -9,6 +9,7 @@ import { Logger } from "./utils/Logger.js";
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
 import type { PathLike } from "fs";
+import { SemanticAnalyzer } from "./semantic/SemanticAnalyzer.js";
 
 yargs(hideBin(process.argv))
     .command('tokenize <source> <output> [logger]', 'Tokenize a file', (yargs: any) => {
@@ -90,6 +91,19 @@ yargs(hideBin(process.argv))
                 const ast = parser.parse(tokens);
 
                 console.timeEnd("Parsing Time");
+
+                if (reporter.hasErrors()) {
+                    reporter.print();
+                    return;
+                }
+
+                console.log("Starting semantic analysis...");
+                console.time("Semantic Analysis Time");
+
+                const semantic = new SemanticAnalyzer(reporter);
+                if (ast) semantic.check(ast);
+
+                console.timeEnd("Semantic Analysis Time");
 
                 if (reporter.hasErrors()) {
                     reporter.print();

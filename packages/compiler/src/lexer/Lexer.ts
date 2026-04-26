@@ -449,6 +449,7 @@ export class Lexer {
                         this.advance(); // 1st char of delimiter
                         this.advance(); // 2nd char of delimiter
                         if (tokenType !== "Comment_MultilineIgnored") this.emit(tokenType);
+                        else this.buffer = "";
                         this.currentState = this.inInterpolatedExpression ? LexerState.InterpolatedExpression : LexerState.Start;
                         this.commentType = "";
                     }
@@ -456,6 +457,7 @@ export class Lexer {
                     else if (commentEnd.length === 1 && char === commentEnd) {
                         this.advance(); // Move past delimiter
                         if (tokenType !== "Comment_SingleIgnored") this.emit(tokenType);
+                        else this.buffer = "";
                         this.currentState = this.inInterpolatedExpression ? LexerState.InterpolatedExpression : LexerState.Start;
                         this.commentType = "";
                     }

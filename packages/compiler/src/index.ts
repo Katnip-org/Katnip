@@ -4,7 +4,7 @@ import { Logger } from "./utils/Logger.js";
 
 import * as fs from "fs/promises";
 import { Parser } from "./parser/Parser.js";
-// import { SemanticAnalyzer } from "./semantic/SemanticAnalyzer.js";
+import { SemanticAnalyzer } from "./semantic/SemanticAnalyzer.js";
 // import { IRGenerator } from "./ir/IRGenerator.js";
 // import { SB3Generator } from "./codegen/SB3Generator.js";
 
@@ -24,8 +24,8 @@ export async function compile(source: string, outputPath: string) {
     const parser = new Parser(reporter, logger);
     const ast = parser.parse(tokens);
 
-    // const semantic = new SemanticAnalyzer();
-    // semantic.check(ast);
+    const semantic = new SemanticAnalyzer(reporter);
+    if (ast) semantic.check(ast);
 
     // const ir = new IRGenerator().generate(ast);
 
