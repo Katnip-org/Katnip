@@ -14,6 +14,7 @@ import type {
     StatementNode,
     ExpressionStatementNode,
     ExpressionNode,
+    VariableDeclarationNode,
 } from "../parser/AST-nodes.js";
 import { Scope, type ScopeKind, type SymbolEntry } from "./SymbolTable.js";
 
@@ -78,8 +79,8 @@ export class SemanticAnalyzer {
     // -- Pass 1: hoist top-level declarations --
 
     /**
-     * Declares procedures, enums, and sprites from a statement list into the
-     * current scope before bodies are walked, so they can be referenced early.
+     * Declares procedures, enums, sprites, and top-level variables from a statement list into the current scope before bodies are walked.
+     * This is so that they can be referenced early. Top-level variables are the file's shared namespace, visible to every sprite regardless of declaration order.
      */
     private hoist(body: StatementNode[]): void {
         for (const stmt of body) {
@@ -92,6 +93,9 @@ export class SemanticAnalyzer {
                     break;
                 case "SpriteDeclaration":
                     this.hoistSprite(stmt);
+                    break;
+                case "VariableDeclaration":
+                    this.hoistVariable(stmt);
                     break;
             }
         }
@@ -120,6 +124,19 @@ export class SemanticAnalyzer {
         this.declare({ kind: "sprite", name: node.name, declNode: node }, node);
     }
 
+    private hoistVariable(node: VariableDeclarationNode): void {
+        this.declare(
+            {
+                kind: "variable",
+                name: node.name,
+                declNode: node,
+                type: node.varType,
+                access: node.access,
+            },
+            node,
+        );
+    }
+
     // -- Pass 2: resolve --
 
     /** Dispatches a statement to its handler. */
@@ -135,16 +152,19 @@ export class SemanticAnalyzer {
                 }
 
                 if (node.initializer) this.resolveExpression(node.initializer);
-                this.declare(
-                    {
-                        kind: "variable", 
-                        name: node.name,
-                        declNode: node,
-                        type: node.varType, 
-                        access: node.access,
-                    }, 
-                    node,
-                );
+                // Top-level variables are hoisted in Pass 1; only declare locals here.
+                if (this.current.kind !== "global") {
+                    this.declare(
+                        {
+                            kind: "variable",
+                            name: node.name,
+                            declNode: node,
+                            type: node.varType,
+                            access: node.access,
+                        },
+                        node,
+                    );
+                }
                 break;
             case "VariableAssignment":
                 this.resolveExpression(node.left);
