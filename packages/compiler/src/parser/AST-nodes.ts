@@ -42,6 +42,7 @@ export type TypeNode = SingleTypeNode | UnionTypeNode;
 // Procedure nodes 
 export interface ProcedureDeclarationNode extends NodeBase {
     type: "ProcedureDeclaration";
+    access: VariableDeclarationType;
     name: string;
     decorators: DecoratorNode[];
     parameters: ParameterNode[];
@@ -65,6 +66,7 @@ export interface ParameterNode extends NodeBase {
 // Enum Nodes 
 export interface EnumDeclarationNode extends NodeBase {
     type: "EnumDeclaration";
+    access: VariableDeclarationType;
     name: string;
     members: (string | number)[];
 }
@@ -85,6 +87,7 @@ export type StatementNode =
     | CaseDeclarationNode
     | DefaultCaseDeclarationNode
     | SpriteDeclarationNode
+    | ReturnStatementNode
     | ErrorStatementNode;
 
 export type StatementNodeType = StatementNode[]
@@ -136,6 +139,11 @@ export interface ForStatementNode extends BlockStatementBase {
 export interface ExpressionStatementNode extends NodeBase {
     type: "ExpressionStatement";
     expression: ExpressionNode;
+}
+
+export interface ReturnStatementNode extends NodeBase {
+    type: "ReturnStatement";
+    argument: ExpressionNode | null;
 }
 
 export enum VariableDeclarationType {
@@ -208,8 +216,8 @@ export interface IdentifierExpressionNode extends NodeBase {
 
 export interface LiteralExpressionNode extends NodeBase {
     type: "Literal";
-    value: string | number | null;
-    valueType: "String" | "Number" | "Null";
+    value: string | number | boolean | null;
+    valueType: "String" | "Number" | "Boolean" | "Null";
 }
 
 export interface InterpolatedStringExpressionNode extends NodeBase {

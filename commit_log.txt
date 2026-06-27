@@ -1,3 +1,4 @@
+39f41f5 2026-06-27 Finished scope resolution. For statements and handler statements done.
 6df0a07 2026-06-27 Implemented first sketch of switch-statement in semantic analysis. Still need to add exhaustive checking, and add the fallthrough kward
 24dd50f 2026-06-27 Parser now emits real BlockNode for its proc body. Implemented many different node cases for visit() in semantic analysis. Also fixed lexer comment bug where ignored comments through #! and #[]# would leak their contents
 3f0fb9d 2026-06-27 Fix node end-loc tracking and error caret lengths

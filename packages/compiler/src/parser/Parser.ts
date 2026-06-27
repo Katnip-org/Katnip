@@ -349,13 +349,20 @@ export class Parser {
         if (this.checkToken("type", ["Identifier"])) {
             if (this.checkToken("value", ["proc"]) && !(this.peek(1)?.token.type === ".")) return this.parseProcedureDefinition();
             if (this.checkToken("value", ["enum"])) return this.parseEnumDefinition();
-            if (this.checkToken("value", ["private", "temp", "public"])) return this.parseVariableDeclaration();
+            if (this.checkToken("value", ["private", "temp", "public"])) {
+                const next = this.peek(1)?.token;
+                const nextVal = next && isValuedTokenType(next.type) ? (next as ValuedToken).value : undefined;
+                if (nextVal === "proc") return this.parseProcedureDefinition();
+                if (nextVal === "enum") return this.parseEnumDefinition();
+                return this.parseVariableDeclaration();
+            }
             if (this.checkToken("value", ["sprite"])) return this.parseSpriteDefinition();
 
             if (this.checkToken("value", ["if"])) return this.parseIfStatement();
             if (this.checkToken("value", ["for"])) return this.parseForStatement();
             if (this.checkToken("value", ["while"])) return this.parseWhileStatement();
             if (this.checkToken("value", ["do"])) return this.parseDoWhileStatement();
+            if (this.checkToken("value", ["return"])) return this.parseReturnStatement();
 
             if (this.checkToken("value", ["switch"])) return this.parseSwitchStatement();
             if (this.checkToken("value", ["case"])) return this.parseCaseStatement();
@@ -389,10 +396,41 @@ export class Parser {
     }
 
     /**
+     * Parses a return statement: `return;` or `return <expression>;`.
+     * @returns The parsed return statement node.
+     */
+    private parseReturnStatement(): StatementNode {
+        const keyword = this.consume({ type: "Identifier", value: "return" }, "Expected 'return' keyword");
+        let argument: ExpressionNode | null = null;
+        if (!this.checkToken("type", [";"])) {
+            argument = this.parseExpression();
+        }
+        this.consume({ type: ";" }, "Expected ';' at the end of return statement");
+        return {
+            type: "ReturnStatement",
+            argument,
+            loc: { start: keyword.start, end: this.previous()?.end || keyword.end },
+        };
+    }
+
+    /**
+     * Parses an optional leading access modifier (`public`/`private`/`temp`).
+     * Defaults to `private`. `start` is the modifier's position (or null) to anchor at loc.
+     */
+    private parseAccessModifier(): { access: VariableDeclarationType; start: TokenPos | null } {
+        if (this.checkToken("value", ["private", "public", "temp"])) {
+            const tok = this.consume({ type: "Identifier", value: Object.values(VariableDeclarationType) }, "Expected access modifier");
+            return { access: tok.token.value as VariableDeclarationType, start: tok.start };
+        }
+        return { access: VariableDeclarationType.private, start: null };
+    }
+
+    /**
      * Parses a procedure definition from the token list.
      * @returns The parsed procedure declaration node.
      */
     private parseProcedureDefinition(): ProcedureDeclarationNode {
+        const { access, start: accessStart } = this.parseAccessModifier();
         this.consume({ type: "Identifier", value: "proc" }, "Expected 'proc' keyword");
         const nameToken = this.consume({ type: "Identifier" }, "Expected procedure name");
         const name = nameToken.token.value;
@@ -505,13 +543,14 @@ export class Parser {
 
         return {
             type: "ProcedureDeclaration",
+            access,
             name,
             decorators,
             parameters,
             returnType,
             body,
             loc: {
-                start: nameToken.start,
+                start: accessStart ?? nameToken.start,
                 end: this.previous()?.end || { line: -1, column: -1 }
             }
         };
@@ -522,6 +561,7 @@ export class Parser {
      * @returns The parsed enum declaration node.
      */
     private parseEnumDefinition(): EnumDeclarationNode {
+        const { access, start: accessStart } = this.parseAccessModifier();
         this.consume({ type: "Identifier", value: "enum" }, "Expected 'enum' keyword");
         const nameToken = this.consume({ type: "Identifier" }, "Expected enum name");
         const name = nameToken.token.value;
@@ -542,10 +582,11 @@ export class Parser {
 
         return {
             type: "EnumDeclaration",
+            access,
             name: name,
             members: members,
             loc: {
-                start: nameToken.start,
+                start: accessStart ?? nameToken.start,
                 end: this.previous()?.end || { line: -1, column: -1 }
             }
         };
@@ -1109,6 +1150,14 @@ export class Parser {
         // Identifiers
         if (this.checkToken("type", ["Identifier"])) {
             const id = this.consume({ type: "Identifier" }, "Expected identifier");
+            if (id.token.value === "true" || id.token.value === "false") {
+                return {
+                    type: "Literal",
+                    value: id.token.value === "true",
+                    valueType: "Boolean",
+                    loc: { start: id.start, end: id.end },
+                } as ExpressionNode;
+            }
             return {
                 type: "Identifier",
                 name: id.token.value,

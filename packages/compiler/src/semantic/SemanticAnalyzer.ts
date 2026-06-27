@@ -60,6 +60,14 @@ export class SemanticAnalyzer {
         if (this.current.parent) this.current = this.current.parent;
     }
 
+    /** Whether the current scope is inside a procedure body (where `return` is valid). */
+    private inProcedure(): boolean {
+        for (let scope: Scope | null = this.current; scope; scope = scope.parent) {
+            if (scope.kind === "procedure") return true;
+        }
+        return false;
+    }
+
     /** Declares a symbol in the current scope, reporting on illegal redeclaration. */
     private declare(sym: SymbolEntry, node: NodeBase): void {
         const conflict = this.current.declare(sym);
@@ -143,6 +151,9 @@ export class SemanticAnalyzer {
                 this.resolveExpression(node.right);
                 break;
             case "ProcedureDeclaration":
+                if (node.access === "temp") {
+                    this.error("Procedures cannot be declared 'temp'", node, node.access.length);
+                }
                 this.enter("procedure");
                 for (const param of node.parameters) {
                     this.declare(
@@ -218,6 +229,16 @@ export class SemanticAnalyzer {
             case "ExpressionStatement":
                 this.resolveExpression(node.expression);
                 break;
+            case "ReturnStatement":
+                if (node.argument) this.resolveExpression(node.argument);
+                if (!this.inProcedure()) {
+                    this.error(
+                        "'return' can only be used inside a procedure",
+                        node,
+                        "return".length,
+                    );
+                }
+                break;
             case "SwitchDeclaration": 
                 {
                     // TODO: Check for all cases covered or default case for enum; falthrough kward not in default and used correctly
@@ -255,8 +276,13 @@ export class SemanticAnalyzer {
                 this.visitBlock(node.body);
                 break;
             case "EnumDeclaration":
+                // Enum body already hoisted; just validate the modifier.
+                if (node.access === "temp") {
+                    this.error("Enums cannot be declared 'temp'", node, node.access.length);
+                }
+                break;
             case "ErrorStatement":
-                // Enums already hoisted; error statements come from the parser.
+                // Error statements come from the parser.
                 break;
         }
     }

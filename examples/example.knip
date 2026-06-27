@@ -5,6 +5,81 @@ big
 comment
 <#
 
+sprite test {
+    self.x = 0;
+    self.y = 0;
+    self.visible = true;
+    self.costume = "./garble.png";
+
+    # Clone behavior
+    clone.onStart(){
+        console.log("🌀 Clone active!");
+        wait(1);
+        clone.delete();
+    }
+
+    onFlag(){
+        # Call the start function
+        start();
+
+        # Loop over pose list using tuple unpacking
+        for((name, speed, power), poseList){
+            looks.say("Move: " + name);
+
+            if(speed > 6 && power > 6){
+                console.log("Strong move!");
+            } elif (speed < 5) {
+                console.log("Fast move!");
+            } else {
+                console.log("Weak stats.");
+            }
+
+            score = score(speed + power);
+            console.log("Score: " + score);
+        }
+
+        # Constant checks
+        console.log("π = " + const.pi);
+        console.log("e = " + const.e);
+        console.log("τ = " + const.tau);
+
+        if(const.true && !const.false){
+            console.log(f"Basic logic constants, like {const.pi} work.");
+        }
+
+        thing(5.5e-4, 10);
+    }
+
+    onFlag(){
+        # Move in different directions
+        move(directions.UP, 10);
+        move(directions.DOWN, 5);
+        move(directions.LEFT, 3);
+        move(directions.RIGHT, 8);
+
+        # Log the current position
+        # console.log(f"Current position: {motion.getPosition() + 5 ** 10}");
+    }
+
+    # Turtle draw implementation
+    onFlag(){
+        # Draw a square using turtle graphics
+        pen.down();
+        for(i, range(4)){
+            motion.forward(100);
+            motion.turn(90);
+        }
+        pen.up();
+        console.log("Square drawn!");
+
+        # Draw squid
+        pen.down();
+        motion.forward(50);
+        motion.turn(45);
+        motion.forward(50);
+    }
+}
+
 enum directions {
     UP,
     DOWN,
@@ -38,7 +113,7 @@ proc move(
 
 
 # Pose data (flat list: name, speed, power)
-poseList = [
+public poseList = [
     "Dash", 10, 7,
     "Smash", 4, 12,
     "Blast", 8, 9
@@ -72,16 +147,9 @@ proc thing(one: num, two: num) -> num {
     return(one + two);
 }
 
-# Clone behavior
-clone.onStart(){
-    console.log("🌀 Clone active!");
-    wait(1);
-    clone.delete();
-}
-
 # User interaction + clone creation
 proc start() -> void {
-    var.set(name, console.input("What is your name?"));
+    private name = console.input("What is your name?");
     console.log("Welcome, " + name + "!");
 
     for(i, range(1, 3)){
@@ -89,65 +157,4 @@ proc start() -> void {
     }
 
     clone.create("myself");
-}
-
-onFlag(){
-    # Call the start function
-    start();
-
-    # Loop over pose list using tuple unpacking
-    for((name, speed, power), poseList){
-        looks.say("Move: " + name);
-
-        if(speed > 6 && power > 6){
-            console.log("Strong move!");
-        } elif (speed < 5) {
-            console.log("Fast move!");
-        } else {
-            console.log("Weak stats.");
-        }
-
-        score = score(speed + power);
-        console.log("Score: " + score);
-    }
-
-    # Constant checks
-    console.log("π = " + const.pi);
-    console.log("e = " + const.e);
-    console.log("τ = " + const.tau);
-
-    if(const.true && !const.false){
-        console.log(f"Basic logic constants, like {const.pi} work.");
-    }
-
-    thing(5.5e-4, 10);
-}
-
-onFlag(){
-    # Move in different directions
-    move(enum.directions.UP, 10);
-    move(enum.directions.DOWN, 5);
-    move(enum.directions.LEFT, 3);
-    move(enum.directions.RIGHT, 8);
-
-    # Log the current position
-    # console.log(f"Current position: {motion.getPosition() + 5 ** 10}");
-}
-
-# Turtle draw implementation
-onFlag(){
-    # Draw a square using turtle graphics
-    pen.down();
-    for(i, range(4)){
-        motion.forward(100);
-        motion.turn(90);
-    }
-    pen.up();
-    console.log("Square drawn!");
-
-    # Draw squid
-    pen.down();
-    motion.forward(50);
-    motion.turn(45);
-    motion.forward(50);
 }
