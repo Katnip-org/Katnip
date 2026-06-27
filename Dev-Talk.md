@@ -64,3 +64,5 @@ Make function be able to be public/private. Assumed private. That way they just 
 Everything at the root of a file should be invalidated. The space should be reserved for imports, functions, global stuff.
 
 ---
+
+NOTE: I should probably add a more intensive, fleshed out checker for return types and paths to the semantic analysis. Follow all branches and routes. 

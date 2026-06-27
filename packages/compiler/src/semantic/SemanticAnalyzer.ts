@@ -163,6 +163,13 @@ export class SemanticAnalyzer {
                 break;
             case "HandlerStatement":
                 // TODO: validate hat block
+                if (this.current.kind !== "sprite") {
+                    this.error(
+                        "Event handlers can only appear at the top level of a sprite",
+                        node.call,
+                    )
+                }
+                this.resolveExpression(node.call);
                 this.visitBlock(node.body);
                 break;
             case "IfStatement":
@@ -180,7 +187,33 @@ export class SemanticAnalyzer {
                 this.visitBlock(node.body);
                 break;
             case "ForStatement":
-                // TODO: enter("block"), declare loopVar(s) from pattern, visit body, exit()
+                // TODO: check tuple matches iterable's elment shape
+                this.resolveExpression(node.iterable)
+
+                this.enter("block");
+                const loopVars = node.pattern.type === "TupleExpression"
+                    ? node.pattern.elements
+                    : [node.pattern];
+                for (const loopVar of loopVars) {
+                    if (loopVar.type !== "Identifier") {
+                        this.error(
+                            "Loop variable must be an identifier",
+                            loopVar,
+                        );
+                        continue;
+                    }
+                    this.declare(
+                        {
+                            kind: "loopVar",
+                            name: loopVar.name,
+                            declNode: loopVar,
+                            type: null, // TODO: inference fill in later
+                        },
+                        loopVar,
+                    );
+                }
+                for (const stmt of node.body.body) this.visit(stmt);
+                this.exit();
                 break;
             case "ExpressionStatement":
                 this.resolveExpression(node.expression);
@@ -188,7 +221,7 @@ export class SemanticAnalyzer {
             case "SwitchDeclaration": 
                 {
                     // TODO: Check for all cases covered or default case for enum; falthrough kward not in default and used correctly
-                    let defaultCases = node.body.filter(
+                    const defaultCases = node.body.filter(
                     (caseEntry) => caseEntry.type === "DefaultCaseDeclaration",
                     );
                     if (defaultCases.length > 1) {
