@@ -396,14 +396,24 @@ export class Lexer {
                 if (this.lastValidOperatorNode) {
                     const opNode = this.lastValidOperatorNode.node;
 
-                    if (opNode.tokenType) {
-                        this.emit(opNode.tokenType);
-                    }
-
+                    // Rewind BEFORE emitting: if the trie over-consumed past the
+                    // last valid operator, back the cursor up first so emit()
+                    // records the correct end position, then re-lex the extra
+                    // chars. (emit() clears the buffer, so the rewind count must
+                    // be computed here, before the emit.)
+                    //
+                    // Today every operator's prefixes are themselves operators
+                    // (`*`->`**`->`**=`, `-`->`->`, etc.), so rewind is always 0.
+                    // This guards the day an operator like `..`/`...` is added
+                    // whose prefix is not itself an operator.
                     const rewind = this.buffer.length - this.lastValidOperatorNode.len;
                     for (let i = 0; i < rewind; i++) {
                         this.position--;
                         this.col--;
+                    }
+
+                    if (opNode.tokenType) {
+                        this.emit(opNode.tokenType);
                     }
                 } else {
                     this.reporter.add(

@@ -122,6 +122,7 @@ export class SemanticAnalyzer {
                     this.error(
                       `'${node.name}' cannot be made private when within a global scope`,
                       node,
+                      node.access.length, // underline just the private kward
                     );
                 }
 
@@ -245,12 +246,19 @@ export class SemanticAnalyzer {
 
     // -- Helpers --
 
-    /** Reports a semantic error at a node's start location. */
-    private error(message: string, node: NodeBase): void {
+    /**
+     * Reports a semantic error at a node's start location.
+     * By default the caret spans the whole node; pass `length` to underline only
+     * the first N columns (e.g. just an offending keyword).
+     */
+    private error(message: string, node: NodeBase, length?: number): void {
         this.reporter.add(
             new KatnipError("Semantic", message, {
                 line: node.loc.start.line,
                 column: node.loc.start.column,
+                ...(length != null
+                    ? { length }
+                    : { endLine: node.loc.end.line, endColumn: node.loc.end.column }),
             }),
         );
     }

@@ -47,15 +47,17 @@ Scratch-like behaviors tell me that it should go to stage, but that feels tacky 
 
 ---
 
-Can functions be public? I think so. Can't be temp.
+Can functions be public? I think so. Can't be temp. By making them public, I am allowing them to imported into other sprites. I suppose having functions be public and at the root of the file also works.
+I'll allow a declarations of symbols, import statements, and sprite declarations at the root node of a file. This way files can act as libraries, but can't have random onFlag code sitting in them.
+The space should be reserved for global stuff.
 
 ---
 
-Need to make start and end possibly null
+Need to make start and end possibly null on index slicing. Currently both are required, but I like the syntax that does `[:4]` or similar.
 
 ---
 
-Make function be able to be public/private. Assumed private
+Make function be able to be public/private. Assumed private. That way they just stay part of the sprite and don't bloat the project. If the user wants them public, they can export/make them global.
 
 ---
 

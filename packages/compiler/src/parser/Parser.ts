@@ -506,7 +506,7 @@ export class Parser {
             body,
             loc: {
                 start: nameToken.start,
-                end: this.peek()?.end || { line: -1, column: -1 }
+                end: this.previous()?.end || { line: -1, column: -1 }
             }
         };
     }
@@ -540,7 +540,7 @@ export class Parser {
             members: members,
             loc: {
                 start: nameToken.start,
-                end: this.peek()?.end || { line: -1, column: -1 }
+                end: this.previous()?.end || { line: -1, column: -1 }
             }
         };
     }
@@ -576,7 +576,7 @@ export class Parser {
             initializer: initializer,
             loc: {
                 start: access.start,
-                end: this.peek()?.end || { line: -1, column: -1 }
+                end: this.previous()?.end || { line: -1, column: -1 }
             }
         };
     }
@@ -1184,7 +1184,7 @@ export class Parser {
                 arguments: parenArgs,
                 loc: {
                     start: left.loc.start,
-                    end: this.peek()?.end || token.end,
+                    end: this.previous()?.end || token.end,
                 },
             };
         }
@@ -1210,7 +1210,7 @@ export class Parser {
                     index: sliceStart,
                     loc: {
                         start: left.loc.start,
-                        end: this.peek()?.end || token.end,
+                        end: this.previous()?.end || token.end,
                     },
                 }
             }
@@ -1223,7 +1223,7 @@ export class Parser {
                 step: sliceStep,
                 loc: {
                     start: left.loc.start,
-                    end: this.peek()?.end || token.end,
+                    end: this.previous()?.end || token.end,
                 },
             };
         }
