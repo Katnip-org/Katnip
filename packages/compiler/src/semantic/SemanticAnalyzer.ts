@@ -139,23 +139,48 @@ export class SemanticAnalyzer {
                 );
                 break;
             case "VariableAssignment":
-                // TODO: resolve the assignment target + value expressions
+                this.resolveExpression(node.left);
+                this.resolveExpression(node.right);
                 break;
             case "ProcedureDeclaration":
-                // TODO: enter("procedure"), declare params, visit body, exit()
+                // Params and the body share ONE procedure scope, so walk the body
+                // directly here rather than via visitBlock (which opens its own
+                // child scope). The enter() below is paired with the exit().
+                this.enter("procedure");
+                for (const param of node.parameters) {
+                    this.declare(
+                        {
+                            kind: "parameter",
+                            name: param.name,
+                            declNode: param,
+                            type: param.paramType,
+                        },
+                        param,
+                    );
+                }
+                for (const stmt of node.body.body) this.visit(stmt);
+                this.exit();
                 break;
             case "SpriteDeclaration":
-                // TODO: enter("sprite"), visit body, exit()
+                this.visitBlock(node.body, "sprite");
                 break;
             case "HandlerStatement":
-                // TODO: validate hat block, visit body block
+                // TODO: validate hat block
+                this.visitBlock(node.body);
                 break;
             case "IfStatement":
-                // TODO: resolve condition; visit then/elif/else blocks
+                this.resolveExpression(node.condition);
+                this.visitBlock(node.thenBlock);
+                for (const elifBlock of node.elifs) {
+                    this.resolveExpression(elifBlock.condition)
+                    this.visitBlock(elifBlock.block)
+                }
+                if (node.elseBlock) this.visitBlock(node.elseBlock)
                 break;
             case "WhileStatement":
             case "DoWhileStatement":
-                // TODO: resolve condition; visit body block
+                this.resolveExpression(node.condition);
+                this.visitBlock(node.body);
                 break;
             case "ForStatement":
                 // TODO: enter("block"), declare loopVar(s) from pattern, visit body, exit()

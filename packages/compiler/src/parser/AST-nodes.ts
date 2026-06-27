@@ -46,7 +46,7 @@ export interface ProcedureDeclarationNode extends NodeBase {
     decorators: DecoratorNode[];
     parameters: ParameterNode[];
     returnType: TypeNode | null;
-    body: StatementNode[];
+    body: BlockNode;
 }
 
 export interface DecoratorNode extends NodeBase {

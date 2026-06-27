@@ -489,13 +489,19 @@ export class Parser {
 
         this.consume({ type: "{" }, "Expected open curly brace '{' for procedure body");
 
-        const body: StatementNode[] = [];
+        const stmts: StatementNode[] = [];
         while (!this.isAtEnd() && !this.checkToken("type", ["}"])) {
             const stmt = this.parseStatement();
-            if (stmt) body.push(stmt);
+            if (stmt) stmts.push(stmt);
         }
 
         this.consume({ type: "}" }, "Expected closing curly brace '}' for procedure body");
+
+        const body: BlockNode = {
+            type: "Block",
+            body: stmts,
+            loc: { start: stmts[0]?.loc.start || nameToken.start, end: stmts[stmts.length - 1]?.loc.end || nameToken.start }
+        };
 
         return {
             type: "ProcedureDeclaration",
