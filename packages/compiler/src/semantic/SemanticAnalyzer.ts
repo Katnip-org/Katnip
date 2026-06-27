@@ -143,9 +143,6 @@ export class SemanticAnalyzer {
                 this.resolveExpression(node.right);
                 break;
             case "ProcedureDeclaration":
-                // Params and the body share ONE procedure scope, so walk the body
-                // directly here rather than via visitBlock (which opens its own
-                // child scope). The enter() below is paired with the exit().
                 this.enter("procedure");
                 for (const param of node.parameters) {
                     this.declare(
@@ -187,6 +184,42 @@ export class SemanticAnalyzer {
                 break;
             case "ExpressionStatement":
                 this.resolveExpression(node.expression);
+                break;
+            case "SwitchDeclaration": 
+                {
+                    // TODO: Check for all cases covered or default case for enum; falthrough kward not in default and used correctly
+                    let defaultCases = node.body.filter(
+                    (caseEntry) => caseEntry.type === "DefaultCaseDeclaration",
+                    );
+                    if (defaultCases.length > 1) {
+                        this.error(
+                            `2 or more 'default' cases found in switch-case statement`,
+                            defaultCases[1],
+                            "default".length,
+                        );
+                    }
+                    if (
+                        node.body.length > 0 
+                        && defaultCases.length === 1
+                        && node.body.at(-1)?.type !== "DefaultCaseDeclaration"
+                    ) {
+                        this.error(
+                            `'default' case not located at bottom of switch-case statement`,
+                            defaultCases[0],
+                            "default".length,
+                        );
+                    }
+
+                    this.resolveExpression(node.value);
+                    for (const caseEntry of node.body) this.visit(caseEntry);
+                    break;
+                }
+            case "CaseDeclaration":
+                for (const caseExpr of node.values) this.resolveExpression(caseExpr);
+                this.visitBlock(node.body);
+                break;
+            case "DefaultCaseDeclaration":
+                this.visitBlock(node.body);
                 break;
             case "EnumDeclaration":
             case "ErrorStatement":

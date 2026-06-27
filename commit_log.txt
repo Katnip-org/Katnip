@@ -1,3 +1,4 @@
+24dd50f 2026-06-27 Parser now emits real BlockNode for its proc body. Implemented many different node cases for visit() in semantic analysis. Also fixed lexer comment bug where ignored comments through #! and #[]# would leak their contents
 3f0fb9d 2026-06-27 Fix node end-loc tracking and error caret lengths
 df46874 2026-06-27 First portion of semantic analysis done!
 b2cbeec 2026-02-18 Added pre-commit commands, added changelog file for tracking changes, and added "sprite" construct
