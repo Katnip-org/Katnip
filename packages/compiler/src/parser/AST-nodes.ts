@@ -71,18 +71,23 @@ export interface EnumDeclarationNode extends NodeBase {
 
 // Statement Nodes
 export type StatementNode =
-  | ExpressionStatementNode
-  | VariableDeclarationNode
-  | VariableAssignmentNode
-  | HandlerStatementNode
-  | IfStatementNode
-  | WhileStatementNode
-  | DoWhileStatementNode
-  | ForStatementNode
-  | ProcedureDeclarationNode
-  | EnumDeclarationNode
-  | SpriteDeclarationNode
-  | ErrorStatementNode;
+    | ExpressionStatementNode
+    | VariableDeclarationNode
+    | VariableAssignmentNode
+    | HandlerStatementNode
+    | IfStatementNode
+    | WhileStatementNode
+    | DoWhileStatementNode
+    | ForStatementNode
+    | ProcedureDeclarationNode
+    | EnumDeclarationNode
+    | SwitchDeclarationNode
+    | CaseDeclarationNode
+    | DefaultCaseDeclarationNode
+    | SpriteDeclarationNode
+    | ErrorStatementNode;
+
+export type StatementNodeType = StatementNode[]
 
 export interface BlockNode extends NodeBase {
     type: "Block";
@@ -143,8 +148,8 @@ export interface VariableDeclarationNode extends NodeBase {
     type: "VariableDeclaration";
     access: VariableDeclarationType;
     name: string;
-    varType: TypeNode;
-    initializer?: ExpressionNode;
+    varType: TypeNode | null;
+    initializer: ExpressionNode | null;
 }
 
 export interface VariableAssignmentNode extends NodeBase {
@@ -154,10 +159,24 @@ export interface VariableAssignmentNode extends NodeBase {
     right: ExpressionNode;
 }
 
-export interface SpriteDeclarationNode extends NodeBase {
+export interface CaseDeclarationNode extends BlockStatementBase {
+    type: "CaseDeclaration";
+    values: ExpressionNode[];
+}
+
+export interface DefaultCaseDeclarationNode extends BlockStatementBase {
+    type: "DefaultCaseDeclaration";
+}
+
+export interface SwitchDeclarationNode extends NodeBase {
+    type: "SwitchDeclaration";
+    value: ExpressionNode;
+    body: (CaseDeclarationNode | DefaultCaseDeclarationNode)[];
+}
+
+export interface SpriteDeclarationNode extends BlockStatementBase {
   type: "SpriteDeclaration";
   name: string;
-  body: StatementNode[];
 }
 
 export interface ErrorStatementNode extends NodeBase {

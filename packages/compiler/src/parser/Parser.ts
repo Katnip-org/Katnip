@@ -6,7 +6,7 @@ import { isValuedTokenType, UnitTokenType } from "../lexer/Token.js";
 import type { Token, TokenInfoFor, TokenPos, TokenType, ValuedToken, ValuedTokenType } from "../lexer/Token.js";
 import { ErrorReporter, KatnipError } from "../utils/ErrorReporter.js";
 import { KatnipLog, KatnipLogType, Logger } from "../utils/Logger.js";
-import { type AST, type DecoratorNode, type NodeBase, type ParameterNode, type ProcedureDeclarationNode, type SingleTypeNode, type TypeNode, type UnionTypeNode, type ExpressionNode, type StatementNode, type EnumDeclarationNode, type VariableDeclarationNode, VariableDeclarationType, type VariableAssignmentNode, type DictEntryNode, type ElifClauseNode, type BlockNode } from "./AST-nodes.js";
+import { type AST, type DecoratorNode, type NodeBase, type ParameterNode, type ProcedureDeclarationNode, type SingleTypeNode, type TypeNode, type UnionTypeNode, type ExpressionNode, type StatementNode, type EnumDeclarationNode, type VariableDeclarationNode, VariableDeclarationType, type VariableAssignmentNode, type DictEntryNode, type ElifClauseNode, type BlockNode, type CaseDeclarationNode, type DefaultCaseDeclarationNode } from "./AST-nodes.js";
 import { bindingPowerTable, getBindingPower } from "./BindingPowerTable.js";
 
 export class Parser {
@@ -357,6 +357,9 @@ export class Parser {
             if (this.checkToken("value", ["while"])) return this.parseWhileStatement();
             if (this.checkToken("value", ["do"])) return this.parseDoWhileStatement();
 
+            if (this.checkToken("value", ["switch"])) return this.parseSwitchStatement();
+            if (this.checkToken("value", ["case"])) return this.parseCaseStatement();
+            if (this.checkToken("value", ["default"])) return this.parseDefaultCaseStatement();
 
             // Parse an expression statement
             const expression: ExpressionNode = this.parseExpression();
@@ -550,10 +553,20 @@ export class Parser {
         this.logger.log(new KatnipLog(KatnipLogType.Debug, `parsing variable declaration starting with token: ${this.peek()?.token.type}`));
         const access = this.consume({ type: "Identifier", value: Object.values(VariableDeclarationType) }, "Expected 'private', 'temp', or 'public' keyword");
         const variableName = this.consume({ type: "Identifier" }, "Expected variable name");
-        this.consume({ type: ":" }, "Expected ':' after variable name for type annotation");
-        const typeAnnotation = this.parseTypeAnnotation();
-        this.consume({ type: "=" }, "Expected '=' after type annotation for variable declaration");
-        const initializer = this.parseExpression();
+
+        // Valid fomations: no type + yes init, yes type + yes init, yes type + no init
+        // INvalid formations: no type + no init
+        let typeAnnotation = null;
+        let initializer = null;
+        if (this.tryConsume("type", [":"])) {
+            typeAnnotation = this.parseTypeAnnotation();
+            if (this.tryConsume("type", ["="])) {
+                initializer = this.parseExpression();
+            }
+        } else {
+            this.consume({ type: "=" }, "Expected '=' for variable value declaration");
+            initializer = this.parseExpression();
+        }
         this.consume({ type: ";" }, "Expected ';' at the end of variable declaration");
         return {
             type: "VariableDeclaration",
@@ -573,19 +586,18 @@ export class Parser {
         const nameToken = this.consume({ type: "Identifier" }, "Expected sprite name");
         const name = nameToken.token.value;
 
-        this.consume({ type: "{" }, "Expected opening brace for sprite body");
-        const body: StatementNode[] = [];
-        while (!this.checkToken("type", ["}"])) {
-            const stmt = this.parseStatement();
-            if (stmt) body.push(stmt);
-        }
-        this.consume({ type: "}" }, "Expected closing brace for sprite body");
+        const stmts = this.parseBlockExpression();
+        const body: BlockNode = {
+            type: "Block",
+            body: stmts,
+            loc: { start: stmts[0]?.loc.start || nameToken.start, end: stmts[stmts.length - 1]?.loc.end || nameToken.start }
+        };
 
         return {
             type: "SpriteDeclaration",
             name,
             body,
-            loc: { start: nameToken.start, end: this.peek()?.end || { line: -1, column: -1 } }
+            loc: { start: nameToken.start, end: this.previous()?.end || nameToken.start }
         }
     }
 
@@ -768,6 +780,65 @@ export class Parser {
         };
     }
 
+    private parseSwitchStatement(): StatementNode {
+        const start = this.peek()!.start;
+        this.consume({ type: "Identifier", value: "switch" }, "Expected 'switch' keyword");
+        this.consume({ type: "(" }, "Expected '(' after 'switch'");
+        const value = this.parseExpression();
+        this.consume({ type: ")" }, "Expected ')' after the 'switch'-value");
+
+        this.consume({ type: "{" }, "Expected '{' after switch expression");
+        const body: (CaseDeclarationNode | DefaultCaseDeclarationNode)[] = [];
+
+        while (!this.isAtEnd() && !this.checkToken("type", ["}"])) {
+            const stmt = this.parseStatement();
+            if (stmt?.type === "CaseDeclaration" || stmt?.type === "DefaultCaseDeclaration") {
+                body.push(stmt as CaseDeclarationNode | DefaultCaseDeclarationNode);
+            }
+        }
+
+        this.consume({ type: "}" }, "Expected '}' to close switch block");
+
+        return {
+            type: "SwitchDeclaration",
+            value,
+            body,
+            loc: { start, end: this.previous()?.end || value.loc.end }
+        };
+    }
+
+    private parseCaseStatement(): StatementNode {
+        const start = this.peek()!.start;
+        this.consume({ type: "Identifier", value: "case" }, "Expected 'case' keyword");
+        this.consume({ type: "(" }, "Expected '(' after 'case'");
+        const values: ExpressionNode[] = [this.parseExpression()];
+        while (this.tryConsume("type", [","])) {
+            values.push(this.parseExpression());
+        }
+        this.consume({ type: ")" }, "Expected ')' after case values");
+
+        const stmts = this.parseBlockExpression();
+        const body: BlockNode = {
+            type: "Block",
+            body: stmts,
+            loc: { start: stmts[0]?.loc.start || start, end: stmts[stmts.length - 1]?.loc.end || start }
+        };
+        return { type: "CaseDeclaration", values, body, loc: { start, end: body.loc.end } };
+    }
+
+    private parseDefaultCaseStatement(): StatementNode {
+        const start = this.peek()!.start;
+        this.consume({ type: "Identifier", value: "default" }, "Expected 'default' keyword");
+
+        const stmts = this.parseBlockExpression();
+        const body: BlockNode = {
+            type: "Block",
+            body: stmts,
+            loc: { start: stmts[0]?.loc.start || start, end: stmts[stmts.length - 1]?.loc.end || start }
+        };
+        return { type: "DefaultCaseDeclaration", body, loc: { start, end: body.loc.end } };
+    }
+
     /**
      * Parses an if/elif/else statement from the token list.
      * @returns The parsed if statement node.
@@ -776,7 +847,7 @@ export class Parser {
         this.consume({ type: "Identifier", value: "if" }, "Expected 'if' keyword");
         this.consume({ type: "(" }, "Expected '(' after 'if'");
         const condition = this.parseExpression();
-        this.consume({ type: ")" }, "Expected ')' after if condition");
+        this.consume({ type: ")" }, "Expected ')' after the 'if'-condition");
         const thenBlockExpression = this.parseBlockExpression();
         const thenBlock = {
             type: "Block",
@@ -1196,15 +1267,18 @@ export class Parser {
 
     /**
      * Parses a block expression following a method call.
+     * @param allowedStatements - A list of allowed statement types inside this body.
      * @returns The parsed block expression node.
      */
-    private parseBlockExpression(): StatementNode[] {
+    private parseBlockExpression(allowedStatements?: StatementNode[]): StatementNode[] {
         this.consume({ type: "{" }, "Expected '{' after method call");
         const body: StatementNode[] = [];
 
         while (!this.isAtEnd() && !this.checkToken("type", ["}"])) {
             const stmt = this.parseStatement();
-            if (stmt) body.push(stmt);
+            if (stmt && (!allowedStatements || allowedStatements.includes(stmt))) {
+                body.push(stmt);
+            }
         }
 
         this.consume({ type: "}" }, "Expected '}' to close block");

@@ -3,6 +3,7 @@
 import * as fs from "fs/promises";
 import { Lexer } from "./lexer/Lexer.js";
 import { Parser } from "./parser/Parser.js";
+import { SemanticAnalyzer } from "./semantic/SemanticAnalyzer.js";
 import { ErrorReporter } from "./utils/ErrorReporter.js";
 import { Logger } from "./utils/Logger.js";
 
@@ -32,8 +33,8 @@ yargs(hideBin(process.argv))
                 const reporter = new ErrorReporter(fileContent, true);
                 const logger = new Logger(true);
                 
-                if (argv.logger === false) logger.disable();
-                else logger.enable();
+                if (argv.logger === true) logger.enable();
+                else logger.disable();
 
                 const lexer = new Lexer(reporter, logger);
                 const tokens = lexer.tokenize(fileContent);
@@ -65,13 +66,16 @@ yargs(hideBin(process.argv))
                 const reporter = new ErrorReporter(fileContent, true);
                 const logger = new Logger(true);
 
-                if (argv.logger === false) logger.disable();
-                else logger.enable();
-
-                console.log("Starting lexing process...");
-                console.time("Lexing Time");
+                if (argv.logger === true) logger.enable();
+                else logger.disable();
 
                 const lexer = new Lexer(reporter, logger);
+                console.log("Starting lexing process...");
+
+                console.time("Lexing Time");
+                for (let i = 0; i < 1000; i++) {
+                  lexer.tokenize(fileContent);
+                }
                 const tokens = lexer.tokenize(fileContent);
                 console.timeEnd("Lexing Time");
 
@@ -83,12 +87,10 @@ yargs(hideBin(process.argv))
 
                 // console.log("Tokens:", tokens);
 
+                const parser = new Parser(reporter, logger);
                 console.log("Starting parsing process...");
                 console.time("Parsing Time");
-
-                const parser = new Parser(reporter, logger);
                 const ast = parser.parse(tokens);
-
                 console.timeEnd("Parsing Time");
 
                 if (reporter.hasErrors()) {
@@ -97,6 +99,52 @@ yargs(hideBin(process.argv))
                 }
 
                 fs.writeFile(argv.output as PathLike, JSON.stringify(ast, null, 2));
+            })
+            .catch((err: any) => {
+                console.error('Error reading file:', err);
+            });
+    })
+    .command('check <source> [logger]', 'Lex, parse, and run semantic analysis on a file', (yargs: any) => {
+        yargs.positional('source', {
+            describe: 'The path to the source file',
+            type: 'string',
+            demandOption: true,
+        }).positional('logger', {
+            describe: 'Boolean for whether to keep a log or not',
+            type: 'boolean',
+        });
+    }, (argv: any) => {
+        fs.readFile(argv.source as PathLike, { encoding: 'utf-8' })
+            .then((fileContent: string) => {
+                const reporter = new ErrorReporter(fileContent, true);
+                const logger = new Logger(true);
+
+                if (argv.logger === true) logger.enable();
+                else logger.disable();
+
+                const lexer = new Lexer(reporter, logger);
+                const tokens = lexer.tokenize(fileContent);
+                if (reporter.hasErrors()) {
+                    reporter.print();
+                    return;
+                }
+
+                const parser = new Parser(reporter, logger);
+                const ast = parser.parse(tokens);
+                if (reporter.hasErrors() || !ast) {
+                    reporter.print();
+                    return;
+                }
+
+                const analyzer = new SemanticAnalyzer(reporter, logger);
+                analyzer.analyze(ast);
+
+                if (reporter.hasErrors()) {
+                    reporter.print();
+                    return;
+                }
+
+                console.log('No semantic errors found.');
             })
             .catch((err: any) => {
                 console.error('Error reading file:', err);
