@@ -143,14 +143,8 @@ export class SemanticAnalyzer {
     private visit(node: StatementNode): void {
         switch (node.type) {
             case "VariableDeclaration":
-                if (node.access === "private" && this.current.kind === "global") {
-                    this.error(
-                      `'${node.name}' cannot be made private when within a global scope`,
-                      node,
-                      node.access.length, // underline just the private kward
-                    );
-                }
-
+                // `private` at the top scope is valid: the variable is visible to
+                // sprites in this file but cannot be imported into other files.
                 if (node.initializer) this.resolveExpression(node.initializer);
                 // Top-level variables are hoisted in Pass 1; only declare locals here.
                 if (this.current.kind !== "global") {

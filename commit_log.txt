@@ -1,3 +1,4 @@
+d45e4cc 2026-06-27 Hoisted variables at the shared namespace of the file they're stored in
 f6077fd 2026-06-27 Added return statement, boolean literals, and proc/enum modifiers
 39f41f5 2026-06-27 Finished scope resolution. For statements and handler statements done.
 6df0a07 2026-06-27 Implemented first sketch of switch-statement in semantic analysis. Still need to add exhaustive checking, and add the fallthrough kward
