@@ -15,8 +15,10 @@ import type {
     ExpressionStatementNode,
     ExpressionNode,
     VariableDeclarationNode,
+    TypeNode,
 } from "../parser/AST-nodes.js";
 import { Scope, type ScopeKind, type SymbolEntry } from "./SymbolTable.js";
+import { isAssignable, isStr, typeToString, type InternalType } from "./InternalTypes.js";
 
 export class SemanticAnalyzer {
     /** Current lexical scope. Changed by exit() and enter() */
@@ -63,7 +65,11 @@ export class SemanticAnalyzer {
 
     /** Whether the current scope is inside a procedure body (where `return` is valid). */
     private inProcedure(): boolean {
-        for (let scope: Scope | null = this.current; scope; scope = scope.parent) {
+        for (
+            let scope: Scope | null = this.current;
+            scope;
+            scope = scope.parent
+        ) {
             if (scope.kind === "procedure") return true;
         }
         return false;
@@ -145,7 +151,7 @@ export class SemanticAnalyzer {
             case "VariableDeclaration":
                 // `private` at the top scope is valid: the variable is visible to
                 // sprites in this file but cannot be imported into other files.
-                if (node.initializer) this.resolveExpression(node.initializer);
+                if (node.initializer) this.inferType(node.initializer);
                 // Top-level variables are hoisted in Pass 1; only declare locals here.
                 if (this.current.kind !== "global") {
                     this.declare(
@@ -161,8 +167,8 @@ export class SemanticAnalyzer {
                 }
                 break;
             case "VariableAssignment":
-                this.resolveExpression(node.left);
-                this.resolveExpression(node.right);
+                this.inferType(node.left);
+                this.inferType(node.right);
                 break;
             case "ProcedureDeclaration":
                 if (node.access === "temp") {
@@ -192,28 +198,28 @@ export class SemanticAnalyzer {
                     this.error(
                         "Event handlers can only appear at the top level of a sprite",
                         node.call,
-                    )
+                    );
                 }
-                this.resolveExpression(node.call);
+                this.inferType(node.call);
                 this.visitBlock(node.body);
                 break;
             case "IfStatement":
-                this.resolveExpression(node.condition);
+                this.inferType(node.condition);
                 this.visitBlock(node.thenBlock);
                 for (const elifBlock of node.elifs) {
-                    this.resolveExpression(elifBlock.condition)
-                    this.visitBlock(elifBlock.block)
+                    this.inferType(elifBlock.condition);
+                    this.visitBlock(elifBlock.block);
                 }
-                if (node.elseBlock) this.visitBlock(node.elseBlock)
+                if (node.elseBlock) this.visitBlock(node.elseBlock);
                 break;
             case "WhileStatement":
             case "DoWhileStatement":
-                this.resolveExpression(node.condition);
+                this.inferType(node.condition);
                 this.visitBlock(node.body);
                 break;
             case "ForStatement":
                 // TODO: check tuple matches iterable's elment shape
-                this.resolveExpression(node.iterable)
+                this.inferType(node.iterable);
 
                 this.enter("block");
                 const loopVars = node.pattern.type === "TupleExpression"
@@ -241,10 +247,10 @@ export class SemanticAnalyzer {
                 this.exit();
                 break;
             case "ExpressionStatement":
-                this.resolveExpression(node.expression);
+                this.inferType(node.expression);
                 break;
             case "ReturnStatement":
-                if (node.argument) this.resolveExpression(node.argument);
+                if (node.argument) this.inferType(node.argument);
                 if (!this.inProcedure()) {
                     this.error(
                         "'return' can only be used inside a procedure",
@@ -253,37 +259,34 @@ export class SemanticAnalyzer {
                     );
                 }
                 break;
-            case "SwitchDeclaration": 
-                {
-                    // TODO: Check for all cases covered or default case for enum; falthrough kward not in default and used correctly
-                    const defaultCases = node.body.filter(
-                    (caseEntry) => caseEntry.type === "DefaultCaseDeclaration",
+            case "SwitchDeclaration": {
+                // TODO: Check for all cases covered or default case for enum; falthrough kward not in default and used correctly
+                const defaultCases = node.body.filter((caseEntry) => caseEntry.type === "DefaultCaseDeclaration");
+                if (defaultCases.length > 1) {
+                    this.error(
+                        `2 or more 'default' cases found in switch-case statement`,
+                        defaultCases[1],
+                        "default".length,
                     );
-                    if (defaultCases.length > 1) {
-                        this.error(
-                            `2 or more 'default' cases found in switch-case statement`,
-                            defaultCases[1],
-                            "default".length,
-                        );
-                    }
-                    if (
-                        node.body.length > 0 
-                        && defaultCases.length === 1
-                        && node.body.at(-1)?.type !== "DefaultCaseDeclaration"
-                    ) {
-                        this.error(
-                            `'default' case not located at bottom of switch-case statement`,
-                            defaultCases[0],
-                            "default".length,
-                        );
-                    }
-
-                    this.resolveExpression(node.value);
-                    for (const caseEntry of node.body) this.visit(caseEntry);
-                    break;
                 }
+                if (
+                    node.body.length > 0 
+                    && defaultCases.length === 1
+                    && node.body.at(-1)?.type !== "DefaultCaseDeclaration"
+                ) {
+                    this.error(
+                        `'default' case not located at bottom of switch-case statement`,
+                        defaultCases[0],
+                        "default".length,
+                    );
+                }
+
+                this.inferType(node.value);
+                for (const caseEntry of node.body) this.visit(caseEntry);
+                break;
+            }
             case "CaseDeclaration":
-                for (const caseExpr of node.values) this.resolveExpression(caseExpr);
+                for (const caseExpr of node.values) this.inferType(caseExpr);
                 this.visitBlock(node.body);
                 break;
             case "DefaultCaseDeclaration":
@@ -292,7 +295,11 @@ export class SemanticAnalyzer {
             case "EnumDeclaration":
                 // Enum body already hoisted; just validate the modifier.
                 if (node.access === "temp") {
-                    this.error("Enums cannot be declared 'temp'", node, node.access.length);
+                    this.error(
+                        "Enums cannot be declared 'temp'",
+                        node,
+                        node.access.length,
+                    );
                 }
                 break;
             case "ErrorStatement":
@@ -308,70 +315,285 @@ export class SemanticAnalyzer {
         this.exit();
     }
 
-    private resolveExpression(expression: ExpressionNode): void {
+    /** Converts a written type annotation (TypeNode) into an InternalType. */
+    private typeFromNode(node: TypeNode): InternalType {
+        if (node.type === "UnionType") {
+            return {
+                kind: "union",
+                left: this.typeFromNode(node.left),
+                right: this.typeFromNode(node.right),
+            };
+        }
+
+        // SingleTypeNode
+        const params = node.typeParams ?? [];
+        switch (node.typeName) {
+            case "num":
+            case "str":
+            case "bool":
+            case "void":
+                return { kind: "primitive", name: node.typeName };
+            case "list":
+                return {
+                    kind: "list",
+                    element: params[0]
+                        ? this.typeFromNode(params[0])
+                        : { kind: "unknown" },
+                };
+            case "dict":
+                return {
+                    kind: "dict",
+                    key: params[0]
+                        ? this.typeFromNode(params[0])
+                        : { kind: "unknown" },
+                    value: params[1]
+                        ? this.typeFromNode(params[1])
+                        : { kind: "unknown" },
+                };
+            default: {
+                // Any other stuff must resolve to an enum
+                const symbols = this.current.lookup(node.typeName);
+                if (symbols?.some((s) => s.kind === "enum")) {
+                    return { kind: "enum", name: node.typeName };
+                }
+                this.error(`Unknown type '${node.typeName}'`, node);
+                return { kind: "unknown" };
+            }
+        }
+    }
+
+    /**
+     * Returns a symbol's resolved type, computing and caching it on first access
+     * For inferred (un-annotated) variables, the analyzer is expected to have already written `cachedType` during inference
+     */
+    private typeOf(sym: SymbolEntry): InternalType {
+        if (sym.cachedType) return sym.cachedType;
+
+        let resolved: InternalType;
+        switch (sym.kind) {
+            case "variable":
+            case "parameter":
+            case "loopVar":
+                resolved = sym.type
+                    ? this.typeFromNode(sym.type)
+                    : { kind: "unknown" };
+                break;
+            case "enum":
+                resolved = { kind: "enum", name: sym.name };
+                break;
+            default:
+                resolved = { kind: "unknown" }; // procedures/sprites aren't values
+        }
+
+        sym.cachedType = resolved;
+        return resolved;
+    }
+
+    private inferType(expression: ExpressionNode): InternalType {
         switch (expression.type) {
-          case "Identifier":
-            if (!this.current.lookup(expression.name)) {
-              this.error(`'${expression.name}' is not defined`, expression);
+            case "Identifier": {
+                const sym = this.current.lookup(expression.name)?.[0];
+                if (!sym) {
+                    this.error(`'${expression.name}' is not defined`, expression);
+                    return { kind: "unknown" };
+                }
+                return this.typeOf(sym);
             }
-            break;
-          case "BinaryExpression":
-            this.resolveExpression(expression.left);
-            this.resolveExpression(expression.right);
-            break;
-          case "CallExpression":
-            this.resolveExpression(expression.object);
-            for (const arg of expression.arguments) {
-              this.resolveExpression(
-                arg.type === "NamedArgument" ? arg.value : arg,
-              );
-            }
-            break;
-          case "DictExpression":
-            for (const entry of expression.entries) {
-                this.resolveExpression(entry.key);
-                this.resolveExpression(entry.value);
-            }
-            break;
-          case "EmptyExpression":
-            break;
-          case "ErrorToken":
-            break;
-          case "IndexerAccess":
-            this.resolveExpression(expression.object);
-            this.resolveExpression(expression.index);
-            break;
-          case "InterpolatedString":
-            for (const entry of expression.parts) {
-                if (!(typeof entry === "string")) {
-                    this.resolveExpression(entry)
+            case "BinaryExpression": {
+                let l = this.inferType(expression.left);
+                let r = this.inferType(expression.right);
+
+                if (l.kind === "list" && r.kind === "list" && isAssignable(l, r)) return l;
+
+                // `unknown` is the escape hatch (not-yet-typed calls/members);
+                // let it pass so one missing type doesn't cascade into errors.
+                if (
+                    l.kind !== "unknown" &&
+                    r.kind !== "unknown" &&
+                    !(l.kind === "primitive" && r.kind === "primitive")
+                ) {
+                    this.error(
+                        `Cannot use binop between two variables that are not both of primitive or list type`,
+                        expression,
+                    );
+                }
+
+                switch (expression.operator) {
+                    // arithmetic
+                    case "+":
+                        return isStr(l) || isStr(r)
+                            ? { kind: "primitive", name: "str" }
+                            : { kind: "primitive", name: "num" };
+                    case "-":
+                    case "*":
+                    case "/":
+                    case "%":
+                    case "**":
+                        return { kind: "primitive", name: "num" };
+
+                    // comparison
+                    case "==":
+                    case "<":
+                    case ">":
+                    case "<=":
+                    case ">=":
+                        return { kind: "primitive", name: "bool" };
+
+                    // logical
+                    case "&&":
+                    case "||":
+                    case "!&":
+                    case "!|":
+                    case "!^":
+                    case "^":
+                        return { kind: "primitive", name: "bool" };
                 }
             }
-            break;
-          case "ListExpression":
-            for (const item of expression.elements) {
-                this.resolveExpression(item)
+            case "CallExpression":
+                this.inferType(expression.object);
+                for (const arg of expression.arguments) {
+                    this.inferType(arg.type === "NamedArgument" ? arg.value : arg);
+                }
+                // TODO: resolve callee => procedureSymbol, pick overload, return this.typeFromNode(signiture.returnType ?? voidNode)
+                return { kind: "unknown" };
+            case "DictExpression": {
+                if (expression.entries.length == 0)
+                    return { kind: "dict", key: { kind: "unknown" }, value: { kind: "unknown" } };
+
+                const firstKeyType = this.inferType(expression.entries[0].key);
+                const firstValueType = this.inferType(expression.entries[0].value);
+
+                for (const [i, entry] of expression.entries.entries()) {
+                    const keyType = this.inferType(entry.key);
+                    const valueType = this.inferType(entry.value);
+
+                    if (!isAssignable(keyType, firstKeyType)) {
+                        this.error(
+                            `Expected key of type ${typeToString(firstKeyType)}, got ${typeToString(keyType)}`,
+                            entry.key,
+                        );
+                        return {
+                            kind: "dict",
+                            key: { kind: "unknown" },
+                            value: { kind: "unknown" },
+                        };
+                    }
+
+                    if (!isAssignable(valueType, firstValueType)) {
+                        this.error(
+                            `Expected value of type ${typeToString(firstValueType)}, got ${typeToString(valueType)}`,
+                            entry.value,
+                        );
+                        return {
+                            kind: "dict",
+                            key: { kind: "unknown" },
+                            value: { kind: "unknown" },
+                        };
+                    }
+                }
+
+                return {
+                    kind: "dict",
+                    key: firstKeyType,
+                    value: firstValueType,
+                };
             }
-            break;
-          case "Literal":
-            break;
-          case "MemberExpression":
-            // TODO: resolve namespaces (motion.*, op.*), enum members (directions.UP), and sprite members (self.x). The property is never a free variable, so it must NOT be resolved as one here.
-            break;
-          case "SliceAccess":
-            this.resolveExpression(expression.object);
-            this.resolveExpression(expression.start);
-            if (expression.step) this.resolveExpression(expression.step);
-            this.resolveExpression(expression.end);
-            break;
-          case "TupleExpression":
-            for (const item of expression.elements) {
-              this.resolveExpression(item);
+            case "IndexerAccess": {
+                const objectType = this.inferType(expression.object);
+                this.inferType(expression.index);
+                switch (objectType.kind) {
+                    case "list":
+                        return objectType.element;
+                    case "dict":
+                        return objectType.value;
+                    case "tuple":
+                        return objectType.elements[0]; // TODO: naive. Doesn't really work
+                    case "primitive":
+                        if (objectType.name === "str") return objectType;
+                        break;
+                    case "unknown":
+                        return { kind: "unknown" };
+                }
+                this.error(
+                    `Cannot index object of type ${typeToString(objectType)}`,
+                    expression,
+                );
+                return { kind: "unknown" };
             }
-            break;
-          case "UnaryExpression":
-            this.resolveExpression(expression.argument);
-            break;
+            case "InterpolatedString":
+                for (const entry of expression.parts) {
+                    if (!(typeof entry === "string")) {
+                        this.inferType(entry);
+                    }
+                }
+                return { kind: "primitive", name: "str" };
+            case "ListExpression": {
+                if (expression.elements.length == 0) {
+                    return { kind: "list", element: { kind: "unknown" } };
+                }
+                
+                const types: InternalType[] = [];
+                for (const element of expression.elements) {
+                    const t = this.inferType(element);
+                    const seen = types.some(
+                        (existing) =>
+                            isAssignable(existing, t) && isAssignable(t, existing),
+                    );
+                    if (!seen) types.push(t);
+                }
+
+                let element = types[0];
+                for (let i = 1; i < types.length; i++) {
+                    element = { kind: "union", left: element, right: types[i] };
+                }
+
+                return { kind: "list", element };
+            }
+            case "Literal":
+                switch (expression.valueType) {
+                    case "Number":
+                        return { kind: "primitive", name: "num" };
+                    case "String":
+                        return { kind: "primitive", name: "str" };
+                    case "Boolean":
+                        return { kind: "primitive", name: "bool" };
+                    case "Null":
+                        return { kind: "unknown" };
+                }
+            case "MemberExpression":
+                // TODO (Phase 3): resolve namespaces (motion.*, op.*), enum members (directions.UP), and sprite members (self.x). 
+                // The property is never a free variable, so it must NOT be resolved as one here.
+                return { kind: "unknown" };
+            case "SliceAccess": {
+                const objectType = this.inferType(expression.object);
+                if (expression.start) this.inferType(expression.start);
+                if (expression.end) this.inferType(expression.end);
+                if (expression.step) this.inferType(expression.step);
+                return objectType;
+            }
+            case "TupleExpression": {
+                const elements = expression.elements.map(item => this.inferType(item));
+                return { kind: "tuple", elements };
+            }
+            case "UnaryExpression":
+                const right = this.inferType(expression.argument);
+                switch (expression.operator) {
+                    case "!":
+                        if (!(right.kind === "primitive" && right.name === "bool")) {
+                            this.error(`Must use '!' unop with a boolean expression type`, expression);
+                        }
+                        return { kind: "primitive", name: "bool" };
+
+                    case "-":
+                        if (!(right.kind === "primitive" && right.name === "num")) {
+                            this.error(`Must use '-' unop with a numeric expression type`, expression);
+                        }
+                        return { kind: "primitive", name: "num" };
+                }
+            case "EmptyExpression":
+                return { kind: "unknown" };
+            case "ErrorToken":
+                return { kind: "unknown" };
         }
     }
 
@@ -389,7 +611,10 @@ export class SemanticAnalyzer {
                 column: node.loc.start.column,
                 ...(length != null
                     ? { length }
-                    : { endLine: node.loc.end.line, endColumn: node.loc.end.column }),
+                    : {
+                          endLine: node.loc.end.line,
+                          endColumn: node.loc.end.column,
+                      }),
             }),
         );
     }

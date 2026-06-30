@@ -162,7 +162,7 @@ export interface VariableDeclarationNode extends NodeBase {
 
 export interface VariableAssignmentNode extends NodeBase {
     type: "VariableAssignment";
-    operator: string;
+    operator: AssignmentOperator;
     left: ExpressionNode;
     right: ExpressionNode;
 }
@@ -225,9 +225,19 @@ export interface InterpolatedStringExpressionNode extends NodeBase {
     parts: (string | ExpressionNode)[];
 }
 
+export type BinaryOperator =
+    | "+" | "-" | "*" | "/" | "%" | "**" // arithmetic
+    | "==" | "<" | ">" | "<=" | ">=" // comparison
+    | "&&" | "||" | "!&" | "!|" | "!^" | "^"; // logical
+
+export type AssignmentOperator =
+    | "=" | "+=" | "-=" | "*=" | "**=" | "/=" | "%=";
+
+export type UnaryOperator = "!" | "-";
+
 export interface BinaryExpressionNode extends NodeBase {
     type: "BinaryExpression";
-    operator: string;
+    operator: BinaryOperator;
     left: ExpressionNode;
     right: ExpressionNode;
 }
@@ -253,14 +263,14 @@ export interface IndexerAccessNode extends NodeBase {
 export interface SliceAccessNode extends NodeBase {
     type: "SliceAccess";
     object: ExpressionNode;
-    start: ExpressionNode;
-    end: ExpressionNode;
+    start: ExpressionNode | null;
+    end: ExpressionNode | null;
     step: ExpressionNode | null;
 }
 
 export interface UnaryExpressionNode extends NodeBase {
     type: "UnaryExpression";
-    operator: string;
+    operator: UnaryOperator;
     argument: ExpressionNode;
 }
 

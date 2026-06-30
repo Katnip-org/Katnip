@@ -6,7 +6,7 @@ import { isValuedTokenType, UnitTokenType } from "../lexer/Token.js";
 import type { Token, TokenInfoFor, TokenPos, TokenType, ValuedToken, ValuedTokenType } from "../lexer/Token.js";
 import { ErrorReporter, KatnipError } from "../utils/ErrorReporter.js";
 import { KatnipLog, KatnipLogType, Logger } from "../utils/Logger.js";
-import { type AST, type DecoratorNode, type NodeBase, type ParameterNode, type ProcedureDeclarationNode, type SingleTypeNode, type TypeNode, type UnionTypeNode, type ExpressionNode, type StatementNode, type EnumDeclarationNode, type VariableDeclarationNode, VariableDeclarationType, type VariableAssignmentNode, type DictEntryNode, type ElifClauseNode, type BlockNode, type CaseDeclarationNode, type DefaultCaseDeclarationNode } from "./AST-nodes.js";
+import { type AST, type DecoratorNode, type NodeBase, type ParameterNode, type ProcedureDeclarationNode, type SingleTypeNode, type TypeNode, type UnionTypeNode, type ExpressionNode, type StatementNode, type EnumDeclarationNode, type VariableDeclarationNode, VariableDeclarationType, type VariableAssignmentNode, type DictEntryNode, type ElifClauseNode, type BlockNode, type CaseDeclarationNode, type DefaultCaseDeclarationNode, type BinaryOperator, type AssignmentOperator, type UnaryOperator } from "./AST-nodes.js";
 import { bindingPowerTable, getBindingPower } from "./BindingPowerTable.js";
 
 export class Parser {
@@ -673,7 +673,7 @@ export class Parser {
         
         return {
             type: "VariableAssignment",
-            operator: assginmentOperator,
+            operator: assginmentOperator as AssignmentOperator,
             left: left,
             right: right,
             loc: { start: left.loc.start, end: right.loc.end }
@@ -1065,7 +1065,7 @@ export class Parser {
             const right = this.parseExpression(rbp);
             return {
                 type: "UnaryExpression",
-                operator: value,
+                operator: value as UnaryOperator,
                 argument: right,
                 loc: { start: token.start, end: right.loc?.end || token.end },
             } as ExpressionNode;
@@ -1247,34 +1247,50 @@ export class Parser {
         if (this.checkToken("type", ["["])) {
             this.advance();
 
-            const sliceStart = this.parseExpression();
-            let sliceEnd: ExpressionNode | null = null;
-            let sliceStep: ExpressionNode | null = null;
-            if (this.tryConsume("type", [":"])) {
-                sliceEnd = this.parseExpression();
-                if (this.tryConsume("type", [":"])) {
-                    sliceStep = this.parseExpression();
-                }
+            // Optional start: absent when the bracket opens straight onto ':' or ']'.
+            let sliceStart: ExpressionNode | null = null;
+            if (!this.checkToken("type", [":", "]"])) {
+                sliceStart = this.parseExpression();
             }
-            this.consume({ type: "]" }, "Expected ']' after parameters");
 
-            if (sliceEnd === null && sliceStep === null) {
+            // No ':' => plain index access (arr[expr]), which needs an index.
+            if (!this.checkToken("type", [":"])) {
+                if (!sliceStart) {
+                    this.reporter.add(
+                        new KatnipError("Parser", "Expected an index or slice inside '[]'", this.peek()?.start || { line: -1, column: -1 })
+                    );
+                }
+                this.consume({ type: "]" }, "Expected ']' after index");
                 return {
                     type: "IndexerAccess",
                     object: left,
-                    index: sliceStart,
+                    index: sliceStart ?? { type: "ErrorToken", value: "", loc: { start: left.loc.start, end: left.loc.end } } as ExpressionNode,
                     loc: {
                         start: left.loc.start,
                         end: this.previous()?.end || token.end,
                     },
+                };
+            }
+
+            // Slice: consume the first ':', then an optional end and optional ':' + step.
+            this.advance(); // consume ':'
+            let sliceEnd: ExpressionNode | null = null;
+            if (!this.checkToken("type", [":", "]"])) {
+                sliceEnd = this.parseExpression();
+            }
+            let sliceStep: ExpressionNode | null = null;
+            if (this.tryConsume("type", [":"])) {
+                if (!this.checkToken("type", ["]"])) {
+                    sliceStep = this.parseExpression();
                 }
             }
+            this.consume({ type: "]" }, "Expected ']' after slice");
 
             return {
                 type: "SliceAccess",
                 object: left,
                 start: sliceStart,
-                end: sliceEnd!,
+                end: sliceEnd,
                 step: sliceStep,
                 loc: {
                     start: left.loc.start,
@@ -1313,7 +1329,7 @@ export class Parser {
         const right = this.parseExpression(bp.rbp);
         return {
             type: "BinaryExpression",
-            operator: tokenValue,
+            operator: tokenValue as BinaryOperator,
             left,
             right,
             loc: { start: left.loc.start, end: right.loc.end },

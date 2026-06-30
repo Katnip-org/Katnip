@@ -66,3 +66,13 @@ Everything at the root of a file should be invalidated. The space should be rese
 ---
 
 NOTE: I should probably add a more intensive, fleshed out checker for return types and paths to the semantic analysis. Follow all branches and routes. 
+
+## 3. Semantic analysis: types
+binop:
+If +
+    If str is one of the types
+        return str
+    else 
+
+
+nestedList?

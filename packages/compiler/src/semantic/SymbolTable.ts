@@ -4,10 +4,20 @@ import type {
     TypeNode,
     VariableDeclarationType,
 } from "../parser/AST-nodes.js";
+import type { InternalType } from "./InternalTypes.js";
 
 export interface SymbolBase {
     name: string;
     declNode: NodeBase;
+    /**
+     * Resolved type of this symbol, cached lazily by the analyzer so it is
+     * computed once instead of on every lookup:
+     * - variable / parameter / loopVar -> the value's type (from its annotation,
+     *   or inferred from the initializer / iterable)
+     * - enum -> { kind: "enum", name }
+     * Stays undefined until first resolved; procedures and sprites have no value type.
+     */
+    cachedType?: InternalType;
 }
 export interface VariableSymbol extends SymbolBase {
     kind: "variable" | "parameter" | "loopVar"; // Loopvar => variables created by for loops
