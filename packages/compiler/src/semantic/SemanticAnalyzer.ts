@@ -372,9 +372,14 @@ export class SemanticAnalyzer {
         this.exit();
     }
 
-    /** Reports an error if a condition expression is not of type 'bool'. */
+    /**
+     * Reports an error if a condition expression is not of type 'bool'.
+     * `unknown` passes: it is the escape hatch for not-yet-typed calls/members,
+     * so a single missing type does not cascade into false positives.
+     */
     private checkCondition(condition: ExpressionNode, context: string): void {
         const type = this.inferType(condition);
+        if (type.kind === "unknown") return;
         if (type.kind !== "primitive" || type.name !== "bool") {
             this.error(
                 `${context} condition must be of type 'bool', not '${typeToString(type)}'`,
@@ -489,6 +494,7 @@ export class SemanticAnalyzer {
                 let r = this.inferType(expression.right);
 
                 if (l.kind === "list" && r.kind === "list" && isAssignable(l, r)) return l;
+                if (l.kind === "enum" && r.kind === "enum" && isAssignable(l, r)) return l;
 
                 // `unknown` is the escape hatch (not-yet-typed calls/members);
                 // let it pass so one missing type doesn't cascade into errors.
@@ -498,7 +504,7 @@ export class SemanticAnalyzer {
                     !(l.kind === "primitive" && r.kind === "primitive")
                 ) {
                     this.error(
-                        `Cannot use binop between two variables that are not both of primitive or list type`,
+                        `Cannot use binop between two variables that are not both of type: 'primitive', 'list', or 'enum'`,
                         expression,
                     );
                 }
