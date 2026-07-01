@@ -415,6 +415,13 @@ export class SemanticAnalyzer {
             };
         }
 
+        if (node.type === "TupleType") {
+            return {
+                kind: "tuple",
+                elements: node.elements.map((element) => this.typeFromNode(element)),
+            };
+        }
+
         // SingleTypeNode
         const params = node.typeParams ?? [];
         switch (node.typeName) {

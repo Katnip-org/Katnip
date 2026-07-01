@@ -1,32 +1,55 @@
-# Single-pass “everything once” test
+#> all.knip — every language feature, exactly once, as small as it goes. <#
 
-private a: num = 42;
-temp b: str = "Hello " + op.letter(1, "test") + "h";
-public c: bool = const.true;
+enum Color { RED, GREEN, BLUE } # enum declaration
 
-private d: list<num | str> = [1, 2 % 3 * 4, "5"];
-public e: dict<str, str> = {"key": "value"};
-public f: nestedList<list<num | str>> = [[1], [op.letter(1, "test")]];
+# declarations: modifiers, primitives, containers, inference
+private n: num = 6.02e2; # scientific num
+temp    s: str = "hi"; # str
+public  b: bool = true; # bool literal
+private u: num | str = 5; # union type
+private li: list<num> = [1, 2, 3]; # list
+private di: dict<str, num> = {"a": 1}; # dict
+private pairs: list<(str, num)> = [("a", 1), ("b", 2)]; # tuple type + literals
+private col: Color = Color.RED; # enum-typed
+private inferred = -n; # inferred + unary minus
 
-enum thing { red, green, blue }
+# operators, each family once (all bool / all num)
+private arith: num  = n + n - n * n / n % n ** n;
+private cmp: bool   = n < 1 && n > 0 && n <= 1 && n >= 0 && n == n;
+private logic: bool = (b ^ b) || (b !& b) || (b !| b) || (b !^ b) || !b;
 
-proc log(@warp="true", msg: str = "default") -> void | num { # proc comment
-    console.log(msg); #! ignore me
-    a = 1;
+# procedure: decorators, defaults, union return, both return forms ─
+proc add(@warp = true, @doc = "%x + %y", x: num, y: num = 1) -> num | void {
+    if (x > y) { return(x + y); } #! inline-ignored comment
+    return;
 }
 
-proc compute(@warp, value: num) -> num { return(value * 2); }
+# sprite: member access + one handler with all control flow
+sprite Cat {
+    self.x = 0; # member assignment
 
-temp i: num = 0;
-for (i, 10) { looks.say("i=" + i); motion.move(i * 10); }
+    events.onflag() {
+        temp t: num = add(x = 2, y = 3); # named call args
+        t += 1; t -= 2; t *= 3; t /= 4; t %= 5; t **= 6; # every compound assign
 
-sprite banana {
-    self.x = 0;
-    self.y = 0;
-    self.visible = true;
-    self.costume = "./bandana.png";
+        if (b && !b) {
+            looks.say(f"n is {n}"); # interpolated string
+        } elif (col == Color.GREEN) { # enum equality
+            looks.say(s[0:2]); # slice
+        } else {
+            looks.say(s[0] + di["a"]); # index + dict index
+        }
 
-    events.onflag() { motion.x.set(compute(10)); }
+        while (t > 0) { t -= 1; } # while
+        do { t += 1; } while (t < 3); # do-while
 
-    events.onflag() { say('meow'); }
+        for (i, n) { motion.move(i); } # counter loop
+        for ((name, dist), pairs) { motion.move(dist); } # tuple-destructure loop
+
+        switch (t % 2) { # switch / case / default
+            case (0) { console.log("even"); }
+            case (1, 3) { console.log("odd"); }
+            default { console.log("?"); }
+        }
+    }
 }

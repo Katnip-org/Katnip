@@ -6,7 +6,7 @@ import { isValuedTokenType, UnitTokenType } from "../lexer/Token.js";
 import type { Token, TokenInfoFor, TokenPos, TokenType, ValuedToken, ValuedTokenType } from "../lexer/Token.js";
 import { ErrorReporter, KatnipError } from "../utils/ErrorReporter.js";
 import { KatnipLog, KatnipLogType, Logger } from "../utils/Logger.js";
-import { type AST, type DecoratorNode, type NodeBase, type ParameterNode, type ProcedureDeclarationNode, type SingleTypeNode, type TypeNode, type UnionTypeNode, type ExpressionNode, type StatementNode, type EnumDeclarationNode, type VariableDeclarationNode, VariableDeclarationType, type VariableAssignmentNode, type DictEntryNode, type ElifClauseNode, type BlockNode, type CaseDeclarationNode, type DefaultCaseDeclarationNode, type BinaryOperator, type AssignmentOperator, type UnaryOperator } from "./AST-nodes.js";
+import { type AST, type DecoratorNode, type NodeBase, type ParameterNode, type ProcedureDeclarationNode, type SingleTypeNode, type TypeNode, type UnionTypeNode, type TupleTypeNode, type NamedArgumentNode, type ExpressionNode, type StatementNode, type EnumDeclarationNode, type VariableDeclarationNode, VariableDeclarationType, type VariableAssignmentNode, type DictEntryNode, type ElifClauseNode, type BlockNode, type CaseDeclarationNode, type DefaultCaseDeclarationNode, type BinaryOperator, type AssignmentOperator, type UnaryOperator } from "./AST-nodes.js";
 import { bindingPowerTable, getBindingPower } from "./BindingPowerTable.js";
 
 export class Parser {
@@ -297,6 +297,10 @@ export class Parser {
      * @returns The parsed type node.
      */
     private parsePrimaryType(): TypeNode {
+        if (this.checkToken("type", ["("])) {
+            return this.parseTupleType();
+        }
+
         const typeNameToken = this.consume({ type: "Identifier" }, "Expected type name");
         const typeName = typeNameToken.token.value;
 
@@ -331,6 +335,29 @@ export class Parser {
             type: "Type",
             typeName,
             loc: { start: typeNameToken.start, end: typeNameToken.end }
+        };
+    }
+
+    /**
+     * Parses a tuple type, e.g. (str, num). Used for fixed-shape sequences
+     * like the element type of list<(str, num)>.
+     * @returns The parsed tuple type node.
+     */
+    private parseTupleType(): TupleTypeNode {
+        const open = this.consume({ type: "(" }, "Expected '(' for tuple type");
+        const elements: TypeNode[] = [];
+
+        if (!this.checkToken("type", [")"])) {
+            do {
+                elements.push(this.parseTypeAnnotation());
+            } while (this.tryConsume("type", [","]));
+        }
+
+        const close = this.consume({ type: ")" }, "Expected ')' to close tuple type");
+        return {
+            type: "TupleType",
+            elements,
+            loc: { start: open.start, end: close.end }
         };
     }
 
@@ -1210,6 +1237,29 @@ export class Parser {
     }
 
     /**
+     * Parses a single call argument: either a positional expression or a named argument of the form `name = value`.
+     * @returns The parsed argument node.
+     */
+    private parseArgument(): ExpressionNode | NamedArgumentNode {
+        if (
+            this.checkToken("type", ["Identifier"]) &&
+            this.peek(1)?.token.type === "="
+        ) {
+            const nameToken = this.consume({ type: "Identifier" }, "Expected argument name");
+            this.consume({ type: "=" }, "Expected '=' after argument name");
+            const value = this.parseExpression();
+            return {
+                type: "NamedArgument",
+                name: nameToken.token.value,
+                value,
+                loc: { start: nameToken.start, end: value.loc.end }
+            };
+        }
+
+        return this.parseExpression();
+    }
+
+    /**
      * Parses the infix part of an expression.
      * @returns The parsed expression node.
      */
@@ -1225,13 +1275,13 @@ export class Parser {
 
         if (this.checkToken("type", ["("])) {
             this.advance();
-            const parenArgs: ExpressionNode[] = [];
+            const parenArgs: (ExpressionNode | NamedArgumentNode)[] = [];
             if (!this.checkToken("type", [")"])) {
                 do {
-                    parenArgs.push(this.parseExpression());
+                    parenArgs.push(this.parseArgument());
                 } while (this.tryConsume("type", [","]));
             }
-            this.consume({ type: ")" }, "Expected ')' after parameters");
+            this.consume({ type: ")" }, "Expected ')' after arguments");
 
             return {
                 type: "CallExpression",

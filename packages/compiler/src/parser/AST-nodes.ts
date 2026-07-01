@@ -37,7 +37,12 @@ export interface UnionTypeNode extends NodeBase {
     right: TypeNode;
 }
 
-export type TypeNode = SingleTypeNode | UnionTypeNode;
+export interface TupleTypeNode extends NodeBase {
+    type: "TupleType";
+    elements: TypeNode[];
+}
+
+export type TypeNode = SingleTypeNode | UnionTypeNode | TupleTypeNode;
 
 // Procedure nodes 
 export interface ProcedureDeclarationNode extends NodeBase {

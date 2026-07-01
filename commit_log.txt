@@ -1,3 +1,4 @@
+3b1b7bc 2026-07-01 bugfix: make enums work with binops
 32047e0 2026-06-30 Nearly finished phase 2. Added visiting for variable declarations, if statements, variable assignments, while statements, return statements, and for statements.
 d4cacfd 2026-06-29 Infer type basically done, still need to finish member expression and callexpression. Slight tech debt left on indexer access for tuples.
 b2bc29b 2026-06-27 Removed disallowing of private keyword
