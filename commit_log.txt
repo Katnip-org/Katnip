@@ -1,3 +1,4 @@
+d4cacfd 2026-06-29 Infer type basically done, still need to finish member expression and callexpression. Slight tech debt left on indexer access for tuples.
 b2bc29b 2026-06-27 Removed disallowing of private keyword
 d45e4cc 2026-06-27 Hoisted variables at the shared namespace of the file they're stored in
 f6077fd 2026-06-27 Added return statement, boolean literals, and proc/enum modifiers

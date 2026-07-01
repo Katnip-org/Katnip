@@ -16,10 +16,10 @@ export type InternalType =
 
 export function isAssignable(from: InternalType, to: InternalType): boolean {
     if (from.kind === "unknown" || to.kind === "unknown") return true;
-    if (to.kind === "union")
-        return isAssignable(from, to.left) || isAssignable(from, to.right);
     if (from.kind === "union")
         return isAssignable(from.left, to) && isAssignable(from.right, to);
+    if (to.kind === "union")
+        return isAssignable(from, to.left) || isAssignable(from, to.right);
     if (from.kind !== to.kind) return false;
 
     const toAny = to as any;

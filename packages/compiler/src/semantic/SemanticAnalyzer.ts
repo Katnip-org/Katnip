@@ -24,6 +24,9 @@ export class SemanticAnalyzer {
     /** Current lexical scope. Changed by exit() and enter() */
     private current: Scope;
 
+    /** Declared return type of the procedure being visited, or null at the top level. */
+    private currentReturnType: InternalType | null = null;
+
     constructor(
         private reporter: ErrorReporter,
         private logger: Logger = new Logger(),
@@ -148,11 +151,23 @@ export class SemanticAnalyzer {
     /** Dispatches a statement to its handler. */
     private visit(node: StatementNode): void {
         switch (node.type) {
-            case "VariableDeclaration":
+            case "VariableDeclaration": {
                 // `private` at the top scope is valid: the variable is visible to
                 // sprites in this file but cannot be imported into other files.
-                if (node.initializer) this.inferType(node.initializer);
-                // Top-level variables are hoisted in Pass 1; only declare locals here.
+                const initType = node.initializer ? this.inferType(node.initializer) : null;
+                const varType = node.varType ? this.typeFromNode(node.varType) : null;
+
+                if (!initType && !varType) {
+                    this.error(`Variable '${node.name}' must have either a type annotation or an initial value`, node);
+                }
+
+                if (initType && varType && !isAssignable(initType, varType)) {
+                    this.error(
+                        `Variable '${node.name}' of type '${typeToString(varType)}' cannot be initialized with value of type '${typeToString(initType)}'`,
+                        node,
+                    );
+                }
+
                 if (this.current.kind !== "global") {
                     this.declare(
                         {
@@ -165,15 +180,30 @@ export class SemanticAnalyzer {
                         node,
                     );
                 }
+
+                const sym = this.current.lookupLocal(node.name)?.find(s => s.declNode === node);
+                if (sym) sym.cachedType = varType ?? initType ?? { kind: "unknown" };
                 break;
-            case "VariableAssignment":
-                this.inferType(node.left);
-                this.inferType(node.right);
+            }
+            case "VariableAssignment": {
+                const target = this.inferType(node.left);
+                const value = this.inferType(node.right);
+                if (!isAssignable(value, target)) {
+                    this.error(
+                        `Cannot assign value of type '${typeToString(value)}' to target of type '${typeToString(target)}'`,
+                        node,
+                    );
+                }
                 break;
-            case "ProcedureDeclaration":
+            }
+            case "ProcedureDeclaration": {
                 if (node.access === "temp") {
                     this.error("Procedures cannot be declared 'temp'", node, node.access.length);
                 }
+                const previousReturnType = this.currentReturnType;
+                this.currentReturnType = node.returnType
+                    ? this.typeFromNode(node.returnType)
+                    : { kind: "primitive", name: "void" };
                 this.enter("procedure");
                 for (const param of node.parameters) {
                     this.declare(
@@ -188,77 +218,104 @@ export class SemanticAnalyzer {
                 }
                 for (const stmt of node.body.body) this.visit(stmt);
                 this.exit();
+                this.currentReturnType = previousReturnType;
                 break;
+            }
             case "SpriteDeclaration":
                 this.visitBlock(node.body, "sprite");
                 break;
             case "HandlerStatement":
                 // TODO: validate hat block
                 if (this.current.kind !== "sprite") {
-                    this.error(
-                        "Event handlers can only appear at the top level of a sprite",
-                        node.call,
-                    );
+                    this.error("Event handlers can only appear at the top level of a sprite", node.call);
                 }
                 this.inferType(node.call);
                 this.visitBlock(node.body);
                 break;
             case "IfStatement":
-                this.inferType(node.condition);
+                this.checkCondition(node.condition, "'if' statement");
                 this.visitBlock(node.thenBlock);
-                for (const elifBlock of node.elifs) {
-                    this.inferType(elifBlock.condition);
-                    this.visitBlock(elifBlock.block);
+                for (const elif of node.elifs) {
+                    this.checkCondition(elif.condition, "'elif' clause");
+                    this.visitBlock(elif.block);
                 }
                 if (node.elseBlock) this.visitBlock(node.elseBlock);
                 break;
             case "WhileStatement":
-            case "DoWhileStatement":
-                this.inferType(node.condition);
+                this.checkCondition(node.condition, "'while' loop");
                 this.visitBlock(node.body);
                 break;
-            case "ForStatement":
-                // TODO: check tuple matches iterable's elment shape
-                this.inferType(node.iterable);
+            case "DoWhileStatement":
+                this.checkCondition(node.condition, "'do-while' loop");
+                this.visitBlock(node.body);
+                break;
+            case "ForStatement": {
+                const elementType = this.iterationType(this.inferType(node.iterable));
+                const isTuple = node.pattern.type === "TupleExpression";
+                const loopVars =
+                    node.pattern.type === "TupleExpression"
+                        ? node.pattern.elements
+                        : [node.pattern];
+
+                let partTypes: InternalType[];
+                if (!isTuple) {
+                    partTypes = [elementType];
+                } else if (
+                    elementType.kind === "tuple" &&
+                    elementType.elements.length === loopVars.length
+                ) {
+                    partTypes = elementType.elements;
+                } else {
+                    if (elementType.kind !== "unknown") {
+                        this.error(
+                            `Cannot destructure '${typeToString(elementType)}' into ${loopVars.length} loop variables`,
+                            node.pattern,
+                        );
+                    }
+                    partTypes = loopVars.map((): InternalType => ({ kind: "unknown" }));
+                }
 
                 this.enter("block");
-                const loopVars = node.pattern.type === "TupleExpression"
-                    ? node.pattern.elements
-                    : [node.pattern];
-                for (const loopVar of loopVars) {
+                loopVars.forEach((loopVar, i) => {
                     if (loopVar.type !== "Identifier") {
-                        this.error(
-                            "Loop variable must be an identifier",
-                            loopVar,
-                        );
-                        continue;
+                        this.error("Loop variable must be an identifier", loopVar);
+                        return;
                     }
                     this.declare(
                         {
                             kind: "loopVar",
                             name: loopVar.name,
                             declNode: loopVar,
-                            type: null, // TODO: inference fill in later
+                            type: null,
+                            cachedType: partTypes[i],
                         },
                         loopVar,
                     );
-                }
+                });
                 for (const stmt of node.body.body) this.visit(stmt);
                 this.exit();
                 break;
+            }
             case "ExpressionStatement":
                 this.inferType(node.expression);
                 break;
-            case "ReturnStatement":
-                if (node.argument) this.inferType(node.argument);
+            case "ReturnStatement": {
                 if (!this.inProcedure()) {
+                    this.error("'return' can only be used inside a procedure", node, "return".length);
+                    break;
+                }
+                const returned: InternalType = node.argument
+                    ? this.inferType(node.argument)
+                    : { kind: "primitive", name: "void" };
+                const expected = this.currentReturnType ?? { kind: "primitive", name: "void" };
+                if (!isAssignable(returned, expected)) {
                     this.error(
-                        "'return' can only be used inside a procedure",
-                        node,
-                        "return".length,
+                        `Return value of type '${typeToString(returned)}' is not assignable to return type '${typeToString(expected)}'`,
+                        node.argument ?? node,
                     );
                 }
                 break;
+            }
             case "SwitchDeclaration": {
                 // TODO: Check for all cases covered or default case for enum; falthrough kward not in default and used correctly
                 const defaultCases = node.body.filter((caseEntry) => caseEntry.type === "DefaultCaseDeclaration");
@@ -313,6 +370,34 @@ export class SemanticAnalyzer {
         this.enter(kind);
         for (const statement of block.body) this.visit(statement);
         this.exit();
+    }
+
+    /** Reports an error if a condition expression is not of type 'bool'. */
+    private checkCondition(condition: ExpressionNode, context: string): void {
+        const type = this.inferType(condition);
+        if (type.kind !== "primitive" || type.name !== "bool") {
+            this.error(
+                `${context} condition must be of type 'bool', not '${typeToString(type)}'`,
+                condition,
+            );
+        }
+    }
+
+    /** The type produced by one step of iterating over the given iterable type. */
+    private iterationType(iterable: InternalType): InternalType {
+        switch (iterable.kind) {
+            case "list":
+                return iterable.element;
+            case "dict":
+                return { kind: "tuple", elements: [iterable.key, iterable.value] };
+            case "primitive":
+                // str -> characters, num -> counter value
+                return iterable.name === "str" || iterable.name === "num"
+                    ? iterable
+                    : { kind: "unknown" };
+            default:
+                return { kind: "unknown" };
+        }
     }
 
     /** Converts a written type annotation (TypeNode) into an InternalType. */
@@ -514,10 +599,7 @@ export class SemanticAnalyzer {
                     case "unknown":
                         return { kind: "unknown" };
                 }
-                this.error(
-                    `Cannot index object of type ${typeToString(objectType)}`,
-                    expression,
-                );
+                this.error(`Cannot index object of type ${typeToString(objectType)}`, expression);
                 return { kind: "unknown" };
             }
             case "InterpolatedString":
