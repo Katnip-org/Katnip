@@ -12,8 +12,7 @@ export interface SymbolBase {
     /**
      * Resolved type of this symbol, cached lazily by the analyzer so it is
      * computed once instead of on every lookup:
-     * - variable / parameter / loopVar -> the value's type (from its annotation,
-     *   or inferred from the initializer / iterable)
+     * - variable / parameter / loopVar -> the value's type (from its annotation, or inferred from the initializer / iterable)
      * - enum -> { kind: "enum", name }
      * Stays undefined until first resolved; procedures and sprites have no value type.
      */
@@ -70,3 +69,5 @@ export class Scope {
         return this.symbols.get(name) ?? this.parent?.lookup(name) ?? null;
     }
 }
+
+export function 

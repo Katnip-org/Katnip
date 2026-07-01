@@ -547,13 +547,27 @@ export class SemanticAnalyzer {
                         return { kind: "primitive", name: "bool" };
                 }
             }
-            case "CallExpression":
-                this.inferType(expression.object);
+            case "CallExpression": { // TODO: Is this okay to do? I feel as if maybe this should be combined with member expression
+                let namedArgFound = false;
                 for (const arg of expression.arguments) {
                     this.inferType(arg.type === "NamedArgument" ? arg.value : arg);
+
+                    if (arg.type === "NamedArgument") namedArgFound = true;
+                    else if (namedArgFound === true) {
+                        this.error(`Positional argument cannot follow a named argument`, arg);
+                    }
+                }
+
+                if (expression.object.type === "Identifier") {
+                    const candidates = this.current.lookup(expression.object.name);
+                    
+                    if (!candidates) {
+                        this.error(`Invalid call: procedure definition not found`, expression.object);
+                    }
                 }
                 // TODO: resolve callee => procedureSymbol, pick overload, return this.typeFromNode(signiture.returnType ?? voidNode)
                 return { kind: "unknown" };
+            }
             case "DictExpression": {
                 if (expression.entries.length == 0)
                     return { kind: "dict", key: { kind: "unknown" }, value: { kind: "unknown" } };

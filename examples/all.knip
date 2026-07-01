@@ -19,7 +19,12 @@ private cmp: bool   = n < 1 && n > 0 && n <= 1 && n >= 0 && n == n;
 private logic: bool = (b ^ b) || (b !& b) || (b !| b) || (b !^ b) || !b;
 
 # procedure: decorators, defaults, union return, both return forms ─
-proc add(@warp = true, @doc = "%x + %y", x: num, y: num = 1) -> num | void {
+proc add(
+    @warp = true, 
+    @doc = "sum two numbers", 
+    @proccode = "%x + %y",
+    x: num,
+    y: num = 1) -> num | void {
     if (x > y) { return(x + y); } #! inline-ignored comment
     return;
 }
