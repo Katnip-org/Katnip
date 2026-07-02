@@ -16,9 +16,26 @@ import type {
     ExpressionNode,
     VariableDeclarationNode,
     TypeNode,
+    CallExpressionNode,
+    ParameterNode,
 } from "../parser/AST-nodes.js";
-import { Scope, type ScopeKind, type SymbolEntry } from "./SymbolTable.js";
+import { Scope, type ScopeKind, type SymbolEntry, type ProcedureSymbol } from "./SymbolTable.js";
 import { isAssignable, isStr, typeToString, type InternalType } from "./InternalTypes.js";
+
+/** One overload of a procedure: its parameter list and declared return type. */
+type Signature = { params: ParameterNode[]; returnType: TypeNode | null };
+
+/** A call argument after its type has been inferred, keeping the node for error locations. */
+interface TypedArgument {
+    type: InternalType;
+    node: ExpressionNode;
+}
+
+/** A call's arguments, split into positional (by order) and named (by parameter name). */
+interface CallArguments {
+    positional: TypedArgument[];
+    named: Map<string, TypedArgument>;
+}
 
 export class SemanticAnalyzer {
     /** Current lexical scope. Changed by exit() and enter() */
@@ -547,25 +564,16 @@ export class SemanticAnalyzer {
                         return { kind: "primitive", name: "bool" };
                 }
             }
-            case "CallExpression": { // TODO: Is this okay to do? I feel as if maybe this should be combined with member expression
-                let namedArgFound = false;
-                for (const arg of expression.arguments) {
-                    this.inferType(arg.type === "NamedArgument" ? arg.value : arg);
+            case "CallExpression": {
+                const args = this.collectArguments(expression);
 
-                    if (arg.type === "NamedArgument") namedArgFound = true;
-                    else if (namedArgFound === true) {
-                        this.error(`Positional argument cannot follow a named argument`, arg);
-                    }
-                }
-
+                // Identifier -> a user procedure, looked up by name
+                // MemberExpression -> a builtin/namespace method
                 if (expression.object.type === "Identifier") {
-                    const candidates = this.current.lookup(expression.object.name);
-                    
-                    if (!candidates) {
-                        this.error(`Invalid call: procedure definition not found`, expression.object);
-                    }
+                    return this.resolveProcedureCall(expression, expression.object.name, args);
                 }
-                // TODO: resolve callee => procedureSymbol, pick overload, return this.typeFromNode(signiture.returnType ?? voidNode)
+
+                // Phase 3 plugs in here (motion.move(...), self.x.set(...), ...).
                 return { kind: "unknown" };
             }
             case "DictExpression": {
@@ -704,6 +712,142 @@ export class SemanticAnalyzer {
             case "ErrorToken":
                 return { kind: "unknown" };
         }
+    }
+
+    /** Parse and enforce argument */
+    private collectArguments(call: CallExpressionNode): CallArguments {
+        const positional: TypedArgument[] = [];
+        const named = new Map<string, TypedArgument>();
+
+        for (const arg of call.arguments) {
+            if (arg.type === "NamedArgument") {
+                // TODO: a repeated name (same named arg supplied twice) could be reported here before overwriting the map entry.
+                named.set(arg.name, { type: this.inferType(arg.value), node: arg.value });
+            } else {
+                if (named.size > 0) {
+                    this.error(`Positional argument cannot follow a named argument`, arg);
+                }
+                positional.push({ type: this.inferType(arg), node: arg });
+            }
+        }
+
+        return { positional, named };
+    }
+
+    /** Resolves name of call and finds corresponding override */
+    private resolveProcedureCall(
+        call: CallExpressionNode,
+        name: string,
+        args: CallArguments,
+    ): InternalType {
+        const candidates = this.current.lookup(name);
+        if (!candidates) {
+            this.error(`'${name}' is not defined`, call.object);
+            return { kind: "unknown" };
+        }
+
+        // A name can carry several procedure overloads; anything else isn't callable.
+        const overloads = candidates
+            .filter((s): s is ProcedureSymbol => s.kind === "procedure")
+            .flatMap((s) => s.signatures);
+        if (overloads.length === 0) {
+            this.error(`'${name}' is not a procedure and cannot be called`, call.object);
+            return { kind: "unknown" };
+        }
+
+        const match = this.selectOverload(overloads, args, call, name);
+        if (!match) return { kind: "unknown" };
+
+        return match.returnType
+            ? this.typeFromNode(match.returnType)
+            : { kind: "primitive", name: "void" };
+    }
+
+    /** Choose the first overload that matches the signiture of the function call */
+    private selectOverload(
+        overloads: Signature[],
+        args: CallArguments,
+        call: CallExpressionNode,
+        name: string,
+    ): Signature | null {
+        const single = overloads.length === 1;
+        for (const sig of overloads) {
+            if (this.bindArguments(sig, args, call, name, single)) return sig;
+        }
+        if (!single) {
+            this.error(`No overload of '${name}' matches these arguments`, call);
+        }
+        return null;
+    }
+
+    /** Checks whether 'args' satisfy one signature. */
+    private bindArguments(
+        sig: Signature,
+        args: CallArguments,
+        call: CallExpressionNode,
+        name: string,
+        report: boolean,
+    ): boolean {
+        const { params } = sig;
+        let ok = true;
+        if (args.positional.length > params.length) {
+            if (report) {
+                this.error(
+                    `'${name}' takes at most ${params.length} positional argument${params.length === 1 ? "" : "s"}, got ${args.positional.length}`,
+                    call,
+                );
+            }
+            ok = false;
+        }
+
+        for (const [i, param] of params.entries()) {
+            const positional = args.positional[i];
+            const named = args.named.get(param.name);
+
+            if (positional && named) {
+                if (report) {
+                    this.error(
+                        `'${param.name}' is supplied both positionally and by name`,
+                        named.node,
+                    );
+                }
+                ok = false;
+                continue;
+            }
+
+            const provided = positional ?? named;
+            if (!provided) {
+                if (!param.default) {
+                    if (report) {
+                        this.error(`Missing argument '${param.name}' in call to '${name}'`, call);
+                    }
+                    ok = false;
+                }
+                continue;
+            }
+
+            const paramType = this.typeFromNode(param.paramType);
+            if (!isAssignable(provided.type, paramType)) {
+                if (report) {
+                    this.error(
+                        `Argument '${param.name}' expects ${typeToString(paramType)}, got ${typeToString(provided.type)}`,
+                        provided.node,
+                    );
+                }
+                ok = false;
+            }
+        }
+
+        for (const [argName, arg] of args.named) {
+            if (!params.some((p) => p.name === argName)) {
+                if (report) {
+                    this.error(`'${name}' has no parameter named '${argName}'`, arg.node);
+                }
+                ok = false;
+            }
+        }
+
+        return ok;
     }
 
     // -- Helpers --

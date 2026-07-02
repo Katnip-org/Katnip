@@ -34,7 +34,9 @@ sprite Cat {
     self.x = 0; # member assignment
 
     events.onflag() {
-        temp t: num = add(x = 2, y = 3); # named call args
+        temp t: num = 5;
+        temp response: num | void = add(x = 2, y = 3); # named call args (result is num | void, so not assigned)
+        if (typeof(response) == "num") { t = Num(response); }
         t += 1; t -= 2; t *= 3; t /= 4; t %= 5; t **= 6; # every compound assign
 
         if (b && !b) {

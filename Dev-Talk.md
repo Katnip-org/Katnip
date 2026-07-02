@@ -76,3 +76,9 @@ If +
 
 
 nestedList?
+
+stdlib for katnip will predom use guard clauses instead of early `stop [this script]` blocks, because I was told they slow the function down some how? Even if negligeable, it adds up I suppose so its prob best to estbalish that style
+
+compiler flag for using minimal-vars or readable-vars, bc temp or iter vars can be re-used if calculated right
+
+break/return inside for loop? how to use guard-clauses? or save enough time to stop this script? wbt continue?

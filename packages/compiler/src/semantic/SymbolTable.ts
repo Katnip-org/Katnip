@@ -69,5 +69,3 @@ export class Scope {
         return this.symbols.get(name) ?? this.parent?.lookup(name) ?? null;
     }
 }
-
-export function 
