@@ -1,10 +1,29 @@
 import type {
+    DecoratorNode,
     NodeBase,
     ParameterNode,
     TypeNode,
     VariableDeclarationType,
 } from "../parser/AST-nodes.js";
 import type { InternalType } from "./InternalTypes.js";
+
+/** Codegen-relevant metadata extracted from a procedure's decorators. */
+export interface SignatureMeta {
+    /** Scratch opcode this builtin lowers to (@opcode). */
+    opcode?: string;
+    /** Whether this is a hat block, usable only as an event handler (@hat). */
+    hat?: boolean;
+}
+
+/** One overload of a procedure: its parameter list and declared return type. */
+export interface Signature {
+    params: ParameterNode[];
+    returnType: TypeNode | null;
+    resolvedParamTypes?: InternalType[]; // TypeNodes from stdlib should never reach typeFromNode
+    resolvedReturn?: InternalType;
+    meta?: SignatureMeta;
+    decorators?: DecoratorNode[];
+}
 
 export interface SymbolBase {
     name: string;
@@ -25,7 +44,7 @@ export interface VariableSymbol extends SymbolBase {
 }
 export interface ProcedureSymbol extends SymbolBase {
     kind: "procedure";
-    signatures: { params: ParameterNode[]; returnType: TypeNode | null }[]; // overloads
+    signatures: Signature[]; // overloads
     otherDeclNodes?: NodeBase[];
 }
 export interface EnumSymbol extends SymbolBase {
@@ -35,10 +54,15 @@ export interface EnumSymbol extends SymbolBase {
 export interface SpriteSymbol extends SymbolBase {
     kind: "sprite";
 }
-export type SymbolEntry = VariableSymbol | ProcedureSymbol | EnumSymbol | SpriteSymbol;
+/** A stdlib namespace (motion.*, list.*, ...): one per stdlib file. */
+export interface NamespaceSymbol extends SymbolBase {
+    kind: "namespace";
+    scope: Scope;
+}
+export type SymbolEntry = VariableSymbol | ProcedureSymbol | EnumSymbol | SpriteSymbol | NamespaceSymbol;
 
 
-export type ScopeKind = "global" | "sprite" | "procedure" | "block";
+export type ScopeKind = "stdlib" | "namespace" | "global" | "sprite" | "procedure" | "block";
 
 export class Scope {
     private symbols = new Map<string, SymbolEntry[]>();

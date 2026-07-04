@@ -1,0 +1,5 @@
+#> clone.knip ~ clone lifecycle blocks. <#
+
+proc onStart(@opcode = "control_start_as_clone", @hat) -> void {}
+proc create(@opcode = "control_create_clone_of", target: str) -> void {}
+proc delete(@opcode = "control_delete_this_clone") -> void {}

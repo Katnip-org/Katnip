@@ -1,0 +1,7 @@
+#> math.knip ~ math operations + math constants. <#
+
+proc pow(@opcode = "operator_mathop", base: num, exponent: num) -> num {}
+
+public pi: num = 3.141592653589793;
+public e: num = 2.718281828459045;
+public tau: num = 6.283185307179586;

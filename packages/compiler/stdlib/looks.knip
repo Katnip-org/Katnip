@@ -1,0 +1,4 @@
+#> looks.knip ~ sprite appearance blocks. <#
+
+proc say(@opcode = "looks_say", msg: str) -> void {}
+proc say(@opcode = "looks_sayforsecs", msg: str, seconds: num) -> void {}

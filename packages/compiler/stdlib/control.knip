@@ -1,0 +1,3 @@
+#> control.knip ~ control-flow hat blocks. <#
+
+proc onclone(@opcode = "control_start_as_clone", @hat) -> void {}

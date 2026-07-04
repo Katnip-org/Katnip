@@ -7,7 +7,9 @@ import { KatnipLog, KatnipLogType, Logger } from "../utils/Logger.js";
 import type {
     AST,
     BlockNode,
+    DecoratorNode,
     EnumDeclarationNode,
+    MemberExpressionNode,
     NodeBase,
     ProcedureDeclarationNode,
     SpriteDeclarationNode,
@@ -19,11 +21,26 @@ import type {
     CallExpressionNode,
     ParameterNode,
 } from "../parser/AST-nodes.js";
-import { Scope, type ScopeKind, type SymbolEntry, type ProcedureSymbol } from "./SymbolTable.js";
-import { isAssignable, isStr, typeToString, type InternalType } from "./InternalTypes.js";
-
-/** One overload of a procedure: its parameter list and declared return type. */
-type Signature = { params: ParameterNode[]; returnType: TypeNode | null };
+import {
+    Scope,
+    type ScopeKind,
+    type SymbolEntry,
+    type ProcedureSymbol,
+    type EnumSymbol,
+    type NamespaceSymbol,
+    type Signature,
+    type SignatureMeta,
+} from "./SymbolTable.js";
+import {
+    bindReceiver,
+    isAssignable,
+    isStr,
+    substitute,
+    typeToString,
+    type InternalType,
+    type TypevarBindings,
+} from "./InternalTypes.js";
+import type { StdlibModule } from "./StdlibLoader.js";
 
 /** A call argument after its type has been inferred, keeping the node for error locations. */
 interface TypedArgument {
@@ -37,6 +54,17 @@ interface CallArguments {
     named: Map<string, TypedArgument>;
 }
 
+/** The result of resolving a call: its type plus the matched overload (for hat checks). */
+interface ResolvedCall {
+    type: InternalType;
+    signature?: Signature;
+}
+
+/** A placeholder declNode for symbols with no real source location (stdlib namespaces). */
+function syntheticNode(type: string): NodeBase {
+    return { type, loc: { start: { line: 1, column: 1 }, end: { line: 1, column: 1 } } };
+}
+
 export class SemanticAnalyzer {
     /** Current lexical scope. Changed by exit() and enter() */
     private current: Scope;
@@ -44,11 +72,18 @@ export class SemanticAnalyzer {
     /** Declared return type of the procedure being visited, or null at the top level. */
     private currentReturnType: InternalType | null = null;
 
+    /** Keeps global scope clean- is the parent of the global scope */
+    private readonly stdlibScope: Scope;
+
+    /** True only while resolving stdlib signatures, where T/K/V typevars are legal. */
+    private allowTypevars = false;
+
     constructor(
         private reporter: ErrorReporter,
         private logger: Logger = new Logger(),
     ) {
-        this.current = new Scope("global");
+        this.stdlibScope = new Scope("stdlib");
+        this.current = new Scope("global", this.stdlibScope);
     }
 
     /**
@@ -71,6 +106,74 @@ export class SemanticAnalyzer {
         return this.current;
     }
 
+    // -- Stdlib loading --
+
+    /**
+     * Ingests pre-parsed stdlib modules before user analysis. 
+     * Each file becomes a namespace named after its basename (motion.knip -> motion.*).
+     */
+    loadStdlib(modules: StdlibModule[]): void {
+        for (const module of modules) {
+            const savedReporter = this.reporter;
+            const savedScope = this.current;
+            this.reporter = module.reporter;
+            this.allowTypevars = true;
+
+            const isPrelude = module.namespace === "prelude";
+            const target = isPrelude ? this.stdlibScope : new Scope("namespace", this.stdlibScope);
+            this.current = target;
+            this.hoist(module.ast.body);
+            this.finalizeStdlibScope(module.ast.body);
+
+            this.current = savedScope;
+            this.allowTypevars = false;
+            this.reporter = savedReporter;
+
+            if (!isPrelude) {
+                this.stdlibScope.declare({
+                    kind: "namespace",
+                    name: module.namespace,
+                    declNode: syntheticNode("NamespaceDeclaration"),
+                    scope: target,
+                });
+            }
+
+            if (module.reporter.hasErrors()) {
+                console.error(
+                    `Internal compiler error in stdlib file '${module.sourcePath}' (this is a Katnip bug):`,
+                );
+                module.reporter.print();
+                throw new Error(`stdlib module '${module.namespace}' failed to load`);
+            }
+        }
+    }
+
+    /** Resolve hoisted stdlib so they can be earglerly loaded. */
+    private finalizeStdlibScope(body: StatementNode[]): void {
+        for (const stmt of body) {
+            if (stmt.type === "ProcedureDeclaration") {
+                const procs = this.current
+                    .lookupLocal(stmt.name)
+                    ?.filter((s): s is ProcedureSymbol => s.kind === "procedure");
+                const sig = procs
+                    ?.flatMap((p) => p.signatures)
+                    .find((s) => s.params === stmt.parameters);
+                if (!sig) continue; // hoist already reported a redeclaration error
+                sig.resolvedParamTypes = stmt.parameters.map((p) => this.typeFromNode(p.paramType));
+                sig.resolvedReturn = stmt.returnType
+                    ? this.typeFromNode(stmt.returnType)
+                    : { kind: "primitive", name: "void" };
+            } else if (stmt.type === "VariableDeclaration") {
+                if (!stmt.varType) {
+                    this.error(`Stdlib constant '${stmt.name}' must have a type annotation`, stmt);
+                    continue;
+                }
+                const sym = this.current.lookupLocal(stmt.name)?.find((s) => s.declNode === stmt);
+                if (sym) sym.cachedType = this.typeFromNode(stmt.varType);
+            }
+        }
+    }
+
     // -- Scope stack --
 
     /** Pushes a fresh child scope and makes it current. */
@@ -91,6 +194,18 @@ export class SemanticAnalyzer {
             scope = scope.parent
         ) {
             if (scope.kind === "procedure") return true;
+        }
+        return false;
+    }
+
+    /** Whether the current scope is inside a sprite body (where `self` is valid). */
+    private inSprite(): boolean {
+        for (
+            let scope: Scope | null = this.current;
+            scope;
+            scope = scope.parent
+        ) {
+            if (scope.kind === "sprite") return true;
         }
         return false;
     }
@@ -133,10 +248,29 @@ export class SemanticAnalyzer {
                 kind: "procedure",
                 name: node.name,
                 declNode: node,
-                signatures: [{ params: node.parameters, returnType: node.returnType }],
+                signatures: [
+                    {
+                        params: node.parameters,
+                        returnType: node.returnType,
+                        meta: this.extractMeta(node.decorators),
+                        decorators: node.decorators,
+                    },
+                ],
             },
             node,
         );
+    }
+
+    /** Pulls codegen-relevant decorators (@opcode, @hat) out of a proc's decorator list. */
+    private extractMeta(decorators: DecoratorNode[]): SignatureMeta {
+        const meta: SignatureMeta = {};
+        for (const decorator of decorators) {
+            const value = decorator.value.type === "Literal" ? decorator.value.value : undefined;
+            // A bare `@hat` parses as the string literal "true".
+            if (decorator.name === "opcode" && typeof value === "string") meta.opcode = value;
+            if (decorator.name === "hat") meta.hat = value === "true" || value === true;
+        }
+        return meta;
     }
 
     private hoistEnum(node: EnumDeclarationNode): void {
@@ -241,14 +375,20 @@ export class SemanticAnalyzer {
             case "SpriteDeclaration":
                 this.visitBlock(node.body, "sprite");
                 break;
-            case "HandlerStatement":
-                // TODO: validate hat block
+            case "HandlerStatement": {
                 if (this.current.kind !== "sprite") {
                     this.error("Event handlers can only appear at the top level of a sprite", node.call);
                 }
-                this.inferType(node.call);
+                const resolved = this.resolveCall(node.call, true);
+                if (resolved.signature && !resolved.signature.meta?.hat) {
+                    this.error(
+                        `'${this.calleeName(node.call)}' is not a hat block and cannot be used as an event handler`,
+                        node.call,
+                    );
+                }
                 this.visitBlock(node.body);
                 break;
+            }
             case "IfStatement":
                 this.checkCondition(node.condition, "'if' statement");
                 this.visitBlock(node.thenBlock);
@@ -467,6 +607,10 @@ export class SemanticAnalyzer {
             default: {
                 // Any other stuff must resolve to an enum
                 const symbols = this.current.lookup(node.typeName);
+                if (node.typeName === "any") return { kind: "unknown" };
+                if (this.allowTypevars && /^[A-Z]$/.test(node.typeName)) {
+                    return { kind: "typevar", name: node.typeName };
+                }
                 if (symbols?.some((s) => s.kind === "enum")) {
                     return { kind: "enum", name: node.typeName };
                 }
@@ -517,12 +661,24 @@ export class SemanticAnalyzer {
                 let l = this.inferType(expression.left);
                 let r = this.inferType(expression.right);
 
-                if (l.kind === "list" && r.kind === "list" && isAssignable(l, r)) return l;
-                if (l.kind === "enum" && r.kind === "enum" && isAssignable(l, r)) return l;
+                // Lists pair for concatenation/comparison; enums only for
+                // comparison (Color == Color -> bool). Enum arithmetic
+                // (Color + Color) is an error. The operator below still
+                // decides the result type.
+                const bothList = l.kind === "list" && r.kind === "list" && isAssignable(l, r);
+                const bothEnum = l.kind === "enum" && r.kind === "enum" && isAssignable(l, r);
+                const isComparison =
+                    expression.operator === "==" ||
+                    expression.operator === "<" ||
+                    expression.operator === ">" ||
+                    expression.operator === "<=" ||
+                    expression.operator === ">=";
+                const matchedPair = bothList || (bothEnum && isComparison);
 
                 // `unknown` is the escape hatch (not-yet-typed calls/members);
                 // let it pass so one missing type doesn't cascade into errors.
                 if (
+                    !matchedPair &&
                     l.kind !== "unknown" &&
                     r.kind !== "unknown" &&
                     !(l.kind === "primitive" && r.kind === "primitive")
@@ -536,6 +692,7 @@ export class SemanticAnalyzer {
                 switch (expression.operator) {
                     // arithmetic
                     case "+":
+                        if (l.kind === "list" && matchedPair) return l; // concatenation
                         return isStr(l) || isStr(r)
                             ? { kind: "primitive", name: "str" }
                             : { kind: "primitive", name: "num" };
@@ -564,18 +721,8 @@ export class SemanticAnalyzer {
                         return { kind: "primitive", name: "bool" };
                 }
             }
-            case "CallExpression": {
-                const args = this.collectArguments(expression);
-
-                // Identifier -> a user procedure, looked up by name
-                // MemberExpression -> a builtin/namespace method
-                if (expression.object.type === "Identifier") {
-                    return this.resolveProcedureCall(expression, expression.object.name, args);
-                }
-
-                // Phase 3 plugs in here (motion.move(...), self.x.set(...), ...).
-                return { kind: "unknown" };
-            }
+            case "CallExpression":
+                return this.resolveCall(expression).type;
             case "DictExpression": {
                 if (expression.entries.length == 0)
                     return { kind: "dict", key: { kind: "unknown" }, value: { kind: "unknown" } };
@@ -678,9 +825,7 @@ export class SemanticAnalyzer {
                         return { kind: "unknown" };
                 }
             case "MemberExpression":
-                // TODO (Phase 3): resolve namespaces (motion.*, op.*), enum members (directions.UP), and sprite members (self.x). 
-                // The property is never a free variable, so it must NOT be resolved as one here.
-                return { kind: "unknown" };
+                return this.resolveMemberAccess(expression);
             case "SliceAccess": {
                 const objectType = this.inferType(expression.object);
                 if (expression.start) this.inferType(expression.start);
@@ -714,6 +859,45 @@ export class SemanticAnalyzer {
         }
     }
 
+    /**
+     * Resolves call by shape of callee.
+     * Hat blocks are rejected here unless resolving on behalf of a handler.
+     */
+    private resolveCall(call: CallExpressionNode, asHandler = false): ResolvedCall {
+        const args = this.collectArguments(call);
+
+        let resolved: ResolvedCall;
+        if (call.object.type === "Identifier") {
+            resolved = this.resolveProcedureCall(call, call.object.name, args);
+        } else if (call.object.type === "MemberExpression") {
+            resolved = this.resolveMemberCall(call, call.object, args);
+        } else {
+            this.inferType(call.object);
+            this.error(`This expression is not callable`, call.object);
+            resolved = { type: { kind: "unknown" } };
+        }
+
+        if (!asHandler && resolved.signature?.meta?.hat) {
+            this.error(
+                `'${this.calleeName(call)}' is a hat block and can only be used as an event handler`,
+                call,
+            );
+        }
+        return resolved;
+    }
+
+    /** Display name of a call's callee for error messages ("add", "motion.move") */
+    private calleeName(call: CallExpressionNode): string {
+        const callee = call.object;
+        if (callee.type === "Identifier") return callee.name;
+        if (callee.type === "MemberExpression") {
+            const prefix =
+                callee.object.type === "Identifier" ? `${callee.object.name}.` : "";
+            return `${prefix}${callee.property.name}`;
+        }
+        return "<expression>";
+    }
+
     /** Parse and enforce argument */
     private collectArguments(call: CallExpressionNode): CallArguments {
         const positional: TypedArgument[] = [];
@@ -739,11 +923,11 @@ export class SemanticAnalyzer {
         call: CallExpressionNode,
         name: string,
         args: CallArguments,
-    ): InternalType {
+    ): ResolvedCall {
         const candidates = this.current.lookup(name);
         if (!candidates) {
             this.error(`'${name}' is not defined`, call.object);
-            return { kind: "unknown" };
+            return { type: { kind: "unknown" } };
         }
 
         // A name can carry several procedure overloads; anything else isn't callable.
@@ -752,15 +936,218 @@ export class SemanticAnalyzer {
             .flatMap((s) => s.signatures);
         if (overloads.length === 0) {
             this.error(`'${name}' is not a procedure and cannot be called`, call.object);
-            return { kind: "unknown" };
+            return { type: { kind: "unknown" } };
         }
 
-        const match = this.selectOverload(overloads, args, call, name);
-        if (!match) return { kind: "unknown" };
+        return this.callProcedure(call, name, overloads, args);
+    }
 
-        return match.returnType
-            ? this.typeFromNode(match.returnType)
-            : { kind: "primitive", name: "void" };
+    /** Resolves a member-callee call: `self.*`, a namespace bltn (motion.move(...)), or a method on a value's type (li.contains(...)) */
+    private resolveMemberCall(
+        call: CallExpressionNode,
+        callee: MemberExpressionNode,
+        args: CallArguments,
+    ): ResolvedCall {
+        const objNode = callee.object;
+        const propName = callee.property.name;
+
+        if (objNode.type === "Identifier") {
+            if (objNode.name === "self") {
+                if (!this.inSprite()) {
+                    this.error(`'self' can only be used inside a sprite`, objNode);
+                }
+                return { type: { kind: "unknown" } };
+            }
+
+            const symbols = this.current.lookup(objNode.name);
+            const namespace = symbols?.find((s): s is NamespaceSymbol => s.kind === "namespace");
+            if (namespace) {
+                const members = namespace.scope.lookupLocal(propName);
+                if (!members) {
+                    this.error(
+                        `Namespace '${objNode.name}' has no member '${propName}'`,
+                        callee.property,
+                    );
+                    return { type: { kind: "unknown" } };
+                }
+                const overloads = members
+                    .filter((s): s is ProcedureSymbol => s.kind === "procedure")
+                    .flatMap((s) => s.signatures);
+                if (overloads.length === 0) {
+                    this.error(
+                        `'${objNode.name}.${propName}' is not a procedure and cannot be called`,
+                        callee,
+                    );
+                    return { type: { kind: "unknown" } };
+                }
+                return this.callProcedure(call, `${objNode.name}.${propName}`, overloads, args);
+            }
+
+            const enumSym = symbols?.find((s): s is EnumSymbol => s.kind === "enum");
+            if (enumSym) {
+                this.error(
+                    `'${objNode.name}.${propName}' is an enum member and cannot be called`,
+                    callee,
+                );
+                return { type: { kind: "unknown" } };
+            }
+
+            if (!symbols) {
+                this.error(`'${objNode.name}' is not defined`, objNode);
+                return { type: { kind: "unknown" } };
+            }
+        }
+
+        const receiver = this.inferType(objNode);
+        if (receiver.kind === "unknown") return { type: { kind: "unknown" } };
+
+        const nsName = this.typeHeadNamespace(receiver);
+        if (!nsName) {
+            this.error(`Type '${typeToString(receiver)}' has no methods`, objNode);
+            return { type: { kind: "unknown" } };
+        }
+
+        // Stdlib self calls get special case resolving.
+        const overloads = (this.stdlibNamespace(nsName)?.scope.lookupLocal(propName) ?? [])
+            .filter((s): s is ProcedureSymbol => s.kind === "procedure")
+            .flatMap((s) => s.signatures)
+            .filter((sig) => sig.params[0]?.name === "self");
+        if (overloads.length === 0) {
+            this.error(
+                `'${propName}' is not a method of type '${typeToString(receiver)}'`,
+                callee.property,
+            );
+            return { type: { kind: "unknown" } };
+        }
+
+        const methodArgs: CallArguments = {
+            positional: [{ type: receiver, node: objNode }, ...args.positional],
+            named: args.named,
+        };
+        return this.callProcedure(call, propName, overloads, methodArgs);
+    }
+
+    /** Resolves a non-call member access: namespace consts (math.pi) etc. */
+    private resolveMemberAccess(expr: MemberExpressionNode): InternalType {
+        const objNode = expr.object;
+        const propName = expr.property.name;
+
+        if (objNode.type === "Identifier") {
+            if (objNode.name === "self") {
+                if (!this.inSprite()) {
+                    this.error(`'self' can only be used inside a sprite`, objNode);
+                }
+                return { kind: "unknown" };
+            }
+
+            const symbols = this.current.lookup(objNode.name);
+            const namespace = symbols?.find((s): s is NamespaceSymbol => s.kind === "namespace");
+            if (namespace) {
+                const members = namespace.scope.lookupLocal(propName);
+                if (!members) {
+                    this.error(
+                        `Namespace '${objNode.name}' has no member '${propName}'`,
+                        expr.property,
+                    );
+                    return { kind: "unknown" };
+                }
+                const member = members[0];
+                if (member.kind === "procedure") {
+                    this.error(
+                        `'${objNode.name}.${propName}' is a procedure — call it with (...)`,
+                        expr,
+                    );
+                    return { kind: "unknown" };
+                }
+                return this.typeOf(member);
+            }
+
+            const enumSym = symbols?.find((s): s is EnumSymbol => s.kind === "enum");
+            if (enumSym) {
+                if (!enumSym.members.includes(propName)) {
+                    this.error(`Enum '${enumSym.name}' has no member '${propName}'`, expr.property);
+                    return { kind: "unknown" };
+                }
+                return { kind: "enum", name: enumSym.name };
+            }
+
+            if (!symbols) {
+                this.error(`'${objNode.name}' is not defined`, objNode);
+                return { kind: "unknown" };
+            }
+            //Value => fallthrough
+        }
+
+        const receiver = this.inferType(objNode);
+        if (receiver.kind === "unknown") return { kind: "unknown" };
+
+        const nsName = this.typeHeadNamespace(receiver);
+        const members = nsName
+            ? this.stdlibNamespace(nsName)?.scope.lookupLocal(propName)
+            : null;
+        if (members?.some((s) => s.kind === "procedure")) {
+            this.error(`'${propName}' is a method — call it with (...)`, expr.property);
+        } else {
+            this.error(
+                `Type '${typeToString(receiver)}' has no member '${propName}'`,
+                expr.property,
+            );
+        }
+        return { kind: "unknown" };
+    }
+
+    /** The stdlib namespace that holds methods for a receiver type, if any. */
+    private typeHeadNamespace(type: InternalType): string | null {
+        switch (type.kind) {
+            case "list": return "list";
+            case "dict": return "dict";
+            case "primitive":
+                return type.name === "void" ? null : type.name;
+            default:
+                return null;
+        }
+    }
+
+    /** Looks a namespace up directly in the stdlib scope (immune to user shadowing). */
+    private stdlibNamespace(name: string): NamespaceSymbol | null {
+        return (
+            this.stdlibScope
+                .lookupLocal(name)
+                ?.find((s): s is NamespaceSymbol => s.kind === "namespace") ?? null
+        );
+    }
+
+    /** Overload selection. */
+    private callProcedure(
+        call: CallExpressionNode,
+        name: string,
+        overloads: Signature[],
+        args: CallArguments,
+    ): ResolvedCall {
+        const instantiated = overloads.map((sig) => {
+            if (!sig.resolvedParamTypes) return sig;
+            const bindings: TypevarBindings = new Map();
+            if (sig.params[0]?.name === "self" && args.positional[0]) {
+                bindReceiver(sig.resolvedParamTypes[0], args.positional[0].type, bindings);
+            }
+            return {
+                ...sig,
+                resolvedParamTypes: sig.resolvedParamTypes.map((t) => substitute(t, bindings)),
+                resolvedReturn: sig.resolvedReturn
+                    ? substitute(sig.resolvedReturn, bindings)
+                    : undefined,
+            };
+        });
+
+        const match = this.selectOverload(instantiated, args, call, name);
+        if (!match) return { type: { kind: "unknown" } };
+
+        const type: InternalType =
+            match.resolvedReturn ??
+            (match.returnType
+                ? this.typeFromNode(match.returnType)
+                : { kind: "primitive", name: "void" });
+        return { type, signature: match };
     }
 
     /** Choose the first overload that matches the signiture of the function call */
@@ -826,7 +1213,10 @@ export class SemanticAnalyzer {
                 continue;
             }
 
-            const paramType = this.typeFromNode(param.paramType);
+            // Stdlib signatures carry pre-resolved types (typevars already
+            // substituted); their TypeNodes must not reach typeFromNode here.
+            const paramType =
+                sig.resolvedParamTypes?.[i] ?? this.typeFromNode(param.paramType);
             if (!isAssignable(provided.type, paramType)) {
                 if (report) {
                     this.error(

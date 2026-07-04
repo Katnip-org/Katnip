@@ -1,0 +1,9 @@
+#> list.knip ~ methods on list values (first param `self` marks a method). <#
+
+proc contains(@opcode = "data_listcontainsitem", self: list<T>, item: T) -> bool {}
+proc length(@opcode = "data_lengthoflist", self: list<T>) -> num {}
+proc remove(@opcode = "data_deleteoflist", self: list<T>, idx: num) -> T {}
+proc clear(@opcode = "data_deletealloflist", self: list<T>) -> void {}
+proc indexOf(@opcode = "data_itemnumoflist", self: list<T>, item: T) -> num {}
+
+proc merge(@opcode = "katnip_list_merge", self: list<T>, addition: list<T>) -> void {}

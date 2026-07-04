@@ -4,6 +4,7 @@ import * as fs from "fs/promises";
 import { Lexer } from "./lexer/Lexer.js";
 import { Parser } from "./parser/Parser.js";
 import { SemanticAnalyzer } from "./semantic/SemanticAnalyzer.js";
+import { loadStdlibModules } from "./semantic/StdlibLoader.js";
 import { ErrorReporter } from "./utils/ErrorReporter.js";
 import { Logger } from "./utils/Logger.js";
 
@@ -115,7 +116,7 @@ yargs(hideBin(process.argv))
         });
     }, (argv: any) => {
         fs.readFile(argv.source as PathLike, { encoding: 'utf-8' })
-            .then((fileContent: string) => {
+            .then(async (fileContent: string) => {
                 const reporter = new ErrorReporter(fileContent, true);
                 const logger = new Logger(true);
 
@@ -137,6 +138,11 @@ yargs(hideBin(process.argv))
                 }
 
                 const analyzer = new SemanticAnalyzer(reporter, logger);
+                try {
+                    analyzer.loadStdlib(await loadStdlibModules(logger));
+                } catch {
+                    return; // the stdlib loader already printed its own errors
+                }
                 analyzer.analyze(ast);
 
                 if (reporter.hasErrors()) {

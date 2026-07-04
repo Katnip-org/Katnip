@@ -1,0 +1,6 @@
+#> console.knip ~ debug/interaction helpers. <#
+
+proc log(@opcode = "katnip_console_log", msg: str) -> void {}
+proc input(@opcode = "sensing_askandwait", prompt: str) -> str {}
+proc warn(@opcode = "katnip_console_warn", msg: str) -> void {}
+proc error(@opcode = "katnip_console_error", msg: str) -> void {}

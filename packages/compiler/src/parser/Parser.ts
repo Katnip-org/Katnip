@@ -485,7 +485,7 @@ export class Parser {
                     const decoratorName = decoratorNameToken.token.value;
 
                     let decoratorValue;
-                    if (!this.expect({ type: ["=", ","] }, "Expected '=' or ',' after decorator name")) {
+                    if (!this.expect({ type: ["=", ",", ")"] }, "Expected '=', ',' or ')' after decorator name")) {
                         this.synchronize({ type: [",", "=", ")"] }, "Failed to parse decorator value");
                     }
                     if (this.tryConsume("type", ["="])) {

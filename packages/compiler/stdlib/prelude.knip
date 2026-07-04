@@ -1,0 +1,18 @@
+#> prelude.knip ~ bare global builtins, available without a namespace. <#
+
+proc typeof(@opcode = "katnip_typeof", value: any) -> str {} # TODO: use the katnip one
+
+# casts
+proc Num(@opcode = "katnip_cast_num", value: any) -> num {}
+proc Str(@opcode = "katnip_cast_str", value: any) -> str {}
+proc Bool(@opcode = "katnip_cast_bool", value: any) -> bool {}
+proc List(@opcode = "katnip_cast_list", value: any) -> list<str> {}
+
+proc wait(@opcode = "control_wait", seconds: num) -> void {}
+
+# iter helpers
+proc range(@opcode = "katnip_range", stop: num) -> list<num> {}
+proc range(@opcode = "katnip_range", start: num, stop: num, step: num = 1) -> list<num> {}
+
+proc zip(@opcode = "katnip_zip", l1: list<T>, l2: list<T>) -> (list<T>, list<T>) {}
+proc enumerate(@opcode = "katnip_enumerate", items: list<T>) -> (list<num>, list<T>) {}
