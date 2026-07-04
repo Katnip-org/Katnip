@@ -661,10 +661,6 @@ export class SemanticAnalyzer {
                 let l = this.inferType(expression.left);
                 let r = this.inferType(expression.right);
 
-                // Lists pair for concatenation/comparison; enums only for
-                // comparison (Color == Color -> bool). Enum arithmetic
-                // (Color + Color) is an error. The operator below still
-                // decides the result type.
                 const bothList = l.kind === "list" && r.kind === "list" && isAssignable(l, r);
                 const bothEnum = l.kind === "enum" && r.kind === "enum" && isAssignable(l, r);
                 const isComparison =
@@ -1127,9 +1123,10 @@ export class SemanticAnalyzer {
         const instantiated = overloads.map((sig) => {
             if (!sig.resolvedParamTypes) return sig;
             const bindings: TypevarBindings = new Map();
-            if (sig.params[0]?.name === "self" && args.positional[0]) {
-                bindReceiver(sig.resolvedParamTypes[0], args.positional[0].type, bindings);
-            }
+            sig.resolvedParamTypes.forEach((paramType, i) => {
+                const arg = args.positional[i] ?? args.named.get(sig.params[i]?.name);
+                if (arg) bindReceiver(paramType, arg.type, bindings);
+            });
             return {
                 ...sig,
                 resolvedParamTypes: sig.resolvedParamTypes.map((t) => substitute(t, bindings)),

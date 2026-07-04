@@ -1,11 +1,12 @@
 #> pen.knip ~ pen extension blocks. <#
 
+enum ColorParam { COLOR, SATURATION, BRIGHTNESS, TRANSPARENCY }
+
 proc down(@opcode = "pen_penDown") -> void {}
 proc up(@opcode = "pen_penUp") -> void {}
 proc clear(@opcode = "pen_clear") -> void {}
 proc setHex(@opcode = "pen_setPenColorToColor", hex: str) -> void {}
 
-enum ColorParam { COLOR, SATURATION, BRIGHTNESS, TRANSPARENCY }
 proc setAttr(@opcode = "pen_setPenColorParamTo", attr: ColorParam, value: num) -> void {}
 proc changeAttr(@opcode = "pen_changePenColorParamBy", attr: ColorParam, dA: num) -> void {}
 

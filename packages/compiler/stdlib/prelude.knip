@@ -14,5 +14,9 @@ proc wait(@opcode = "control_wait", seconds: num) -> void {}
 proc range(@opcode = "katnip_range", stop: num) -> list<num> {}
 proc range(@opcode = "katnip_range", start: num, stop: num, step: num = 1) -> list<num> {}
 
-proc zip(@opcode = "katnip_zip", l1: list<T>, l2: list<T>) -> (list<T>, list<T>) {}
+proc zip(@opcode = "katnip_zip", l1: list<T>, l2: list<U>) -> (list<T>, list<U>) {}
 proc enumerate(@opcode = "katnip_enumerate", items: list<T>) -> (list<num>, list<T>) {}
+
+# constants
+public true: bool = "true" == "true";
+public false: bool = "false" == "";
