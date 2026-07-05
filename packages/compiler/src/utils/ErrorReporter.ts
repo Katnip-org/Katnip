@@ -44,6 +44,10 @@ export class ErrorReporter {
         return this.errors.length > 0;
     }
 
+    getErrors(): readonly KatnipError[] {
+        return this.errors;
+    }
+
     print() {
         for (const err of this.errors) {
             console.error(this.format(err));

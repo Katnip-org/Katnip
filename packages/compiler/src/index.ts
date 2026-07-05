@@ -1,34 +1,29 @@
 import { Lexer } from "./lexer/Lexer.js";
-import { ErrorReporter } from "./utils/ErrorReporter.js";
+import { Parser } from "./parser/Parser.js";
+import { SemanticAnalyzer } from "./semantic/SemanticAnalyzer.js";
+import { loadStdlibModules, type StdlibModule } from "./semantic/StdlibLoader.js";
+import { ErrorReporter, type KatnipError } from "./utils/ErrorReporter.js";
 import { Logger } from "./utils/Logger.js";
 
-import * as fs from "fs/promises";
-import { Parser } from "./parser/Parser.js";
-// import { SemanticAnalyzer } from "./semantic/SemanticAnalyzer.js";
-// import { IRGenerator } from "./ir/IRGenerator.js";
-// import { SB3Generator } from "./codegen/SB3Generator.js";
+export type { KatnipError } from "./utils/ErrorReporter.js";
 
-export async function compile(source: string, outputPath: string) {
-    // Create an error reporter instance
+let stdlibCache: StdlibModule[] | null = null;
+
+export async function checkSource(source: string): Promise<readonly KatnipError[]> {
     const reporter = new ErrorReporter(source);
-    const logger = new Logger();
-    //logger.disable();
+    const logger = new Logger(); // disabled by default
 
-    const lexer = new Lexer(reporter, logger);
-    const tokens = lexer.tokenize(source);
+    const tokens = new Lexer(reporter, logger).tokenize(source);
+    const ast = new Parser(reporter, logger).parse(tokens);
+    if (!ast) return reporter.getErrors();
 
-    // Create temp file with tokens for debugging
-    const tempFilePath = outputPath; // `${outputPath}.tokens.json`;
-    await fs.writeFile(tempFilePath, JSON.stringify(tokens, null, 2));
-
-    const parser = new Parser(reporter, logger);
-    const ast = parser.parse(tokens);
-
-    // const semantic = new SemanticAnalyzer();
-    // semantic.check(ast);
-
-    // const ir = new IRGenerator().generate(ast);
-
-    // const sb3 = new SB3Generator().generate(ir);
-    // await sb3.saveToFile(outputPath);
+    const analyzer = new SemanticAnalyzer(reporter, logger);
+    try {
+        stdlibCache ??= await loadStdlibModules(logger);
+        analyzer.loadStdlib(stdlibCache);
+    } catch {
+        return reporter.getErrors();
+    }
+    analyzer.analyze(ast);
+    return reporter.getErrors();
 }

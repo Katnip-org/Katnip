@@ -263,6 +263,25 @@ export class Parser {
         }
     }
 
+    /**
+     * Consumes a statement-terminating ';'. 
+     * If it is missing, reports the errorbut does NOT advance.
+     * The current token starts the next statement.
+     */
+    private expectSemicolon(message: string): void {
+        if (this.tryConsume("type", [";"])) return;
+        const prev = this.previous();
+        this.reporter.add(
+            new KatnipError(
+                "Parser",
+                message,
+                prev
+                    ? { line: prev.end.line, column: prev.end.column }
+                    : this.peek()?.start ?? { line: -1, column: -1 },
+            ),
+        );
+    }
+
     // -- Statement parsing --
     /** 
      * Parses through and returns a type annotation.
@@ -407,7 +426,7 @@ export class Parser {
                 return handlerDeclaration;
             }
 
-            this.consume({ type: ";" }, "Expected semicolon at the end of an expression statement");
+            this.expectSemicolon("Expected semicolon at the end of an expression statement");
             return {
                 type: "ExpressionStatement",
                 expression: expression,
@@ -432,7 +451,7 @@ export class Parser {
         if (!this.checkToken("type", [";"])) {
             argument = this.parseExpression();
         }
-        this.consume({ type: ";" }, "Expected ';' at the end of return statement");
+        this.expectSemicolon("Expected ';' at the end of return statement");
         return {
             type: "ReturnStatement",
             argument,
@@ -641,7 +660,7 @@ export class Parser {
             this.consume({ type: "=" }, "Expected '=' for variable value declaration");
             initializer = this.parseExpression();
         }
-        this.consume({ type: ";" }, "Expected ';' at the end of variable declaration");
+        this.expectSemicolon("Expected ';' at the end of variable declaration");
         return {
             type: "VariableDeclaration",
             access: access.token.value as VariableDeclarationType,
@@ -696,8 +715,8 @@ export class Parser {
         ] }, "Expected assignment operator").token.type;
         
         const right = this.parseExpression();
-        this.consume({ type: ";" }, "Expected semicolon at the end of an expression statement");
-        
+        this.expectSemicolon("Expected semicolon at the end of an expression statement");
+
         return {
             type: "VariableAssignment",
             operator: assginmentOperator as AssignmentOperator,

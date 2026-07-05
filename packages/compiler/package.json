@@ -1,9 +1,19 @@
 {
+  "name": "@katnip/compiler",
+  "version": "0.0.1",
+  "type": "module",
+  "main": "build/index.js",
+  "types": "build/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./build/index.d.ts",
+      "import": "./build/index.js"
+    }
+  },
   "dependencies": {
     "typescript": "^5.8.3"
   },
   "scripts": {
     "build": "tsc"
-  },
-  "type": "module"
+  }
 }

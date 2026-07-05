@@ -1,0 +1,59 @@
+{
+  "name": "katnip-vscode",
+  "displayName": "Katnip",
+  "description": "Live diagnostics for the Katnip language (.knip).",
+  "version": "0.0.1",
+  "private": true,
+  "publisher": "katnip",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "main": "./build/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "katnip",
+        "aliases": [
+          "Katnip",
+          "knip"
+        ],
+        "extensions": [
+          ".knip"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "configuration": {
+      "title": "Katnip",
+      "properties": {
+        "katnip.check.trigger": {
+          "type": "string",
+          "enum": [
+            "onType",
+            "onSave"
+          ],
+          "default": "onType",
+          "description": "When to re-check .knip files and update diagnostics."
+        },
+        "katnip.check.debounce": {
+          "type": "number",
+          "default": 250,
+          "description": "Delay in milliseconds after the last keystroke before re-checking (onType only)."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vendor": "node scripts/vendor.mjs",
+    "build": "npm run vendor && tsc",
+    "package": "tsc -p ../compiler && npm run build && vsce package --no-dependencies"
+  },
+  "devDependencies": {
+    "@types/node": "^24.1.0",
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^3.2.0"
+  }
+}
