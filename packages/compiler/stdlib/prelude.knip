@@ -20,3 +20,6 @@ proc enumerate(@opcode = "katnip_enumerate", items: list<T>) -> (list<num>, list
 # constants
 public true: bool = "true" == "true";
 public false: bool = "false" == "";
+
+# misc
+proc len(@opcode = "operator_length", input: str) -> num {}

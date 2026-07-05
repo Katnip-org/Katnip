@@ -132,7 +132,7 @@ yargs(hideBin(process.argv))
 
                 const parser = new Parser(reporter, logger);
                 const ast = parser.parse(tokens);
-                if (reporter.hasErrors() || !ast) {
+                if (!ast) {
                     reporter.print();
                     return;
                 }
@@ -141,8 +141,12 @@ yargs(hideBin(process.argv))
                 try {
                     analyzer.loadStdlib(await loadStdlibModules(logger));
                 } catch {
+                    reporter.print(); // surface any parse errors we already collected
                     return; // the stdlib loader already printed its own errors
                 }
+                // Analyze even when parsing reported errors: the parser recovers into a
+                // usable AST (error nodes are no-ops in the analyzer), so semantic errors
+                // surface alongside syntax errors instead of being hidden behind the first.
                 analyzer.analyze(ast);
 
                 if (reporter.hasErrors()) {

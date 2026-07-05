@@ -1,6 +1,6 @@
 #> pen.knip ~ pen extension blocks. <#
 
-enum ColorParam { COLOR, SATURATION, BRIGHTNESS, TRANSPARENCY }
+public enum ColorParam { COLOR, SATURATION, BRIGHTNESS, TRANSPARENCY }
 
 proc down(@opcode = "pen_penDown") -> void {}
 proc up(@opcode = "pen_penUp") -> void {}

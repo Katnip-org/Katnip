@@ -1392,7 +1392,15 @@ export class Parser {
      * @returns The parsed block expression node.
      */
     private parseBlockExpression(allowedStatements?: StatementNode[]): StatementNode[] {
-        this.consume({ type: "{" }, "Expected '{' after method call");
+        if (!this.checkToken("type", ["{"])) {
+            this.reporter.add(new KatnipError(
+                "Parser",
+                "Expected '{' to open block",
+                this.peek()?.start ?? this.previous()?.end ?? { line: -1, column: -1 },
+            ));
+            while (!this.isAtEnd() && !this.checkToken("type", ["{", "}"])) this.advance();
+        }
+        this.tryConsume("type", ["{"]);
         const body: StatementNode[] = [];
 
         while (!this.isAtEnd() && !this.checkToken("type", ["}"])) {

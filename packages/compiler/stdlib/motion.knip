@@ -1,7 +1,7 @@
 #> motion.knip ~ sprite motion blocks. <#
 
-enum Target { RANDOM, MOUSE }
-enum RotationStyle { LEFT, RIGHT }
+public enum Target { RANDOM, MOUSE }
+public enum RotationStyle { LEFT, RIGHT }
 
 proc move(@opcode = "motion_movesteps", steps: num) -> void {}
 proc turn(@opcode = "motion_turnright", degrees: num) -> void {}
