@@ -60,6 +60,14 @@ interface ResolvedCall {
     signature?: Signature;
 }
 
+/** How a member expression's object resolves, before the property is applied. */
+type MemberHead =
+    | { kind: "self" }
+    | { kind: "namespace"; symbol: NamespaceSymbol; name: string }
+    | { kind: "enum"; symbol: EnumSymbol; name: string }
+    | { kind: "error" }
+    | { kind: "value" }; // fall through to inferType(objNode)
+
 /** A placeholder declNode for symbols with no real source location (stdlib namespaces). */
 function syntheticNode(type: string): NodeBase {
     return { type, loc: { start: { line: 1, column: 1 }, end: { line: 1, column: 1 } } };
@@ -947,51 +955,28 @@ export class SemanticAnalyzer {
         const objNode = callee.object;
         const propName = callee.property.name;
 
-        if (objNode.type === "Identifier") {
-            if (objNode.name === "self") {
-                if (!this.inSprite()) {
-                    this.error(`'self' can only be used inside a sprite`, objNode);
-                }
-                return { type: { kind: "unknown" } };
-            }
-
-            const symbols = this.current.lookup(objNode.name);
-            const namespace = symbols?.find((s): s is NamespaceSymbol => s.kind === "namespace");
-            if (namespace) {
-                const members = namespace.scope.lookupLocal(propName);
+        const head = this.resolveMemberHead(objNode);
+        switch (head.kind) {
+            case "self": case "error": return { type: { kind: "unknown" } };
+            case "namespace": {
+                const members = head.symbol.scope.lookupLocal(propName);
                 if (!members) {
-                    this.error(
-                        `Namespace '${objNode.name}' has no member '${propName}'`,
-                        callee.property,
-                    );
+                    this.error(`Namespace '${head.name}' has no member '${propName}'`, callee.property);
                     return { type: { kind: "unknown" } };
                 }
                 const overloads = members
                     .filter((s): s is ProcedureSymbol => s.kind === "procedure")
                     .flatMap((s) => s.signatures);
                 if (overloads.length === 0) {
-                    this.error(
-                        `'${objNode.name}.${propName}' is not a procedure and cannot be called`,
-                        callee,
-                    );
+                    this.error(`'${head.name}.${propName}' is not a procedure and cannot be called`, callee);
                     return { type: { kind: "unknown" } };
                 }
-                return this.callProcedure(call, `${objNode.name}.${propName}`, overloads, args);
+                return this.callProcedure(call, `${head.name}.${propName}`, overloads, args);
             }
-
-            const enumSym = symbols?.find((s): s is EnumSymbol => s.kind === "enum");
-            if (enumSym) {
-                this.error(
-                    `'${objNode.name}.${propName}' is an enum member and cannot be called`,
-                    callee,
-                );
+            case "enum":
+                this.error(`'${head.name}.${propName}' is an enum member and cannot be called`, callee);
                 return { type: { kind: "unknown" } };
-            }
-
-            if (!symbols) {
-                this.error(`'${objNode.name}' is not defined`, objNode);
-                return { type: { kind: "unknown" } };
-            }
+            case "value": break; // fall through to value-method resolution
         }
 
         const receiver = this.inferType(objNode);
@@ -1028,50 +1013,29 @@ export class SemanticAnalyzer {
         const objNode = expr.object;
         const propName = expr.property.name;
 
-        if (objNode.type === "Identifier") {
-            if (objNode.name === "self") {
-                if (!this.inSprite()) {
-                    this.error(`'self' can only be used inside a sprite`, objNode);
-                }
-                return { kind: "unknown" };
-            }
-
-            const symbols = this.current.lookup(objNode.name);
-            const namespace = symbols?.find((s): s is NamespaceSymbol => s.kind === "namespace");
-            if (namespace) {
-                const members = namespace.scope.lookupLocal(propName);
+        const head = this.resolveMemberHead(objNode);
+        switch (head.kind) {
+            case "self": case "error": return { kind: "unknown" };
+            case "namespace": {
+                const members = head.symbol.scope.lookupLocal(propName);
                 if (!members) {
-                    this.error(
-                        `Namespace '${objNode.name}' has no member '${propName}'`,
-                        expr.property,
-                    );
+                    this.error(`Namespace '${head.name}' has no member '${propName}'`, expr.property);
                     return { kind: "unknown" };
                 }
                 const member = members[0];
                 if (member.kind === "procedure") {
-                    this.error(
-                        `'${objNode.name}.${propName}' is a procedure — call it with (...)`,
-                        expr,
-                    );
+                    this.error(`'${head.name}.${propName}' is a procedure — call it with (...)`, expr);
                     return { kind: "unknown" };
                 }
                 return this.typeOf(member);
             }
-
-            const enumSym = symbols?.find((s): s is EnumSymbol => s.kind === "enum");
-            if (enumSym) {
-                if (!enumSym.members.includes(propName)) {
-                    this.error(`Enum '${enumSym.name}' has no member '${propName}'`, expr.property);
+            case "enum":
+                if (!head.symbol.members.includes(propName)) {
+                    this.error(`Enum '${head.symbol.name}' has no member '${propName}'`, expr.property);
                     return { kind: "unknown" };
                 }
-                return { kind: "enum", name: enumSym.name };
-            }
-
-            if (!symbols) {
-                this.error(`'${objNode.name}' is not defined`, objNode);
-                return { kind: "unknown" };
-            }
-            //Value => fallthrough
+                return { kind: "enum", name: head.symbol.name };
+            case "value": break; // fall through to value-member resolution
         }
 
         const receiver = this.inferType(objNode);
@@ -1090,6 +1054,25 @@ export class SemanticAnalyzer {
             );
         }
         return { kind: "unknown" };
+    }
+
+    /** Classifies a member expression's object identifier, emitting the shared self/undefined errors. */
+    private resolveMemberHead(objNode: MemberExpressionNode["object"]): MemberHead {
+        if (objNode.type !== "Identifier") return { kind: "value" };
+        if (objNode.name === "self") {
+            if (!this.inSprite()) this.error(`'self' can only be used inside a sprite`, objNode);
+            return { kind: "self" };
+        }
+        const symbols = this.current.lookup(objNode.name);
+        const namespace = symbols?.find((s): s is NamespaceSymbol => s.kind === "namespace");
+        if (namespace) return { kind: "namespace", symbol: namespace, name: objNode.name };
+        const enumSym = symbols?.find((s): s is EnumSymbol => s.kind === "enum");
+        if (enumSym) return { kind: "enum", symbol: enumSym, name: objNode.name };
+        if (!symbols) {
+            this.error(`'${objNode.name}' is not defined`, objNode);
+            return { kind: "error" };
+        }
+        return { kind: "value" }; // a plain variable: resolve via its type below
     }
 
     /** The stdlib namespace that holds methods for a receiver type, if any. */
