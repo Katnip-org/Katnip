@@ -24,7 +24,8 @@ proc add(
     @doc = "sum two numbers", 
     @proccode = "%x + %y",
     x: num,
-    y: num = 1) -> num | void {
+    y: num = 1
+) -> num | void {
     if (x > y) { return(x + y); } #! inline-ignored comment
     return;
 }

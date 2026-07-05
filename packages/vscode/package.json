@@ -29,6 +29,13 @@
         "configuration": "./language-configuration.json"
       }
     ],
+    "grammars": [
+      {
+        "language": "katnip",
+        "scopeName": "source.katnip",
+        "path": "./syntaxes/katnip.tmLanguage.json"
+      }
+    ],
     "configuration": {
       "title": "Katnip",
       "properties": {

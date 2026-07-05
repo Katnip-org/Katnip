@@ -1,0 +1,121 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Katnip",
+  "scopeName": "source.katnip",
+  "patterns": [
+    { "include": "#comments" },
+    { "include": "#strings" },
+    { "include": "#numbers" },
+    { "include": "#decorators" },
+    { "include": "#keywords" },
+    { "include": "#constants" },
+    { "include": "#calls" },
+    { "include": "#types" },
+    { "include": "#operators" },
+    { "include": "#variables" }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        { "name": "comment.block.katnip", "begin": "#>", "end": "<#" },
+        { "name": "comment.block.katnip", "begin": "#<", "end": ">#" },
+        { "name": "comment.block.katnip", "begin": "#\\[", "end": "\\]#" },
+        { "name": "comment.line.number-sign.katnip", "match": "#[!*]?.*$" }
+      ]
+    },
+    "strings": {
+      "patterns": [
+        {
+          "name": "string.quoted.double.katnip",
+          "begin": "f\"",
+          "end": "\"",
+          "beginCaptures": { "0": { "name": "storage.type.string.katnip" } },
+          "patterns": [
+            { "name": "constant.character.escape.katnip", "match": "\\\\." },
+            { "include": "#interpolation" }
+          ]
+        },
+        {
+          "name": "string.quoted.single.katnip",
+          "begin": "f'",
+          "end": "'",
+          "beginCaptures": { "0": { "name": "storage.type.string.katnip" } },
+          "patterns": [
+            { "name": "constant.character.escape.katnip", "match": "\\\\." },
+            { "include": "#interpolation" }
+          ]
+        },
+        {
+          "name": "string.quoted.double.katnip",
+          "begin": "\"",
+          "end": "\"",
+          "patterns": [{ "name": "constant.character.escape.katnip", "match": "\\\\." }]
+        },
+        {
+          "name": "string.quoted.single.katnip",
+          "begin": "'",
+          "end": "'",
+          "patterns": [{ "name": "constant.character.escape.katnip", "match": "\\\\." }]
+        }
+      ]
+    },
+    "interpolation": {
+      "name": "meta.interpolation.katnip",
+      "begin": "\\{",
+      "end": "\\}",
+      "beginCaptures": { "0": { "name": "punctuation.section.interpolation.begin.katnip" } },
+      "endCaptures": { "0": { "name": "punctuation.section.interpolation.end.katnip" } },
+      "patterns": [
+        { "include": "#numbers" },
+        { "include": "#constants" },
+        { "include": "#calls" },
+        { "include": "#types" },
+        { "include": "#operators" },
+        { "include": "#variables" }
+      ]
+    },
+    "numbers": {
+      "name": "constant.numeric.katnip",
+      "match": "(0[xX][0-9a-fA-F]+|0[bB][01]+|0[oO][0-7]+|(?:\\b[0-9]+\\.?[0-9]*|\\.[0-9]+)(?:[eE][+-]?[0-9]+)?)"
+    },
+    "decorators": {
+      "name": "entity.name.function.decorator.katnip",
+      "match": "@[A-Za-z_][A-Za-z0-9_]*"
+    },
+    "keywords": {
+      "patterns": [
+        {
+          "name": "keyword.control.katnip",
+          "match": "\\b(if|elif|else|for|while|do|return|switch|case|default)\\b"
+        },
+        { "name": "storage.type.katnip", "match": "\\b(proc|enum|sprite)\\b" },
+        { "name": "storage.modifier.katnip", "match": "\\b(private|public|temp)\\b" },
+        { "name": "variable.language.self.katnip", "match": "\\bself\\b" }
+      ]
+    },
+    "constants": {
+      "patterns": [
+        { "name": "constant.language.katnip", "match": "\\b(true|false)\\b" },
+        { "name": "constant.other.enum.katnip", "match": "\\b[A-Z][A-Z0-9_]+\\b" }
+      ]
+    },
+    "types": {
+      "patterns": [
+        { "name": "support.type.katnip", "match": "\\b(num|str|bool|void|list|dict|any)\\b" },
+        { "name": "entity.name.type.katnip", "match": "\\b[A-Z][A-Za-z0-9_]*\\b" }
+      ]
+    },
+    "calls": {
+      "match": "\\b([A-Za-z_][A-Za-z0-9_]*)\\s*(?=\\()",
+      "name": "entity.name.function.katnip"
+    },
+    "operators": {
+      "name": "keyword.operator.katnip",
+      "match": "(\\*\\*|==|!=|<=|>=|&&|\\|\\||[-+*/%<>=!]=?|[.:,|])"
+    },
+    "variables": {
+      "name": "variable.other.katnip",
+      "match": "\\b[A-Za-z_][A-Za-z0-9_]*\\b"
+    }
+  }
+}

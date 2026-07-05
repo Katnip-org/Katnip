@@ -1,7 +1,5 @@
 import * as vscode from "vscode";
-// The compiler is vendored into ./compiler (see scripts/vendor.mjs) so the
-// packaged extension is self-contained. It is ESM, so this CJS host loads it
-// lazily via dynamic import.
+
 import type { KatnipError } from "../compiler/build/index.js" with { "resolution-mode": "import" };
 
 type Compiler = typeof import("../compiler/build/index.js", { with: { "resolution-mode": "import" } });
@@ -11,8 +9,6 @@ let output: vscode.OutputChannel;
 let compilerPromise: Promise<Compiler> | undefined;
 const timers = new Map<string, ReturnType<typeof setTimeout>>();
 
-// Resolve the vendored compiler by absolute path, so loading never depends on
-// the host's cwd or how it loaded this CJS entry point.
 function loadCompiler(context: vscode.ExtensionContext): Promise<Compiler> {
     const entry = vscode.Uri.joinPath(context.extensionUri, "compiler", "build", "index.js").toString();
     return (compilerPromise ??= import(entry) as Promise<Compiler>);
