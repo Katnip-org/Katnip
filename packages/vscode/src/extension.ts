@@ -1,45 +1,65 @@
 import * as vscode from "vscode";
+// The compiler is vendored into ./compiler (see scripts/vendor.mjs) so the
+// packaged extension is self-contained. It is ESM, so this CJS host loads it
+// lazily via dynamic import.
 import type { KatnipError } from "../compiler/build/index.js" with { "resolution-mode": "import" };
 
 type Compiler = typeof import("../compiler/build/index.js", { with: { "resolution-mode": "import" } });
-let compilerPromise: Promise<Compiler> | undefined;
-const compiler = () => (compilerPromise ??= import("../compiler/build/index.js"));
 
 let diagnostics: vscode.DiagnosticCollection;
+let output: vscode.OutputChannel;
+let compilerPromise: Promise<Compiler> | undefined;
 const timers = new Map<string, ReturnType<typeof setTimeout>>();
 
-export function activate(context: vscode.ExtensionContext): void {
-    diagnostics = vscode.languages.createDiagnosticCollection("katnip");
-    context.subscriptions.push(diagnostics);
+// Resolve the vendored compiler by absolute path, so loading never depends on
+// the host's cwd or how it loaded this CJS entry point.
+function loadCompiler(context: vscode.ExtensionContext): Promise<Compiler> {
+    const entry = vscode.Uri.joinPath(context.extensionUri, "compiler", "build", "index.js").toString();
+    return (compilerPromise ??= import(entry) as Promise<Compiler>);
+}
 
+export function activate(context: vscode.ExtensionContext): void {
+    output = vscode.window.createOutputChannel("Katnip");
+    diagnostics = vscode.languages.createDiagnosticCollection("katnip");
+    context.subscriptions.push(output, diagnostics);
+    output.appendLine("Katnip extension activated.");
+
+    const run = (doc: vscode.TextDocument) => check(context, doc);
     context.subscriptions.push(
-        vscode.workspace.onDidOpenTextDocument(check),
-        vscode.workspace.onDidSaveTextDocument(check),
-        vscode.workspace.onDidChangeTextDocument((e) => scheduleCheck(e.document)),
+        vscode.workspace.onDidOpenTextDocument(run),
+        vscode.workspace.onDidSaveTextDocument(run),
+        vscode.workspace.onDidChangeTextDocument((e) => scheduleCheck(context, e.document)),
         vscode.workspace.onDidCloseTextDocument((doc) => diagnostics.delete(doc.uri)),
     );
-    vscode.workspace.textDocuments.forEach(check);
+    vscode.workspace.textDocuments.forEach(run);
 }
 
 export function deactivate(): void {
     diagnostics?.dispose();
+    output?.dispose();
 }
 
-async function check(doc: vscode.TextDocument): Promise<void> {
+async function check(context: vscode.ExtensionContext, doc: vscode.TextDocument): Promise<void> {
     if (doc.languageId !== "katnip") return;
-    const { checkSource } = await compiler();
-    const errors = await checkSource(doc.getText());
-    diagnostics.set(doc.uri, errors.map(toDiagnostic));
+    try {
+        const { checkSource } = await loadCompiler(context);
+        const errors = await checkSource(doc.getText());
+        diagnostics.set(doc.uri, errors.map(toDiagnostic));
+        output.appendLine(`Checked ${doc.uri.fsPath}: ${errors.length} diagnostic(s).`);
+    } catch (err) {
+        const detail = err instanceof Error ? (err.stack ?? err.message) : String(err);
+        output.appendLine(`Check FAILED for ${doc.uri.fsPath}:\n${detail}`);
+    }
 }
 
-function scheduleCheck(doc: vscode.TextDocument): void {
+function scheduleCheck(context: vscode.ExtensionContext, doc: vscode.TextDocument): void {
     if (doc.languageId !== "katnip") return;
     const cfg = vscode.workspace.getConfiguration("katnip");
     if (cfg.get<string>("check.trigger") !== "onType") return;
 
     const key = doc.uri.toString();
     clearTimeout(timers.get(key));
-    timers.set(key, setTimeout(() => check(doc), cfg.get<number>("check.debounce", 250)));
+    timers.set(key, setTimeout(() => check(context, doc), cfg.get<number>("check.debounce", 250)));
 }
 
 function toDiagnostic(err: KatnipError): vscode.Diagnostic {

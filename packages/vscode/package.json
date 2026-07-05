@@ -12,6 +12,9 @@
     "Programming Languages"
   ],
   "main": "./build/extension.js",
+  "activationEvents": [
+    "onLanguage:katnip"
+  ],
   "contributes": {
     "languages": [
       {

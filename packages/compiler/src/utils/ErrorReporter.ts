@@ -1,4 +1,4 @@
-import pc from "picocolors";
+import { pc } from "./colors.js";
 
 interface KatnipErrorData {
     line: number;

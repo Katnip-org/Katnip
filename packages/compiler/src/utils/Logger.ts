@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import pc from "picocolors";
+import { pc } from "./colors.js";
 
 export enum KatnipLogType {
     Info = "INFO",
