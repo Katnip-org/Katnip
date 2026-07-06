@@ -3,8 +3,12 @@
   "displayName": "Katnip",
   "description": "Live diagnostics for the Katnip language (.knip).",
   "version": "0.0.1",
-  "private": true,
-  "publisher": "katnip",
+  "icon": "icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Katnip-org/Katnip"
+  },
+  "publisher": "Katnip-org",
   "engines": {
     "vscode": "^1.85.0"
   },
