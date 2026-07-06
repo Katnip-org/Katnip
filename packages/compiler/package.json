@@ -1,19 +1,58 @@
 {
-  "name": "@katnip/compiler",
-  "version": "0.0.1",
+  "name": "@katnip-org/compiler",
+  "version": "0.1.0",
+  "description": "Compiler and type-checker for the Katnip language (.knip), targeting Scratch SB3.",
+  "license": "Apache-2.0",
+  "author": "Benjamin Clark",
+  "homepage": "https://katnip.org",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Katnip-org/Katnip.git",
+    "directory": "packages/compiler"
+  },
+  "bugs": {
+    "url": "https://github.com/Katnip-org/Katnip/issues"
+  },
+  "keywords": [
+    "katnip",
+    "scratch",
+    "sb3",
+    "compiler",
+    "language"
+  ],
   "type": "module",
   "main": "build/index.js",
   "types": "build/index.d.ts",
+  "bin": {
+    "katnip": "build/cli.js"
+  },
   "exports": {
     ".": {
       "types": "./build/index.d.ts",
       "import": "./build/index.js"
     }
   },
+  "files": [
+    "build",
+    "stdlib",
+    "NOTICE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "dependencies": {
+    "yargs": "^18.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.1.0",
+    "@types/yargs": "^17.0.33",
     "typescript": "^5.8.3"
   },
   "scripts": {
-    "build": "tsc"
+    "build": "tsc",
+    "prepublishOnly": "npm run build"
   }
 }
