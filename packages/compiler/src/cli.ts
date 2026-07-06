@@ -12,7 +12,10 @@ import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
 import type { PathLike } from "fs";
 
-yargs(hideBin(process.argv))
+const cli = yargs(hideBin(process.argv));
+
+cli
+    .scriptName('katnip')
     .command('tokenize <source> <output> [logger]', 'Tokenize a file', (yargs: any) => {
         yargs.positional('source', {
             describe: 'The path to the source file',
@@ -147,6 +150,9 @@ yargs(hideBin(process.argv))
             .catch((err: any) => {
                 console.error('Error reading file:', err);
             });
+    })
+    .command('help', 'List all available commands', () => {}, () => {
+        cli.showHelp('log');
     })
     .help()
     .argv;
