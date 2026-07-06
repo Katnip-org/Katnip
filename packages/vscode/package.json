@@ -2,7 +2,7 @@
   "name": "katnip-vscode",
   "displayName": "Katnip",
   "description": "Live diagnostics for the Katnip language (.knip).",
-  "version": "0.0.1",
+  "version": "0.0.3",
   "icon": "icon.png",
   "repository": {
     "type": "git",
@@ -16,9 +16,6 @@
     "Programming Languages"
   ],
   "main": "./build/extension.js",
-  "activationEvents": [
-    "onLanguage:katnip"
-  ],
   "contributes": {
     "languages": [
       {
