@@ -1,0 +1,12 @@
+{
+  // Diagnostic-only: compiles the core with no ambient Node types so every
+  // Node/process dependency still living in the core surfaces as an error.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": [],
+    "noEmit": true,
+    "composite": false
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "out", "build", "src/cli.ts"]
+}
