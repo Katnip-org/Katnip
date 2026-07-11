@@ -3,7 +3,7 @@
 public enum Target { RANDOM, MOUSE }
 public enum RotationStyle { LEFT, RIGHT }
 
-proc move(@opcode = "motion_movesteps", steps: num) -> void {}
+proc forward(@opcode = "motion_movesteps", steps: num) -> void {}
 proc turn(@opcode = "motion_turnright", degrees: num) -> void {}
 
 proc goTo(@opcode = "motion_goto", position: Target | str) -> void {}

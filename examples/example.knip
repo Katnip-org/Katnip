@@ -18,7 +18,7 @@ sprite test {
         clone.delete();
     }
 
-    onFlag(){
+    events.onFlag(){
         # Call the start function
         start();
 
@@ -39,18 +39,18 @@ sprite test {
         }
 
         # Constant checks
-        console.log("π = " + const.pi);
-        console.log("e = " + const.e);
-        console.log("τ = " + const.tau);
+        console.log("π = " + math.pi);
+        console.log("e = " + math.e);
+        console.log("τ = " + math.tau);
 
-        if(const.true && !const.false){
-            console.log(f"Basic logic constants, like {const.pi} work.");
+        if(true && !false){
+            console.log(f"Basic logic constants, like {math.pi} work.");
         }
 
         thing(5.5e-4, 10);
     }
 
-    onFlag(){
+    events.onFlag(){
         # Move in different directions
         move(directions.UP, 10);
         move(directions.DOWN, 5);
@@ -62,7 +62,7 @@ sprite test {
     }
 
     # Turtle draw implementation
-    onFlag(){
+    events.onFlag(){
         # Draw a square using turtle graphics
         pen.down();
         for(i, range(4)){
