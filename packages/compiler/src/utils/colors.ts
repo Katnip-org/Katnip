@@ -1,7 +1,8 @@
 /**
  * Minimal ANSI colorizer, drop in for picocolors.
  */
-const useColor = process.env.NO_COLOR == null && process.stdout?.isTTY === true;
+const proc = globalThis.process;
+const useColor = proc?.env?.NO_COLOR == null && proc?.stdout?.isTTY === true;
 
 const wrap =
     (open: number, close: number) =>
