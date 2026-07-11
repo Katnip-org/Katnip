@@ -1,5 +1,3 @@
-import fs from "node:fs";
-import path from "node:path";
 import { pc } from "./colors.js";
 
 export enum KatnipLogType {
@@ -21,7 +19,6 @@ export class KatnipLog {
 export class Logger {
     enabled: boolean = false;
     logs: KatnipLog[] = [];
-    private logFilePath: string;
 
     private formatters: Record<KatnipLogType, (msg: string) => string> = {
         [KatnipLogType.Info]: (msg) => pc.cyan(msg),
@@ -29,10 +26,6 @@ export class Logger {
         [KatnipLogType.Error]: (msg) => pc.red(msg),
         [KatnipLogType.Debug]: (msg) => pc.gray(msg)
     };
-
-    constructor(private writeToFile: boolean = false) {
-        this.logFilePath = path.resolve(process.cwd(), "examples", "log.txt");
-    }
 
     private sanitizeForLog(value: any): string {
         if (typeof value === "string") {
@@ -47,11 +40,11 @@ export class Logger {
                 `${log.timestamp} - [${log.type}] ${this.sanitizeForLog(log.message)}` +
                 (log.location ? ` at line ${log.location.line}, column ${log.location.column}` : "");
             console.log(this.formatters[log.type](baseMessage));
-            if (this.writeToFile) {
-                fs.appendFileSync(this.logFilePath, `${baseMessage}\n`, { encoding: "utf8" });
-            }
+            this.write(baseMessage);
         }
     }
+
+    protected write(_msg: string): void {}
 
     log(log: KatnipLog) {
         this.logs.push(log);

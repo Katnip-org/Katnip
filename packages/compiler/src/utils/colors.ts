@@ -1,7 +1,7 @@
 /**
  * Minimal ANSI colorizer, drop in for picocolors.
  */
-const proc = globalThis.process;
+const proc = (globalThis as { process?: { env?: Record<string, string | undefined>; stdout?: { isTTY?: boolean } } }).process;
 const useColor = proc?.env?.NO_COLOR == null && proc?.stdout?.isTTY === true;
 
 const wrap =

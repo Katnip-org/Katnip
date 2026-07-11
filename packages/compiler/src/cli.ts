@@ -11,6 +11,13 @@ import { Logger } from "./utils/Logger.js";
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
 import type { PathLike } from "fs";
+import { appendFileSync } from "node:fs";
+import path from "node:path";
+
+class FileLogger extends Logger {
+    private logFilePath = path.resolve(process.cwd(), "examples", "log.txt");
+    protected write(msg: string) { appendFileSync(this.logFilePath, `${msg}\n`, { encoding: "utf8" }); }
+}
 
 const cli = yargs(hideBin(process.argv));
 
@@ -35,7 +42,7 @@ cli
             .then((fileContent: string) => {
                 // Create an error reporter instance
                 const reporter = new ErrorReporter(fileContent, true);
-                const logger = new Logger(true);
+                const logger = new FileLogger();
                 
                 if (argv.logger === true) logger.enable();
                 else logger.disable();
@@ -68,7 +75,7 @@ cli
         fs.readFile(argv.source as PathLike, { encoding: 'utf-8' })
             .then((fileContent: string) => {
                 const reporter = new ErrorReporter(fileContent, true);
-                const logger = new Logger(true);
+                const logger = new FileLogger();
 
                 if (argv.logger === true) logger.enable();
                 else logger.disable();
@@ -109,7 +116,7 @@ cli
         fs.readFile(argv.source as PathLike, { encoding: 'utf-8' })
             .then(async (fileContent: string) => {
                 const reporter = new ErrorReporter(fileContent, true);
-                const logger = new Logger(true);
+                const logger = new FileLogger();
 
                 if (argv.logger === true) logger.enable();
                 else logger.disable();
