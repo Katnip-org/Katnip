@@ -331,7 +331,7 @@ export class Parser {
         if (this.tryConsume("type", ["<"])) {
             const typeParams: TypeNode[] = [];
 
-            while (!this.checkToken("type", [">"])) {
+            while (!this.isAtEnd() && !this.checkToken("type", [">"])) {
                 typeParams.push(this.parseTypeAnnotation());
 
                 if (!this.tryConsume("type", [","]) && !this.checkToken("type", [">"])) {
@@ -489,7 +489,7 @@ export class Parser {
         const parameters: ParameterNode[] = [];
 
         if (this.tryConsume("type", ["("])) {
-            while (!this.checkToken("type", [")"])) {
+            while (!this.isAtEnd() && !this.checkToken("type", [")"])) {
                 this.logger.log(new KatnipLog(KatnipLogType.Debug, `parsing proc param/decorator, next token: ${this.peek()?.token.type}, ${this.peek() && isValuedTokenType(this.peek()!.token.type) ? (this.peek()!.token as ValuedToken).value : "N/A"}`));
                 if (this.checkToken("type", ["@"])) {
                     this.advance();
@@ -617,7 +617,7 @@ export class Parser {
 
         this.consume({ type: "{" }, "Expected opening brace for enum members");
         const members: string[] = [];
-        while (!this.checkToken("type", ["}"])) {
+        while (!this.isAtEnd() && !this.checkToken("type", ["}"])) {
             const memberToken = this.consume({ type: "Identifier" }, "Expected enum member name");
             members.push(memberToken.token.value);
 
@@ -1152,7 +1152,7 @@ export class Parser {
             do {
                 listContents.push(this.parseExpression());
                 this.tryConsume("type", [","]);
-            } while (!this.checkToken("type", ["]"]));
+            } while (!this.isAtEnd() && !this.checkToken("type", ["]"]));
 
             this.consume({ type: "]" }, "Expected ']' after list expression");
             return {

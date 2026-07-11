@@ -47,6 +47,7 @@ export class Logger {
     protected write(_msg: string): void {}
 
     log(log: KatnipLog) {
+        if (!this.enabled) return;
         this.logs.push(log);
         this.print(log);
     }

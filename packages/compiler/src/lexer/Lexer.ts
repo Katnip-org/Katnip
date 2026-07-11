@@ -92,7 +92,18 @@ export class Lexer {
                 break; // End of input
             }
 
+            // Forward-progress guard
+            const posBefore = this.position;
+            const stateBefore: LexerState = this.currentState;
+
             this.processChar(char);
+
+            if (this.position === posBefore && this.currentState === stateBefore) {
+                throw new Error(
+                    `Internal lexer error: no forward progress in state ${LexerState[this.currentState]} ` +
+                    `on ${JSON.stringify(char)} at line ${this.line}, column ${this.col}`
+                );
+            }
         }
 
         return this.tokens;
@@ -126,20 +137,27 @@ export class Lexer {
 
     /**
      * Peeks at the next character in the source code without consuming it.
-     * 
+     *
+     * Characters are code points, not UTF-16 code units, so an emoji is one character.
+     *
      * @param distance The number of characters to look ahead (default is 0).
      * @returns The character at the specified distance or null if out of bounds.
      */
     private peek(distance: number = 0): string | null {
-        if (this.position < this.src.length) {
-            return this.src[this.position + distance];
+        let pos = this.position;
+        for (let i = 0; i < distance; i++) {
+            const skipped = this.src.codePointAt(pos);
+            if (skipped === undefined) return null;
+            pos += String.fromCodePoint(skipped).length;
         }
-        return null;
+
+        const code = this.src.codePointAt(pos);
+        return code === undefined ? null : String.fromCodePoint(code);
     }
 
     /**
      * Advances the lexer position by one character and updates line/column tracking.
-     * 
+     *
      * @returns The character that was advanced or null if at the end of input.
      */
     private advance(amount: number = 1): string | null {
@@ -147,7 +165,7 @@ export class Lexer {
         for (let i = 0; i < amount; i++) {
             char = this.peek();
             if (char !== null) {
-                this.position++;
+                this.position += char.length; // 2 for astral characters
                 if (char === '\n') {
                     this.line++;
                     this.col = 1;
@@ -165,7 +183,7 @@ export class Lexer {
      * @param char The character to process.
      */
     private processChar(char: string): void {
-        this.logger.log(new KatnipLog( KatnipLogType.Debug, `Lexer state: ${LexerState[this.currentState]}, char: '${char}'`, { line: this.line, column: this.col } ));
+        if (this.logger.enabled) this.logger.log(new KatnipLog( KatnipLogType.Debug, `Lexer state: ${LexerState[this.currentState]}, char: '${char}'`, { line: this.line, column: this.col } ));
 
         if (this.currentState === LexerState.Start) {
             this.processStartLike(char);
@@ -214,6 +232,7 @@ export class Lexer {
             this.reporter.add(
                 new KatnipError("Lexer", `Unexpected character '${char}'`, { line: this.line, column: this.col })
             );
+            this.advance();
         }
     }
 
@@ -223,7 +242,7 @@ export class Lexer {
      * @param char The current character being processed.
      */
     private processState(char: string): void {
-        this.logger.log(new KatnipLog( KatnipLogType.Debug, `Lexer state: ${LexerState[this.currentState]}, char: '${char}', buffer: '${this.buffer}'`, { line: this.line, column: this.col } ));
+        if (this.logger.enabled) this.logger.log(new KatnipLog( KatnipLogType.Debug, `Lexer state: ${LexerState[this.currentState]}, char: '${char}', buffer: '${this.buffer}'`, { line: this.line, column: this.col } ));
         // State: Identifier
         switch (this.currentState) {
             case LexerState.Identifier:
@@ -433,7 +452,7 @@ export class Lexer {
                 break;
 
             case LexerState.Comment:
-                this.logger.log(new KatnipLog( KatnipLogType.Debug, `In Comment state of type: '${this.commentType}', char: '${char}', buffer: '${this.buffer}'`, { line: this.line, column: this.col } ));
+                if (this.logger.enabled) this.logger.log(new KatnipLog( KatnipLogType.Debug, `In Comment state of type: '${this.commentType}', char: '${char}', buffer: '${this.buffer}'`, { line: this.line, column: this.col } ));
                 const commentMap: Record<string, [ValuedTokenType, string]> = {
                     "none": ["Comment_SingleExpanded", "\n"],
                     "*": ["Comment_SingleCollapsed", "\n"],
@@ -475,6 +494,14 @@ export class Lexer {
                         this.buffer += this.advance() ?? "";
                     }
                 }
+                break;
+
+            default:
+                this.reporter.add(
+                    new KatnipError("Lexer", `Unexpected character '${char}'`, { line: this.line, column: this.col })
+                );
+                this.advance();
+                this.currentState = this.inInterpolatedExpression ? LexerState.InterpolatedExpression : LexerState.Start;
                 break;
         }
     }
