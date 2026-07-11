@@ -34,3 +34,6 @@ coverage/
 # Katnip outputs
 packages/compiler/out/
 examples/
+
+# Generated stdlib bundle (produced by prebuild)
+packages/compiler/src/stdlib.generated.ts

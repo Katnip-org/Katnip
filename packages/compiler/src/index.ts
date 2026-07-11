@@ -9,7 +9,7 @@ export type { KatnipError } from "./utils/ErrorReporter.js";
 
 let stdlibCache: StdlibModule[] | null = null;
 
-export async function checkSource(source: string): Promise<readonly KatnipError[]> {
+export function checkSource(source: string): readonly KatnipError[] {
     const reporter = new ErrorReporter(source);
     const logger = new Logger(); // disabled by default
 
@@ -19,7 +19,7 @@ export async function checkSource(source: string): Promise<readonly KatnipError[
 
     const analyzer = new SemanticAnalyzer(reporter, logger);
     try {
-        stdlibCache ??= await loadStdlibModules(logger);
+        stdlibCache ??= loadStdlibModules(logger);
         analyzer.loadStdlib(stdlibCache);
     } catch {
         return reporter.getErrors();

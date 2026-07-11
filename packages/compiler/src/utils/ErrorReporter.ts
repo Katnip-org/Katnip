@@ -17,9 +17,11 @@ export class KatnipError {
         public location: KatnipErrorData,
         captureStack: boolean = true
     ) {
-        if (captureStack) {
+        // captureStackTrace is V8-only (Node/Chromium); cast avoids erors in other runtimes
+        const captureStackTrace = (Error as { captureStackTrace?: (o: object, c?: unknown) => void }).captureStackTrace;
+        if (captureStack && captureStackTrace) {
             const err = {} as Error & { stack?: string };
-            Error.captureStackTrace(err, KatnipError);
+            captureStackTrace(err, KatnipError);
             this.stackTrace = err.stack;
         }
     }
