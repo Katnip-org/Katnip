@@ -14,12 +14,10 @@ import type {
     ProcedureDeclarationNode,
     SpriteDeclarationNode,
     StatementNode,
-    ExpressionStatementNode,
     ExpressionNode,
     VariableDeclarationNode,
     TypeNode,
     CallExpressionNode,
-    ParameterNode,
 } from "../parser/AST-nodes.js";
 import {
     Scope,
@@ -734,7 +732,7 @@ export class SemanticAnalyzer {
                 const firstKeyType = this.inferType(expression.entries[0].key);
                 const firstValueType = this.inferType(expression.entries[0].value);
 
-                for (const [i, entry] of expression.entries.entries()) {
+                for (const entry of expression.entries) {
                     const keyType = this.inferType(entry.key);
                     const valueType = this.inferType(entry.value);
 

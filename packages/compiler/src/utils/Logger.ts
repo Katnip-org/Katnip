@@ -43,11 +43,10 @@ export class Logger {
 
     print(log: KatnipLog) {
         if (this.enabled) {
-            const formatter = this.formatters[log.type];
             const baseMessage =
                 `${log.timestamp} - [${log.type}] ${this.sanitizeForLog(log.message)}` +
                 (log.location ? ` at line ${log.location.line}, column ${log.location.column}` : "");
-            const formattedMessage = formatter(baseMessage);
+            console.log(this.formatters[log.type](baseMessage));
             if (this.writeToFile) {
                 fs.appendFileSync(this.logFilePath, `${baseMessage}\n`, { encoding: "utf8" });
             }

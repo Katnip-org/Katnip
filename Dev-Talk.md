@@ -82,3 +82,20 @@ stdlib for katnip will predom use guard clauses instead of early `stop [this scr
 compiler flag for using minimal-vars or readable-vars, bc temp or iter vars can be re-used if calculated right
 
 break/return inside for loop? how to use guard-clauses? or save enough time to stop this script? wbt continue?
+
+## 4. IR: Planning
+
+### Return statements
+1. Single value 
+    a. Single var return (naive)
+    b. Add to list and read the last of list
+2. Multi value
+    a. Static signle return in list (chunk by size of return)
+    b. Heap + pointers for dynamic size returns
+
+### Lowering types for functions (expanding return statements section)
+1. `@lower = "command"` -> emmitted in place
+2. `@lower = "yields"` -> emit code above, then substitutes itself as input
+3. `@lower = "userproc"` -> return statements
+4. `@lower = "builds"` -> heap filling loop, yields a handle, leaves to codegen
+5. `@lower = "reporter"` -> native reporter

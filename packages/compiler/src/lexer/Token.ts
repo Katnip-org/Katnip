@@ -90,9 +90,6 @@ export const UnitTokenType = {
 } as const;
 
 export type UnitTokenType = typeof UnitTokenType[keyof typeof UnitTokenType];
-export const unitTokenByLexeme = new Map<UnitTokenType, UnitTokenType>(
-    Object.entries(UnitTokenType).map(([_, value]) => [value, value])
-);
 export const singleCharUnitTokens = new Set<UnitTokenType>(
     Object.values(UnitTokenType).filter(t => t.length === 1)
 );

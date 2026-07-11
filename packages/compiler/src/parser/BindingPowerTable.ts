@@ -1,4 +1,4 @@
-import type { Token, TokenInfoFor, TokenPos, TokenType, ValuedToken } from "../lexer/Token.js";
+import type { Token } from "../lexer/Token.js";
 
 interface BindingPower {
     lbp: number;   // left-binding power

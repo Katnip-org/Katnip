@@ -3,7 +3,7 @@
 ## High priority
 - [x] Implement utils
 - [x] Implement parser
-- [ ] Implement semantic analysis
+- [x] Implement semantic analysis
 - [ ] Implement ir
 - [ ] Implement codegen
 - [x] Imlement better cli

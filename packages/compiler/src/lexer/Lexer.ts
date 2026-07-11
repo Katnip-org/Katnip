@@ -5,7 +5,6 @@
 import { 
     isUnitTokenType,
     isValuedTokenType,
-    unitTokenByLexeme,
     operatorTrie,
     singleCharUnitTokens
 } from "./Token.js";

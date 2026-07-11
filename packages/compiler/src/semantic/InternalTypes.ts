@@ -3,8 +3,6 @@
  * Replaces plain strings so parameterized types (list<T>, dict<K,V>) can be inspected.
  */
 
-import type { TypeNode } from "../parser/AST-nodes.js";
-
 export type InternalType =
     | { kind: "primitive"; name: "num" | "str" | "bool" | "void" }
     | { kind: "list"; element: InternalType }

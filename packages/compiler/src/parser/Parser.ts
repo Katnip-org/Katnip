@@ -3,10 +3,10 @@
  */
 
 import { isValuedTokenType, UnitTokenType } from "../lexer/Token.js";
-import type { Token, TokenInfoFor, TokenPos, TokenType, ValuedToken, ValuedTokenType } from "../lexer/Token.js";
+import type { Token, TokenInfoFor, TokenPos, TokenType, ValuedToken } from "../lexer/Token.js";
 import { ErrorReporter, KatnipError } from "../utils/ErrorReporter.js";
 import { KatnipLog, KatnipLogType, Logger } from "../utils/Logger.js";
-import { type AST, type DecoratorNode, type NodeBase, type ParameterNode, type ProcedureDeclarationNode, type SingleTypeNode, type TypeNode, type UnionTypeNode, type TupleTypeNode, type NamedArgumentNode, type ExpressionNode, type StatementNode, type EnumDeclarationNode, type VariableDeclarationNode, VariableDeclarationType, type VariableAssignmentNode, type DictEntryNode, type ElifClauseNode, type BlockNode, type CaseDeclarationNode, type DefaultCaseDeclarationNode, type BinaryOperator, type AssignmentOperator, type UnaryOperator } from "./AST-nodes.js";
+import { type AST, type DecoratorNode, type ParameterNode, type ProcedureDeclarationNode, type TypeNode, type TupleTypeNode, type NamedArgumentNode, type ExpressionNode, type StatementNode, type EnumDeclarationNode, type VariableDeclarationNode, VariableDeclarationType, type VariableAssignmentNode, type DictEntryNode, type ElifClauseNode, type BlockNode, type CaseDeclarationNode, type DefaultCaseDeclarationNode, type BinaryOperator, type AssignmentOperator, type UnaryOperator } from "./AST-nodes.js";
 import { bindingPowerTable, getBindingPower } from "./BindingPowerTable.js";
 
 export class Parser {
@@ -94,6 +94,8 @@ export class Parser {
      * @param patterns - The patterns to match against.
      * @returns True if the token matches, false otherwise.
      */
+    private checkToken(kind: "type", patterns: TokenType[]): boolean;
+    private checkToken(kind: "value", patterns: string[]): boolean;
     private checkToken(kind: "type" | "value", patterns: (string | TokenType)[]): boolean {
         if (this.isAtEnd()) return false;
 
@@ -114,8 +116,11 @@ export class Parser {
      * @param patterns - The patterns to match against.
      * @returns True if the token was consumed, false otherwise.
      */
-    private tryConsume(kind: "type" | "value", patterns: string[]): boolean {
-        if (this.checkToken(kind, patterns)) {
+    private tryConsume<K extends "type" | "value">(
+        kind: K,
+        patterns: (K extends "type" ? TokenType : string)[]
+    ): boolean {
+        if (this.checkToken(kind as "type", patterns as TokenType[])) {
             this.advance();
             return true;
         }
@@ -387,10 +392,8 @@ export class Parser {
     private parseStatement(): StatementNode | null{
         this.logger.log(new KatnipLog(KatnipLogType.Debug, `parsing statement starting with token: ${this.peek()?.token.type} | value: ${isValuedTokenType(this.peek()?.token.type || "<EOF>") ? (this.peek()?.token as ValuedToken).value : "N/A"}`));
         if (this.checkToken("type", ["Comment_SingleExpanded", "Comment_SingleCollapsed", "Comment_MultilineExpanded", "Comment_MultilineCollapsed"])) {
-            const comment = (this.peek()?.token as ValuedToken).value;
             this.advance();
             return null;
-            // return comment;
         }
         if (this.checkToken("type", ["Identifier"])) {
             if (this.checkToken("value", ["proc"]) && !(this.peek(1)?.token.type === ".")) return this.parseProcedureDefinition();
