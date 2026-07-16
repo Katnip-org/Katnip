@@ -2,7 +2,7 @@
   "name": "katnip-vscode",
   "displayName": "Katnip",
   "description": "Live diagnostics for the Katnip language (.knip).",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "icon": "icon.png",
   "repository": {
     "type": "git",
@@ -60,7 +60,8 @@
   "scripts": {
     "vendor": "node scripts/vendor.mjs",
     "build": "npm run vendor && tsc",
-    "package": "tsc -p ../compiler && npm run build && vsce package --no-dependencies"
+    "package": "tsc -p ../compiler && npm run build && vsce package --no-dependencies",
+    "publish": "npm run package && vsce publish --no-dependencies"
   },
   "devDependencies": {
     "@types/node": "^24.1.0",
