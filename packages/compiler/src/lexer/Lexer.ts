@@ -274,8 +274,7 @@ export class Lexer {
                     this.emit(this.isInterpolatedString ? "InterpolatedString" : "String");
                     this.isInterpolatedString = false;
                 } else if (char === '\\') {
-                    // Handle escape sequences
-                    this.buffer += this.advance();
+                    this.advance();
                     this.currentState = LexerState.EscapedString;
                 } else {
                     this.buffer += this.advance();
@@ -340,7 +339,7 @@ export class Lexer {
                 break;
 
             case LexerState.Number:
-                if (/[0-9]/.test(char)) {
+                if (/[0-9]/.test(char) || (/[a-fA-F]/.test(char) && this.buffer.startsWith("0x"))) {
                     this.buffer += this.advance();
                 } else if (char === '.') {
                     // Handle decimal point

@@ -6,7 +6,7 @@ import { isValuedTokenType, UnitTokenType } from "../lexer/Token.js";
 import type { Token, TokenInfoFor, TokenPos, TokenType, ValuedToken } from "../lexer/Token.js";
 import { ErrorReporter, KatnipError } from "../utils/ErrorReporter.js";
 import { KatnipLog, KatnipLogType, Logger } from "../utils/Logger.js";
-import { type AST, type DecoratorNode, type ParameterNode, type ProcedureDeclarationNode, type TypeNode, type TupleTypeNode, type NamedArgumentNode, type ExpressionNode, type StatementNode, type EnumDeclarationNode, type VariableDeclarationNode, VariableDeclarationType, type VariableAssignmentNode, type DictEntryNode, type ElifClauseNode, type BlockNode, type CaseDeclarationNode, type DefaultCaseDeclarationNode, type BinaryOperator, type AssignmentOperator, type UnaryOperator } from "./AST-nodes.js";
+import { type AST, type DecoratorNode, type ParameterNode, type ProcedureDeclarationNode, type TypeNode, type TupleTypeNode, type NamedArgumentNode, type ExpressionNode, type StatementNode, type EnumDeclarationNode, type VariableDeclarationNode, VariableDeclarationType, type VariableAssignmentNode, type DictEntryNode, type ElifClauseNode, type BlockNode, type CaseDeclarationNode, type DefaultCaseDeclarationNode, type BinaryOperator, type AssignmentOperator, type UnaryOperator, type AccessModifier } from "./AST-nodes.js";
 import { bindingPowerTable, getBindingPower } from "./BindingPowerTable.js";
 
 export class Parser {
@@ -395,7 +395,7 @@ export class Parser {
             this.advance();
             return null;
         }
-        if (this.checkToken("type", ["Identifier"])) {
+        if (this.checkToken("type", ["Identifier", "("])) {
             if (this.checkToken("value", ["proc"]) && !(this.peek(1)?.token.type === ".")) return this.parseProcedureDefinition();
             if (this.checkToken("value", ["enum"])) return this.parseEnumDefinition();
             if (this.checkToken("value", ["private", "temp", "public"])) {
@@ -474,12 +474,24 @@ export class Parser {
         return { access: VariableDeclarationType.private, start: null };
     }
 
+    /** Access modifier for declarations that have no storage: `temp` is variables-only. */
+    private parseDeclAccessModifier(declKind: string): { access: AccessModifier; start: TokenPos | null } {
+        const { access, start } = this.parseAccessModifier();
+        if (access === VariableDeclarationType.temp) {
+            this.reporter.add(
+                new KatnipError("Parser", `${declKind} cannot be declared 'temp'`, start ?? { line: -1, column: -1 })
+            );
+            return { access: VariableDeclarationType.private, start };
+        }
+        return { access, start };
+    }
+
     /**
      * Parses a procedure definition from the token list.
      * @returns The parsed procedure declaration node.
      */
     private parseProcedureDefinition(): ProcedureDeclarationNode {
-        const { access, start: accessStart } = this.parseAccessModifier();
+        const { access, start: accessStart } = this.parseDeclAccessModifier("Procedures");
         this.consume({ type: "Identifier", value: "proc" }, "Expected 'proc' keyword");
         const nameToken = this.consume({ type: "Identifier" }, "Expected procedure name");
         const name = nameToken.token.value;
@@ -610,7 +622,7 @@ export class Parser {
      * @returns The parsed enum declaration node.
      */
     private parseEnumDefinition(): EnumDeclarationNode {
-        const { access, start: accessStart } = this.parseAccessModifier();
+        const { access, start: accessStart } = this.parseDeclAccessModifier("Enums");
         this.consume({ type: "Identifier", value: "enum" }, "Expected 'enum' keyword");
         const nameToken = this.consume({ type: "Identifier" }, "Expected enum name");
         const name = nameToken.token.value;
@@ -1149,10 +1161,12 @@ export class Parser {
         // Bracket expression
         if (this.tryConsume("type", ["["])) {
             const listContents: ExpressionNode[] = [];
-            do {
-                listContents.push(this.parseExpression());
-                this.tryConsume("type", [","]);
-            } while (!this.isAtEnd() && !this.checkToken("type", ["]"]));
+            if (!this.checkToken("type", ["]"])) {
+                do {
+                    listContents.push(this.parseExpression());
+                    this.tryConsume("type", [","]);
+                } while (!this.isAtEnd() && !this.checkToken("type", ["]"]));
+            }
 
             this.consume({ type: "]" }, "Expected ']' after list expression");
             return {

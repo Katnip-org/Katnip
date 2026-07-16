@@ -47,7 +47,7 @@ export type TypeNode = SingleTypeNode | UnionTypeNode | TupleTypeNode;
 // Procedure nodes 
 export interface ProcedureDeclarationNode extends NodeBase {
     type: "ProcedureDeclaration";
-    access: VariableDeclarationType;
+    access: AccessModifier;
     name: string;
     decorators: DecoratorNode[];
     parameters: ParameterNode[];
@@ -71,7 +71,7 @@ export interface ParameterNode extends NodeBase {
 // Enum Nodes 
 export interface EnumDeclarationNode extends NodeBase {
     type: "EnumDeclaration";
-    access: VariableDeclarationType;
+    access: AccessModifier;
     name: string;
     members: (string | number)[];
 }
@@ -156,6 +156,8 @@ export enum VariableDeclarationType {
     public = "public",
     temp = "temp"
 }
+
+export type AccessModifier = Exclude<VariableDeclarationType, VariableDeclarationType.temp>;
 
 export interface VariableDeclarationNode extends NodeBase {
     type: "VariableDeclaration";

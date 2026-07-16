@@ -21,6 +21,8 @@ import type {
 } from "../parser/AST-nodes.js";
 import {
     Scope,
+    type LoweringKind,
+    type ReturnMethod,
     type ScopeKind,
     type SymbolEntry,
     type ProcedureSymbol,
@@ -249,32 +251,72 @@ export class SemanticAnalyzer {
     }
 
     private hoistProcedure(node: ProcedureDeclarationNode): void {
+        const meta = this.extractMeta(node.decorators);
+        meta.returns = this.deriveReturns(node.returnType);
+        if (!meta.lower) {
+            meta.lower = meta.opcode
+                ? meta.returns.kind === "void" ? "command" : "reporter"
+                : "userproc";
+        }
+
+        // TODO: Implement the features the program currently blocks
+        if (meta.lower === "builds") {
+            this.error(`@lower = "builds" is not supported yet`, node); // TODO: implement this
+        }
+        if (
+            !meta.opcode &&
+            node.returnType?.type === "Type" &&
+            (node.returnType.typeName === "list" || node.returnType.typeName === "dict")
+        ) {
+            this.error(
+                `Procedures cannot return '${node.returnType.typeName}' yet (multi-size returns are not supported)`,
+                node.returnType,
+            );
+        }
+
+        const signature: Signature = {
+            params: node.parameters,
+            returnType: node.returnType,
+            meta,
+            decorators: node.decorators,
+        };
         this.declare(
-            {
-                kind: "procedure",
-                name: node.name,
-                declNode: node,
-                signatures: [
-                    {
-                        params: node.parameters,
-                        returnType: node.returnType,
-                        meta: this.extractMeta(node.decorators),
-                        decorators: node.decorators,
-                    },
-                ],
-            },
+            { kind: "procedure", name: node.name, declNode: node, signatures: [signature] },
             node,
         );
+    }
+
+    /** Return frame shape from the written return type. Purely syntactic: only the width matters. */
+    private deriveReturns(returnType: TypeNode | null): ReturnMethod {
+        if (!returnType) return { kind: "void" };
+        if (returnType.type === "TupleType") return { kind: "tuple", width: returnType.elements.length };
+        if (returnType.type === "Type" && returnType.typeName === "void") return { kind: "void" };
+        return { kind: "scalar" };
     }
 
     /** Pulls codegen-relevant decorators (@opcode, @hat) out of a proc's decorator list. */
     private extractMeta(decorators: DecoratorNode[]): SignatureMeta {
         const meta: SignatureMeta = {};
+        const loweringKinds: LoweringKind[] = ["reporter", "command", "yields", "userproc", "builds"];
+        const retModes = ["auto", "var", "vstack"] as const;
         for (const decorator of decorators) {
             const value = decorator.value.type === "Literal" ? decorator.value.value : undefined;
-            // A bare `@hat` parses as the string literal "true".
             if (decorator.name === "opcode" && typeof value === "string") meta.opcode = value;
             if (decorator.name === "hat") meta.hat = value === "true" || value === true;
+            if (decorator.name === "lower") {
+                if (typeof value === "string" && (loweringKinds as string[]).includes(value)) {
+                    meta.lower = value as LoweringKind;
+                } else {
+                    this.error(`@lower must be one of: ${loweringKinds.join(", ")}`, decorator);
+                }
+            }
+            if (decorator.name === "ret") {
+                if (typeof value === "string" && (retModes as readonly string[]).includes(value)) {
+                    meta.ret = value as SignatureMeta["ret"];
+                } else {
+                    this.error(`@ret must be one of: ${retModes.join(", ")}`, decorator);
+                }
+            }
         }
         return meta;
     }
@@ -354,9 +396,6 @@ export class SemanticAnalyzer {
                 break;
             }
             case "ProcedureDeclaration": {
-                if (node.access === "temp") {
-                    this.error("Procedures cannot be declared 'temp'", node, node.access.length);
-                }
                 const previousReturnType = this.currentReturnType;
                 this.currentReturnType = node.returnType
                     ? this.typeFromNode(node.returnType)
@@ -513,14 +552,6 @@ export class SemanticAnalyzer {
                 this.visitBlock(node.body);
                 break;
             case "EnumDeclaration":
-                // Enum body already hoisted; just validate the modifier.
-                if (node.access === "temp") {
-                    this.error(
-                        "Enums cannot be declared 'temp'",
-                        node,
-                        node.access.length,
-                    );
-                }
                 break;
             case "ErrorStatement":
                 // Error statements come from the parser.

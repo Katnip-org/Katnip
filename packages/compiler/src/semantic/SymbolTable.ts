@@ -7,12 +7,29 @@ import type {
 } from "../parser/AST-nodes.js";
 import type { InternalType } from "./InternalTypes.js";
 
+/** How a call to this proc is emitted by the lowering pass. */
+export type LoweringKind = "reporter" | "command" | "yields" | "userproc" | "builds";
+
+/** Shape of a proc's return frame. Multi-size (list) returns are not supported yet. */
+export type ReturnMethod =
+    | { kind: "void" }
+    | { kind: "scalar" }
+    | { kind: "tuple"; width: number };
+
 /** Codegen-relevant metadata extracted from a procedure's decorators. */
 export interface SignatureMeta {
     /** Scratch opcode this builtin lowers to (@opcode). */
     opcode?: string;
     /** Whether this is a hat block, usable only as an event handler (@hat). */
     hat?: boolean;
+    /** Emission strategy (@lower), defaulted from opcode/return shape when absent. */
+    lower?: LoweringKind;
+    /** Requested return strategy (@ret), default "auto". */
+    ret?: "auto" | "var" | "vstack";
+    /** Strategy after cycle analysis: "var" iff the proc is in no call cycle. */
+    retResolved?: "var" | "vstack";
+    /** Return frame shape derived from the declared return type. */
+    returns?: ReturnMethod;
 }
 
 /** One overload of a procedure: its parameter list and declared return type. */

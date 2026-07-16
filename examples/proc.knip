@@ -1,5 +1,5 @@
 proc log(msg: str) -> void {
-    msg += 2;
+    msg += "ello";
     console.log(msg);
 }
 

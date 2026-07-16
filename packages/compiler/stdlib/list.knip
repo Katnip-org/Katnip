@@ -3,7 +3,7 @@
 proc add(@opcode = "data_addtolist", self: list<T>, item: T) -> void {}
 proc contains(@opcode = "data_listcontainsitem", self: list<T>, item: T) -> bool {}
 proc length(@opcode = "data_lengthoflist", self: list<T>) -> num {}
-proc remove(@opcode = "data_deleteoflist", self: list<T>, idx: num) -> T {}
+proc remove(@opcode = "data_deleteoflist", @lower = "yields", self: list<T>, idx: num) -> T {}
 proc clear(@opcode = "data_deletealloflist", self: list<T>) -> void {}
 proc indexOf(@opcode = "data_itemnumoflist", self: list<T>, item: T) -> num {}
 
