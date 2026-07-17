@@ -31,6 +31,7 @@ import {
     type Signature,
     type SignatureMeta,
 } from "./SymbolTable.js";
+import { resolveReturnStrategies } from "./CallGraph.js";
 import {
     bindReceiver,
     isAssignable,
@@ -86,6 +87,12 @@ export class SemanticAnalyzer {
     /** True only while resolving stdlib signatures, where T/K/V typevars are legal. */
     private allowTypevars = false;
 
+    /** Which signature each call resolved to, for the call graph and IR lowering. */
+    readonly callResolutions = new Map<CallExpressionNode, Signature>();
+
+    /** User proc declarations to their signatures, for the call graph and IR lowering. */
+    readonly procSignatures = new Map<ProcedureDeclarationNode, Signature>();
+
     constructor(
         private reporter: ErrorReporter,
         private logger: Logger = new Logger(),
@@ -110,6 +117,10 @@ export class SemanticAnalyzer {
 
         this.hoist(ast.body);
         for (const stmt of ast.body) this.visit(stmt);
+
+        resolveReturnStrategies(this.procSignatures, this.callResolutions, (msg, node) =>
+            this.error(msg, node),
+        );
 
         return this.current;
     }
@@ -280,6 +291,7 @@ export class SemanticAnalyzer {
             meta,
             decorators: node.decorators,
         };
+        this.procSignatures.set(node, signature);
         this.declare(
             { kind: "procedure", name: node.name, declNode: node, signatures: [signature] },
             node,
@@ -916,6 +928,7 @@ export class SemanticAnalyzer {
                 call,
             );
         }
+        if (resolved.signature) this.callResolutions.set(call, resolved.signature);
         return resolved;
     }
 
