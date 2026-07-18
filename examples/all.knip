@@ -30,6 +30,8 @@ proc add(
     return;
 }
 
+proc 
+
 # sprite: member access + one handler with all control flow
 sprite Cat {
     self.x = 0; # member assignment

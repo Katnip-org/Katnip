@@ -26,6 +26,7 @@ export function activate(context: vscode.ExtensionContext): void {
         vscode.workspace.onDidSaveTextDocument(run),
         vscode.workspace.onDidChangeTextDocument((e) => scheduleCheck(context, e.document)),
         vscode.workspace.onDidCloseTextDocument((doc) => diagnostics.delete(doc.uri)),
+        vscode.languages.registerCompletionItemProvider("katnip", { provideCompletionItems: complete }),
     );
     vscode.workspace.textDocuments.forEach(run);
 }
@@ -56,6 +57,31 @@ function scheduleCheck(context: vscode.ExtensionContext, doc: vscode.TextDocumen
     const key = doc.uri.toString();
     clearTimeout(timers.get(key));
     timers.set(key, setTimeout(() => check(context, doc), cfg.get<number>("check.debounce", 250)));
+}
+
+const KEYWORDS = [
+    "if", "elif", "else", "for", "while", "do", "return", "switch", "case", "default",
+    "proc", "enum", "sprite", "private", "public", "temp", "true", "false",
+    "num", "str", "bool", "list", "dict", "void",
+];
+
+// TODO: regex scan of the open file; swap for compiler symbol table when cross-file completion matters
+const DECL = /\b(?:proc|enum|sprite)\s+(\w+)|\b(?:private|public|temp)\s+(\w+)/g;
+
+function complete(doc: vscode.TextDocument): vscode.CompletionItem[] {
+    const items = KEYWORDS.map((k) => new vscode.CompletionItem(k, vscode.CompletionItemKind.Keyword));
+    const seen = new Set<string>();
+    for (const m of doc.getText().matchAll(DECL)) {
+        const name = m[1] ?? m[2];
+        if (name && !seen.has(name)) {
+            seen.add(name);
+            items.push(new vscode.CompletionItem(
+                name,
+                m[1] ? vscode.CompletionItemKind.Function : vscode.CompletionItemKind.Variable,
+            ));
+        }
+    }
+    return items;
 }
 
 function toDiagnostic(err: KatnipError): vscode.Diagnostic {
