@@ -1,3 +1,7 @@
 #> control.knip ~ control-flow hat blocks. <#
 
-proc onclone(@opcode = "control_start_as_clone", @hat) -> void {}
+enum CloneTarget { MYSELF = "_myself_" }
+
+proc onClone(@opcode = "control_start_as_clone", @hat) -> void {}
+proc createClone(@opcode = "control_create_clone_of", target: CloneTarget | str) -> void {}
+proc deleteClone(@opcode = "control_delete_this_clone") -> void {}

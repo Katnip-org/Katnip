@@ -6,7 +6,7 @@ import { isValuedTokenType, UnitTokenType } from "../lexer/Token.js";
 import type { Token, TokenInfoFor, TokenPos, TokenType, ValuedToken } from "../lexer/Token.js";
 import { ErrorReporter, KatnipError } from "../utils/ErrorReporter.js";
 import { KatnipLog, KatnipLogType, Logger } from "../utils/Logger.js";
-import { type AST, type DecoratorNode, type ParameterNode, type ProcedureDeclarationNode, type TypeNode, type TupleTypeNode, type NamedArgumentNode, type ExpressionNode, type StatementNode, type EnumDeclarationNode, type VariableDeclarationNode, VariableDeclarationType, type VariableAssignmentNode, type DictEntryNode, type ElifClauseNode, type BlockNode, type CaseDeclarationNode, type DefaultCaseDeclarationNode, type BinaryOperator, type AssignmentOperator, type UnaryOperator, type AccessModifier } from "./AST-nodes.js";
+import { type AST, type DecoratorNode, type ParameterNode, type ProcedureDeclarationNode, type TypeNode, type TupleTypeNode, type NamedArgumentNode, type ExpressionNode, type StatementNode, type EnumDeclarationNode, type EnumMemberNode, type VariableDeclarationNode, VariableDeclarationType, type VariableAssignmentNode, type DictEntryNode, type ElifClauseNode, type BlockNode, type CaseDeclarationNode, type DefaultCaseDeclarationNode, type BinaryOperator, type AssignmentOperator, type UnaryOperator, type AccessModifier } from "./AST-nodes.js";
 import { bindingPowerTable, getBindingPower } from "./BindingPowerTable.js";
 
 export class Parser {
@@ -628,10 +628,24 @@ export class Parser {
         const name = nameToken.token.value;
 
         this.consume({ type: "{" }, "Expected opening brace for enum members");
-        const members: string[] = [];
+        const members: EnumMemberNode[] = [];
         while (!this.isAtEnd() && !this.checkToken("type", ["}"])) {
             const memberToken = this.consume({ type: "Identifier" }, "Expected enum member name");
-            members.push(memberToken.token.value);
+            const memberName = memberToken.token.value;
+
+            let value: string | number = memberName;
+            if (this.tryConsume("type", ["="])) {
+                if (this.checkToken("type", ["String"])) {
+                    value = (this.advance()!.token as ValuedToken).value;
+                } else if (this.checkToken("type", ["Number"])) {
+                    value = Number((this.advance()!.token as ValuedToken).value);
+                } else {
+                    this.reporter.add(
+                        new KatnipError("Parser", "Expected string or number literal for enum member value", this.peek()?.start || { line: -1, column: -1 })
+                    );
+                }
+            }
+            members.push({ name: memberName, value });
 
             if (!this.tryConsume("type", [","]) && !this.checkToken("type", ["}"])) {
                 this.reporter.add(

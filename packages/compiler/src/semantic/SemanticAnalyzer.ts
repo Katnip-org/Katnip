@@ -1072,7 +1072,7 @@ export class SemanticAnalyzer {
                 return this.typeOf(member);
             }
             case "enum":
-                if (!head.symbol.members.includes(propName)) {
+                if (!head.symbol.members.some((m) => m.name === propName)) {
                     this.error(`Enum '${head.symbol.name}' has no member '${propName}'`, expr.property);
                     return { kind: "unknown" };
                 }

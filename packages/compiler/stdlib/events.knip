@@ -1,3 +1,12 @@
 #> events.knip ~ event hat blocks. <#
+enum GreaterThanProperty { LOUDNESS, TIMER }
 
 proc onFlag(@opcode = "event_whenflagclicked", @hat) -> void {}
+proc onKey(@opcode = "event_whenkeypressed", @hat, key: Key) -> void {}
+proc onClick(@opcode = "event_whenthisspriteclicked", @hat) -> void {}
+proc onBackdropSwitch(@opcode = "event_whenbackdropswitchesto", @hat, backdrop: str) -> void {}
+proc onGreaterThan(@opcode = "event_whengreaterthan", @hat, property: GreaterThanProperty, threshold: num) -> void {}
+proc onBroadcast(@opcode = "event_whenbroadcastreceived", @hat, broadcast: str) -> void {}
+
+proc broadcast(@opcode = "event_broadcast", broadcast: str) -> void {}
+proc broadcastAndWait(@opcode = "event_broadcastandwait", broadcast: str) -> void {}

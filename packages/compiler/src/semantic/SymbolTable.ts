@@ -1,5 +1,6 @@
 import type {
     DecoratorNode,
+    EnumMemberNode,
     NodeBase,
     ParameterNode,
     TypeNode,
@@ -66,7 +67,7 @@ export interface ProcedureSymbol extends SymbolBase {
 }
 export interface EnumSymbol extends SymbolBase {
     kind: "enum";
-    members: (string | number)[];
+    members: EnumMemberNode[];
 }
 export interface SpriteSymbol extends SymbolBase {
     kind: "sprite";

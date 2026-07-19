@@ -68,12 +68,17 @@ export interface ParameterNode extends NodeBase {
     default?: ExpressionNode;
 }
 
-// Enum Nodes 
+// Enum Nodes
+export interface EnumMemberNode {
+    name: string;
+    value: string | number;
+}
+
 export interface EnumDeclarationNode extends NodeBase {
     type: "EnumDeclaration";
     access: AccessModifier;
     name: string;
-    members: (string | number)[];
+    members: EnumMemberNode[];
 }
 
 // Statement Nodes

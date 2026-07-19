@@ -1,4 +1,34 @@
 #> looks.knip ~ sprite appearance blocks. <#
 
+public enum GraphicEffect { COLOR, FISHEYE, WHIRL, PIXELATE, MOSAIC, BRIGHTNESS, GHOST }
+public enum LayerPosition { FRONT = "front", BACK = "back" }
+public enum LayerDirection { FORWARD = "forward", BACKWARD = "backward" }
+public enum NumberName { NUMBER = "number", NAME = "name" }
+public enum Backdrop { NEXT = "next backdrop", PREVIOUS = "previous backdrop", RANDOM = "random backdrop" }
+
 proc say(@opcode = "looks_say", msg: str) -> void {}
 proc say(@opcode = "looks_sayforsecs", msg: str, seconds: num) -> void {}
+proc think(@opcode = "looks_think", msg: str) -> void {}
+proc think(@opcode = "looks_thinkforsecs", msg: str, seconds: num) -> void {}
+
+proc switchCostume(@opcode = "looks_switchcostumeto", costume: str) -> void {}
+proc nextCostume(@opcode = "looks_nextcostume") -> void {}
+proc switchBackdrop(@opcode = "looks_switchbackdropto", backdrop: Backdrop | str) -> void {}
+proc nextBackdrop(@opcode = "looks_nextbackdrop") -> void {}
+
+proc changeSize(@opcode = "looks_changesizeby", dSize: num) -> void {}
+proc setSize(@opcode = "looks_setsizeto", size: num) -> void {}
+
+proc changeEffect(@opcode = "looks_changeeffectby", effect: GraphicEffect, change: num) -> void {}
+proc setEffect(@opcode = "looks_seteffectto", effect: GraphicEffect, value: num) -> void {}
+proc clearEffects(@opcode = "looks_cleargraphiceffects") -> void {}
+
+proc show(@opcode = "looks_show") -> void {}
+proc hide(@opcode = "looks_hide") -> void {}
+
+proc goToLayer(@opcode = "looks_gotofrontback", position: LayerPosition) -> void {}
+proc changeLayer(@opcode = "looks_goforwardbackwardlayers", direction: LayerDirection, layers: num) -> void {}
+
+proc costume(@opcode = "looks_costumenumbername", mode: NumberName = NumberName.NUMBER) -> any {}
+proc backdrop(@opcode = "looks_backdropnumbername", mode: NumberName = NumberName.NUMBER) -> any {}
+proc size(@opcode = "looks_size") -> num {}

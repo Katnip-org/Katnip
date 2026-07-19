@@ -99,3 +99,23 @@ break/return inside for loop? how to use guard-clauses? or save enough time to s
 3. `@lower = "userproc"` -> return statements
 4. `@lower = "builds"` -> heap filling loop, yields a handle, leaves to codegen
 5. `@lower = "reporter"` -> native reporter
+
+### Unstructured yap
+I have now organized the IR into a few main core pieces:
+* Expression pieces: literals, operators, parameters, variables, and stack referrences (for function returns)
+* Statement pieces: raw (standard) scratch blocks, func calls, set/push/pop, if/while/forever/for/
+
+---
+
+Talked with a friend. Raw is the best way to go, so I removed the set/push/pop, leaving if/while/forever/for/forever since those are split prior to IR already. 
+
+---
+
+Also important decision regarding stdlib: definitions exist both in `/stdlib/` but also have definitions in `/codegen/` so that metadata is stored both for the katnip syntax, but also for the compiler itself. This split is cleaner that forcing the katnip syntax to match the metadata needs of the compiler.
+
+The one thing that did take a change in favor of compiler metadata was the ability for enums to have a different value than just their name. 
+
+---
+
+Working on scratchDefs rn, I made a pretty nice construct to store all the metadata for scratch. I'm debating adding specfic input types per each input scratch type.
+Unsure whether or not to accomodate for this in the codegen or ts definitions files.

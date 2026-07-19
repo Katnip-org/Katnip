@@ -2,13 +2,21 @@
 
 proc typeof(@opcode = "katnip_typeof", value: any) -> str {} # TODO: use the katnip one
 
+# control
+enum StopType { ALL = "all", THIS_SCRIPT = "this script", OTHER_SCRIPTS_IN_SPRITE = "other scripts in sprite" }
+proc wait(@opcode = "control_wait", secs: num) -> void {}
+proc stop(@opcode = "control_stop", stop_option: StopType = StopType.ALL) -> void {}
+
+enum Key { SPACE = "space", LEFT_ARROW = "left arrow", RIGHT_ARROW = "right arrow", UP_ARROW = "up arrow", DOWN_ARROW = "down arrow", ANY = "any",
+            a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r, s, t, u, v, w, x, y, z,
+            NUM_0 = "0", NUM_1 = "1", NUM_2 = "2", NUM_3 = "3", NUM_4 = "4",
+            NUM_5 = "5", NUM_6 = "6", NUM_7 = "7", NUM_8 = "8", NUM_9 = "9" }
+
 # casts
 proc Num(@opcode = "katnip_cast_num", value: any) -> num {}
 proc Str(@opcode = "katnip_cast_str", value: any) -> str {}
 proc Bool(@opcode = "katnip_cast_bool", value: any) -> bool {}
-proc List(@opcode = "katnip_cast_list", value: any) -> list<str> {}
-
-proc wait(@opcode = "control_wait", seconds: num) -> void {}
+proc List(@opcode = "katnip_cast_list", value: any) -> list<any> {}
 
 # iter helpers
 proc range(@opcode = "katnip_range", stop: num) -> list<num> {}
@@ -23,3 +31,7 @@ public false: bool = "false" == "";
 
 # misc
 proc len(@opcode = "operator_length", input: str) -> num {}
+
+# arg must be a plain variable reference (lowers to a VARIABLE field)
+proc showVariable(@opcode = "data_showvariable", variable: any) -> void {}
+proc hideVariable(@opcode = "data_hidevariable", variable: any) -> void {}

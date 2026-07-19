@@ -1,0 +1,32 @@
+#> sensing.knip ~ sensing blocks. <#
+
+public enum TouchTarget { MOUSE = "_mouse_", EDGE = "_edge_" }
+public enum DistanceTarget { MOUSE = "_mouse_" }
+public enum DragMode { DRAGGABLE = "draggable", NOT_DRAGGABLE = "not draggable" }
+public enum TimeUnit { YEAR, MONTH, DATE, DAY_OF_WEEK = "DAYOFWEEK", HOUR, MINUTE, SECOND }
+public enum ObjectTarget { STAGE = "_stage_" }
+
+proc touching(@opcode = "sensing_touchingobject", target: TouchTarget | str) -> bool {}
+proc touchingColor(@opcode = "sensing_touchingcolor", color: str) -> bool {}
+proc colorTouchingColor(@opcode = "sensing_coloristouchingcolor", color: str, color2: str) -> bool {}
+proc distanceTo(@opcode = "sensing_distanceto", target: DistanceTarget | str) -> num {}
+
+proc ask(@opcode = "sensing_askandwait", question: str) -> void {}
+proc answer(@opcode = "sensing_answer") -> str {}
+
+proc keyPressed(@opcode = "sensing_keypressed", key: Key | str) -> bool {}
+proc mouseDown(@opcode = "sensing_mousedown") -> bool {}
+proc mouseX(@opcode = "sensing_mousex") -> num {}
+proc mouseY(@opcode = "sensing_mousey") -> num {}
+
+proc setDragMode(@opcode = "sensing_setdragmode", mode: DragMode) -> void {}
+
+proc loudness(@opcode = "sensing_loudness") -> num {}
+proc timer(@opcode = "sensing_timer") -> num {}
+proc resetTimer(@opcode = "sensing_resettimer") -> void {}
+
+proc getProperty(@opcode = "sensing_of", property: str, target: ObjectTarget | str) -> any {}
+proc current(@opcode = "sensing_current", unit: TimeUnit) -> num {}
+proc daysSince2000(@opcode = "sensing_dayssince2000") -> num {}
+proc isOnline(@opcode = "sensing_online") -> bool {}
+proc username(@opcode = "sensing_username") -> str {}

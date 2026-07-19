@@ -7,4 +7,7 @@ proc remove(@opcode = "data_deleteoflist", @lower = "yields", self: list<T>, idx
 proc clear(@opcode = "data_deletealloflist", self: list<T>) -> void {}
 proc indexOf(@opcode = "data_itemnumoflist", self: list<T>, item: T) -> num {}
 
+proc show(@opcode = "data_showlist", self: list<T>) -> void {}
+proc hide(@opcode = "data_hidelist", self: list<T>) -> void {}
+
 proc merge(@opcode = "katnip_list_merge", self: list<T>, addition: list<T>) -> void {}

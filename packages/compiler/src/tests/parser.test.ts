@@ -200,7 +200,28 @@ test("enum declaration collects members", () => {
     const stmt = parseStmt("enum Color { red, green, blue }");
     assert.equal(stmt.type, "EnumDeclaration");
     if (stmt.type !== "EnumDeclaration") return;
-    assert.deepEqual(stmt.members, ["red", "green", "blue"]);
+    assert.deepEqual(stmt.members, [
+        { name: "red", value: "red" },
+        { name: "green", value: "green" },
+        { name: "blue", value: "blue" },
+    ]);
+});
+
+test("enum members accept explicit string and number values", () => {
+    const stmt = parseStmt(`enum Target { RANDOM = "_random_", MOUSE = "_mouse_", LEVEL = 2, PLAIN }`);
+    assert.equal(stmt.type, "EnumDeclaration");
+    if (stmt.type !== "EnumDeclaration") return;
+    assert.deepEqual(stmt.members, [
+        { name: "RANDOM", value: "_random_" },
+        { name: "MOUSE", value: "_mouse_" },
+        { name: "LEVEL", value: 2 },
+        { name: "PLAIN", value: "PLAIN" },
+    ]);
+});
+
+test("enum member value must be a literal", () => {
+    const { reporter } = parse("enum Bad { A = foo }");
+    assert.equal(reporter.hasErrors(), true);
 });
 
 test("missing semicolon reports an error but parsing continues", () => {
