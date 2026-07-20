@@ -209,3 +209,84 @@ test("switch validates default placement and count", () => {
         /2 or more 'default' cases/,
     );
 });
+
+// -- structs --
+
+const POINT = "struct Point { x: num, y: num }\n";
+
+test("struct literal with all fields is clean", () => {
+    assert.match(errorsOf(POINT + "temp p: Point = Point(x = 1, y = 2);"), /^$/);
+});
+
+test("struct literal fills omitted fields from defaults", () => {
+    const decl = "struct Cfg { a: num = 1, b: num = 2 }\n";
+    assert.match(errorsOf(decl + "temp c: Cfg = Cfg(a = 5);"), /^$/);
+});
+
+test("struct literal missing a required field is reported", () => {
+    assert.match(errorsOf(POINT + "temp p: Point = Point(x = 1);"), /missing required field 'y'/);
+});
+
+test("struct literal with an unknown field is reported", () => {
+    assert.match(errorsOf(POINT + "temp p: Point = Point(x = 1, y = 2, z = 3);"), /has no field 'z'/);
+});
+
+test("struct literal field type mismatch is reported", () => {
+    assert.match(errorsOf(POINT + `temp p: Point = Point(x = 1, y = "no");`), /expects 'num', got 'str'/);
+});
+
+test("struct literal rejects positional arguments", () => {
+    assert.match(errorsOf(POINT + "temp p: Point = Point(1, 2);"), /takes named fields only/);
+});
+
+test("field read yields the field type", () => {
+    const src = POINT + "temp p: Point = Point(x = 1, y = 2);\ntemp bad: str = p.x;";
+    assert.match(errorsOf(src), /cannot be initialized/);
+});
+
+test("reading a missing field is reported", () => {
+    const src = POINT + "temp p: Point = Point(x = 1, y = 2);\ntemp z = p.q;";
+    assert.match(errorsOf(src), /Struct 'Point' has no field 'q'/);
+});
+
+test("field write is type-checked", () => {
+    const src = POINT + "temp p: Point = Point(x = 1, y = 2);\nproc f() -> void { p.x = \"no\"; }";
+    assert.match(errorsOf(src), /Cannot assign value of type 'str'/);
+});
+
+test("struct list element field access is clean", () => {
+    const src = POINT + "temp ps: list<Point> = [];\ntemp a: num = ps[0].x;";
+    assert.match(errorsOf(src), /^$/);
+});
+
+test("struct list field column is a list of the field type", () => {
+    const src = POINT + "temp ps: list<Point> = [];\ntemp col: list<num> = ps.x;\ntemp bad: list<str> = ps.y;";
+    const errors = errorsOf(src);
+    assert.match(errors, /cannot be initialized/); // only the list<str> line
+    assert.equal(errors.split("\n").length, 1);
+});
+
+test("non-scalar struct fields are rejected", () => {
+    assert.match(errorsOf("struct Bad { xs: list<num> }"), /only scalar fields/);
+});
+
+test("duplicate struct fields are reported", () => {
+    assert.match(errorsOf("struct Bad { x: num, x: num }"), /duplicate field 'x'/);
+});
+
+test("struct default type mismatch is reported", () => {
+    assert.match(errorsOf(`struct Bad { x: num = "no" }`), /Default for field 'x'/);
+});
+
+test("struct-typed params and returns are clean", () => {
+    const src = POINT + `
+        proc mid(a: Point, b: Point) -> Point {
+            return Point(x = a.x, y = b.y);
+        }
+    `;
+    assert.match(errorsOf(src), /^$/);
+});
+
+test("an unknown struct name as a type is still an error", () => {
+    assert.match(errorsOf("temp p: Nope = 1;"), /Unknown type 'Nope'/);
+});

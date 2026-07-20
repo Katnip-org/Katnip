@@ -6,7 +6,7 @@ import { isValuedTokenType, UnitTokenType } from "../lexer/Token.js";
 import type { Token, TokenInfoFor, TokenPos, TokenType, ValuedToken } from "../lexer/Token.js";
 import { ErrorReporter, KatnipError } from "../utils/ErrorReporter.js";
 import { KatnipLog, KatnipLogType, Logger } from "../utils/Logger.js";
-import { type AST, type DecoratorNode, type ParameterNode, type ProcedureDeclarationNode, type TypeNode, type TupleTypeNode, type NamedArgumentNode, type ExpressionNode, type StatementNode, type EnumDeclarationNode, type EnumMemberNode, type VariableDeclarationNode, VariableDeclarationType, type VariableAssignmentNode, type DictEntryNode, type ElifClauseNode, type BlockNode, type CaseDeclarationNode, type DefaultCaseDeclarationNode, type BinaryOperator, type AssignmentOperator, type UnaryOperator, type AccessModifier } from "./AST-nodes.js";
+import { type AST, type DecoratorNode, type ParameterNode, type ProcedureDeclarationNode, type TypeNode, type TupleTypeNode, type NamedArgumentNode, type ExpressionNode, type StatementNode, type EnumDeclarationNode, type EnumMemberNode, type StructDeclarationNode, type StructFieldNode, type VariableDeclarationNode, VariableDeclarationType, type VariableAssignmentNode, type DictEntryNode, type ElifClauseNode, type BlockNode, type CaseDeclarationNode, type DefaultCaseDeclarationNode, type BinaryOperator, type AssignmentOperator, type UnaryOperator, type AccessModifier } from "./AST-nodes.js";
 import { bindingPowerTable, getBindingPower } from "./BindingPowerTable.js";
 
 export class Parser {
@@ -398,11 +398,13 @@ export class Parser {
         if (this.checkToken("type", ["Identifier", "("])) {
             if (this.checkToken("value", ["proc"]) && !(this.peek(1)?.token.type === ".")) return this.parseProcedureDefinition();
             if (this.checkToken("value", ["enum"])) return this.parseEnumDefinition();
+            if (this.checkToken("value", ["struct"])) return this.parseStructDefinition();
             if (this.checkToken("value", ["private", "temp", "public"])) {
                 const next = this.peek(1)?.token;
                 const nextVal = next && isValuedTokenType(next.type) ? (next as ValuedToken).value : undefined;
                 if (nextVal === "proc") return this.parseProcedureDefinition();
                 if (nextVal === "enum") return this.parseEnumDefinition();
+                if (nextVal === "struct") return this.parseStructDefinition();
                 return this.parseVariableDeclaration();
             }
             if (this.checkToken("value", ["sprite"])) return this.parseSpriteDefinition();
@@ -665,6 +667,63 @@ export class Parser {
                 start: accessStart ?? nameToken.start,
                 end: this.previous()?.end || { line: -1, column: -1 }
             }
+        };
+    }
+
+    /**
+     * Parses a struct definition: `struct Name { a: num, b = 0, c: str = "x" }`.
+     * Each field needs a type annotation or a default (or both).
+     * @returns The parsed struct declaration node.
+     */
+    private parseStructDefinition(): StructDeclarationNode {
+        const { access, start: accessStart } = this.parseDeclAccessModifier("Structs");
+        this.consume({ type: "Identifier", value: "struct" }, "Expected 'struct' keyword");
+        const nameToken = this.consume({ type: "Identifier" }, "Expected struct name");
+        const name = nameToken.token.value;
+
+        this.consume({ type: "{" }, "Expected opening brace for struct fields");
+        const fields: StructFieldNode[] = [];
+        while (!this.isAtEnd() && !this.checkToken("type", ["}"])) {
+            const fieldToken = this.consume({ type: "Identifier" }, "Expected struct field name");
+            const fieldName = fieldToken.token.value;
+
+            let fieldType: TypeNode | null = null;
+            let fieldDefault: ExpressionNode | null = null;
+            if (this.tryConsume("type", [":"])) {
+                fieldType = this.parseTypeAnnotation();
+                if (this.tryConsume("type", ["="])) fieldDefault = this.parseExpression();
+            } else if (this.tryConsume("type", ["="])) {
+                fieldDefault = this.parseExpression();
+            } else {
+                this.reporter.add(
+                    new KatnipError("Parser", `Struct field '${fieldName}' needs a type annotation or a default value`, fieldToken.start)
+                );
+            }
+            fields.push({
+                type: "StructField",
+                name: fieldName,
+                fieldType,
+                default: fieldDefault,
+                loc: { start: fieldToken.start, end: this.previous()?.end || fieldToken.end },
+            });
+
+            if (!this.tryConsume("type", [","]) && !this.checkToken("type", ["}"])) {
+                this.reporter.add(
+                    new KatnipError("Parser", "Expected ',' or '}'", this.peek()?.start || { line: -1, column: -1 })
+                );
+            }
+        }
+        this.consume({ type: "}" }, "Expected closing brace for struct fields");
+
+        return {
+            type: "StructDeclaration",
+            access,
+            name,
+            fields,
+            loc: {
+                start: accessStart ?? nameToken.start,
+                end: this.previous()?.end || { line: -1, column: -1 },
+            },
         };
     }
 

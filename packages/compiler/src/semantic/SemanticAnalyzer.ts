@@ -9,6 +9,7 @@ import type {
     BlockNode,
     DecoratorNode,
     EnumDeclarationNode,
+    StructDeclarationNode,
     MemberExpressionNode,
     NodeBase,
     ProcedureDeclarationNode,
@@ -27,6 +28,7 @@ import {
     type SymbolEntry,
     type ProcedureSymbol,
     type EnumSymbol,
+    type StructSymbol,
     type NamespaceSymbol,
     type Signature,
     type SignatureMeta,
@@ -311,12 +313,13 @@ export class SemanticAnalyzer {
      */
     private hoist(body: StatementNode[]): void {
         for (const stmt of body) {
+            if (stmt.type === "EnumDeclaration") this.hoistEnum(stmt);
+            else if (stmt.type === "StructDeclaration") this.hoistStruct(stmt);
+        }
+        for (const stmt of body) {
             switch (stmt.type) {
                 case "ProcedureDeclaration":
                     this.hoistProcedure(stmt);
-                    break;
-                case "EnumDeclaration":
-                    this.hoistEnum(stmt);
                     break;
                 case "SpriteDeclaration":
                     this.hoistSprite(stmt);
@@ -365,11 +368,15 @@ export class SemanticAnalyzer {
         );
     }
 
-    /** Return frame shape from the written return type. Purely syntactic: only the width matters. */
+    /** Return frame shape from the written return type. Only the width (Scratch slot count) matters. */
     private deriveReturns(returnType: TypeNode | null): ReturnMethod {
         if (!returnType) return { kind: "void" };
         if (returnType.type === "TupleType") return { kind: "tuple", width: returnType.elements.length };
         if (returnType.type === "Type" && returnType.typeName === "void") return { kind: "void" };
+        if (returnType.type === "Type") {
+            const struct = this.current.lookup(returnType.typeName)?.find((s): s is StructSymbol => s.kind === "struct");
+            if (struct) return { kind: "tuple", width: struct.fields.length };
+        }
         return { kind: "scalar" };
     }
 
@@ -403,6 +410,13 @@ export class SemanticAnalyzer {
     private hoistEnum(node: EnumDeclarationNode): void {
         this.declare(
             { kind: "enum", name: node.name, declNode: node, members: node.members },
+            node,
+        );
+    }
+
+    private hoistStruct(node: StructDeclarationNode): void {
+        this.declare(
+            { kind: "struct", name: node.name, declNode: node, fields: node.fields },
             node,
         );
     }
@@ -636,10 +650,51 @@ export class SemanticAnalyzer {
                 break;
             case "EnumDeclaration":
                 break;
+            case "StructDeclaration":
+                this.checkStructDeclaration(node);
+                break;
             case "ErrorStatement":
                 // Error statements come from the parser.
                 break;
         }
+    }
+
+    /**
+     * Validates a struct's fields: unique names, scalar-only types (the flat parallel-list
+     * layout can't represent nested aggregates yet), and defaults assignable to their field type.
+     */
+    private checkStructDeclaration(node: StructDeclarationNode): void {
+        const seen = new Set<string>();
+        for (const field of node.fields) {
+            if (seen.has(field.name)) {
+                this.error(`Struct '${node.name}' has a duplicate field '${field.name}'`, field);
+            }
+            seen.add(field.name);
+
+            const annotated = field.fieldType ? this.typeFromNode(field.fieldType) : null;
+            const defaultType = field.default ? this.inferType(field.default) : null;
+            const fieldType = annotated ?? defaultType ?? { kind: "unknown" as const };
+
+            if (!this.isScalarFieldType(fieldType)) {
+                this.error(
+                    `Struct field '${field.name}' has type '${typeToString(fieldType)}'; only scalar fields (num, str, bool, enum) are supported`,
+                    field,
+                );
+            }
+            if (annotated && defaultType && !isAssignable(defaultType, annotated)) {
+                this.error(
+                    `Default for field '${field.name}' of type '${typeToString(annotated)}' cannot be a value of type '${typeToString(defaultType)}'`,
+                    field,
+                );
+            }
+        }
+    }
+
+    /** A struct field maps to one Scratch scalar slot, so its type must be a single value. */
+    private isScalarFieldType(type: InternalType): boolean {
+        if (type.kind === "unknown") return true; // don't double-report an already-broken type
+        if (type.kind === "enum") return true;
+        return type.kind === "primitive" && type.name !== "void";
     }
 
     /** Three-step reusable block visitor. */
@@ -733,6 +788,9 @@ export class SemanticAnalyzer {
                 }
                 if (symbols?.some((s) => s.kind === "enum")) {
                     return { kind: "enum", name: node.typeName };
+                }
+                if (symbols?.some((s) => s.kind === "struct")) {
+                    return { kind: "struct", name: node.typeName };
                 }
                 this.error(`Unknown type '${node.typeName}'`, node);
                 return { kind: "unknown" };
@@ -1047,6 +1105,10 @@ export class SemanticAnalyzer {
             return { type: { kind: "unknown" } };
         }
 
+        // `Point(x = 1, y = 2)` is a struct literal, not a call.
+        const struct = candidates.find((s): s is StructSymbol => s.kind === "struct");
+        if (struct) return this.resolveStructLiteral(call, struct, args);
+
         // A name can carry several procedure overloads; anything else isn't callable.
         const overloads = candidates
             .filter((s): s is ProcedureSymbol => s.kind === "procedure")
@@ -1057,6 +1119,44 @@ export class SemanticAnalyzer {
         }
 
         return this.callProcedure(call, name, overloads, args);
+    }
+
+    /**
+     * Validates a struct literal `Struct(field = value, ...)`: named args only, each naming a real field
+     * with an assignable value, and every field lacking a default supplied. Returns the struct type.
+     */
+    private resolveStructLiteral(
+        call: CallExpressionNode,
+        struct: StructSymbol,
+        args: CallArguments,
+    ): ResolvedCall {
+        const result: ResolvedCall = { type: { kind: "struct", name: struct.name } };
+        if (args.positional.length > 0) {
+            this.error(`Struct literal '${struct.name}(...)' takes named fields only (e.g. ${struct.name}(x = 1))`, call);
+            return result;
+        }
+
+        const fieldNames = new Set(struct.fields.map((f) => f.name));
+        for (const field of struct.fields) {
+            const provided = args.named.get(field.name);
+            if (!provided) {
+                if (!field.default) this.error(`Struct literal '${struct.name}' is missing required field '${field.name}'`, call);
+                continue;
+            }
+            const fieldType = field.fieldType
+                ? this.typeFromNode(field.fieldType)
+                : (field.default ? this.inferType(field.default) : { kind: "unknown" as const });
+            if (!isAssignable(provided.type, fieldType)) {
+                this.error(
+                    `Field '${field.name}' of struct '${struct.name}' expects '${typeToString(fieldType)}', got '${typeToString(provided.type)}'`,
+                    provided.node,
+                );
+            }
+        }
+        for (const [argName, arg] of args.named) {
+            if (!fieldNames.has(argName)) this.error(`Struct '${struct.name}' has no field '${argName}'`, arg.node);
+        }
+        return result;
     }
 
     /** Resolves a member-callee call: `self.*`, a namespace bltn (motion.move(...)), or a method on a value's type (li.contains(...)) */
@@ -1154,6 +1254,25 @@ export class SemanticAnalyzer {
         const receiver = this.inferType(objNode);
         if (receiver.kind === "unknown") return { kind: "unknown" };
 
+        // Struct field read: `p.x` -> the field's type.
+        if (receiver.kind === "struct") {
+            const field = this.structField(receiver.name, propName);
+            if (!field) {
+                this.error(`Struct '${receiver.name}' has no field '${propName}'`, expr.property);
+                return { kind: "unknown" };
+            }
+            return field;
+        }
+        // Field column on a struct list: `xs.x` -> list<fieldType> (a real parallel column).
+        if (receiver.kind === "list" && receiver.element.kind === "struct") {
+            const field = this.structField(receiver.element.name, propName);
+            if (!field) {
+                this.error(`Struct '${receiver.element.name}' has no field '${propName}'`, expr.property);
+                return { kind: "unknown" };
+            }
+            return { kind: "list", element: field };
+        }
+
         const nsName = this.typeHeadNamespace(receiver);
         const members = nsName
             ? this.stdlibNamespace(nsName)?.scope.lookupLocal(propName)
@@ -1167,6 +1286,14 @@ export class SemanticAnalyzer {
             );
         }
         return { kind: "unknown" };
+    }
+
+    /** Resolves a struct field's type by struct name + field name, or null if absent. */
+    private structField(structName: string, fieldName: string): InternalType | null {
+        const struct = this.current.lookup(structName)?.find((s): s is StructSymbol => s.kind === "struct");
+        const field = struct?.fields.find((f) => f.name === fieldName);
+        if (!field) return null;
+        return field.fieldType ? this.typeFromNode(field.fieldType) : (field.default ? this.inferType(field.default) : { kind: "unknown" });
     }
 
     /** Classifies a member expression's object identifier, emitting the shared self/undefined errors. */

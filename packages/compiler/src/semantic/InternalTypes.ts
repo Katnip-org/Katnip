@@ -10,6 +10,7 @@ export type InternalType =
     | { kind: "tuple"; elements: InternalType[] }
     | { kind: "union"; left: InternalType; right: InternalType }
     | { kind: "enum"; name: string }
+    | { kind: "struct"; name: string } // nominal record; field layout lives on the StructSymbol
     | { kind: "typevar"; name: string } // stdlib-only placeholder (T, K, V), substituted before checks
     | { kind: "unknown" };
 
@@ -31,6 +32,7 @@ export function isAssignable(from: InternalType, to: InternalType): boolean {
         case "dict": return (isAssignable(from.key, toAny.key) && isAssignable(from.value, toAny.value));
         case "tuple": return (from.elements.length === toAny.elements.length && from.elements.every((t, i) => isAssignable(t, toAny.elements[i])));
         case "enum": return from.name === toAny.name;
+        case "struct": return from.name === toAny.name;
     }
 
     return false;
@@ -73,6 +75,7 @@ export function bindReceiver(
     switch (param.kind) {
         case "primitive": return param.name === (receiver as typeof param).name;
         case "enum": return param.name === (receiver as typeof param).name;
+        case "struct": return param.name === (receiver as typeof param).name;
         case "list": return bindReceiver(param.element, (receiver as typeof param).element, bindings);
         case "dict": {
             const r = receiver as typeof param;
@@ -103,6 +106,7 @@ export function typeToString(type: InternalType): string {
         case "tuple": return `(${type.elements.map(typeToString).join(", ")})`;
         case "union": return `${typeToString(type.left)} | ${typeToString(type.right)}`;
         case "enum": return type.name;
+        case "struct": return type.name;
         case "typevar": return type.name;
         case "unknown": return "unknown";
         default: {

@@ -81,6 +81,21 @@ export interface EnumDeclarationNode extends NodeBase {
     members: EnumMemberNode[];
 }
 
+// Struct Nodes
+export interface StructFieldNode extends NodeBase {
+    type: "StructField";
+    name: string;
+    fieldType: TypeNode | null;
+    default: ExpressionNode | null;
+}
+
+export interface StructDeclarationNode extends NodeBase {
+    type: "StructDeclaration";
+    access: AccessModifier;
+    name: string;
+    fields: StructFieldNode[];
+}
+
 // Statement Nodes
 export type StatementNode =
     | ExpressionStatementNode
@@ -93,6 +108,7 @@ export type StatementNode =
     | ForStatementNode
     | ProcedureDeclarationNode
     | EnumDeclarationNode
+    | StructDeclarationNode
     | SwitchDeclarationNode
     | CaseDeclarationNode
     | DefaultCaseDeclarationNode

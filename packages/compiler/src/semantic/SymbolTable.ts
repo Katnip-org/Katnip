@@ -3,6 +3,7 @@ import type {
     EnumMemberNode,
     NodeBase,
     ParameterNode,
+    StructFieldNode,
     TypeNode,
     VariableDeclarationType,
 } from "../parser/AST-nodes.js";
@@ -69,6 +70,10 @@ export interface EnumSymbol extends SymbolBase {
     kind: "enum";
     members: EnumMemberNode[];
 }
+export interface StructSymbol extends SymbolBase {
+    kind: "struct";
+    fields: StructFieldNode[];
+}
 export interface SpriteSymbol extends SymbolBase {
     kind: "sprite";
 }
@@ -77,7 +82,7 @@ export interface NamespaceSymbol extends SymbolBase {
     kind: "namespace";
     scope: Scope;
 }
-export type SymbolEntry = VariableSymbol | ProcedureSymbol | EnumSymbol | SpriteSymbol | NamespaceSymbol;
+export type SymbolEntry = VariableSymbol | ProcedureSymbol | EnumSymbol | StructSymbol | SpriteSymbol | NamespaceSymbol;
 
 
 export type ScopeKind = "stdlib" | "namespace" | "global" | "sprite" | "procedure" | "block";

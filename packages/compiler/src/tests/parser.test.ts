@@ -224,6 +224,29 @@ test("enum member value must be a literal", () => {
     assert.equal(reporter.hasErrors(), true);
 });
 
+test("struct declaration collects fields with types and defaults", () => {
+    const stmt = parseStmt(`struct GooBall { x: num = 0, y: num, type = "black" }`);
+    assert.equal(stmt.type, "StructDeclaration");
+    if (stmt.type !== "StructDeclaration") return;
+    assert.equal(stmt.name, "GooBall");
+    assert.equal(stmt.fields.length, 3);
+    assert.equal(stmt.fields[0].name, "x");
+    assert.equal(stmt.fields[0].fieldType?.type, "Type");
+    assert.equal(stmt.fields[0].default?.type, "Literal");
+    assert.equal(stmt.fields[1].default, null);      // typed, no default
+    assert.equal(stmt.fields[2].fieldType, null);    // inferred from default
+});
+
+test("struct field needs a type or a default", () => {
+    const { reporter } = parse("struct Bad { x }");
+    assert.match(reporter.getErrors()[0]?.message ?? "", /needs a type annotation or a default/);
+});
+
+test("'temp' is rejected on a struct", () => {
+    assert.match(parse("temp struct S { x: num }").reporter.getErrors()[0]?.message ?? "",
+        /Structs cannot be declared 'temp'/);
+});
+
 test("missing semicolon reports an error but parsing continues", () => {
     const { ast, reporter } = parse("temp a = 1\ntemp b = 2;");
     assert.equal(reporter.hasErrors(), true);

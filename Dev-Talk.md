@@ -126,3 +126,26 @@ readcallbacks for imports? seems to be best way; let user define how imports are
 Imports should probably include an `import { x } from "package.knip";` funcitonality, but thats a good TODO for later.
 - Also worth noting that circular import error msgs are a bit big--error msgs don't know where they're from
 - Multi-file diagnostics don't exactly work. Currently a note appears on the import line, instead of erroring on the file
+
+---
+
+```
+struct Blob {
+  x: num,
+  y: num,
+  name: str
+}
+
+allBlobs: list<Blob> = []
+
+for (i, range(10)) {
+  allBlobs.add({ i, i**2, f"jared {i}" });
+}
+```
+
+what should this store? a list per piece of a blob? or a single list that has blobs of chunk size 3
+
+built both of them in scratch, and the parallel lists is such a better approach. It just gets so much of the reading done for much less code.
+
+### IR Internals
+
