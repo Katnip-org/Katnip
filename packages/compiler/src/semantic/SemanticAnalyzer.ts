@@ -42,6 +42,7 @@ import {
     type TypevarBindings,
 } from "./InternalTypes.js";
 import type { StdlibModule } from "./StdlibLoader.js";
+import type { ImportedModule } from "./ModuleLoader.js";
 
 /** A call argument after its type has been inferred, keeping the node for error locations. */
 interface TypedArgument {
@@ -165,6 +166,72 @@ export class SemanticAnalyzer {
                 throw new Error(`stdlib module '${module.namespace}' failed to load`);
             }
         }
+    }
+
+    // -- Import loading --
+
+    /** Namespace scopes of already-analyzed modules, keyed by source path. */
+    private readonly moduleScopes = new Map<string, Scope>();
+
+    /**
+     * Binds imported modules as namespaces in the current scope.
+     * Call before analyze(); each module is analyzed once, however many files import it.
+     */
+    loadImports(modules: ImportedModule[]): void {
+        for (const module of modules) {
+            this.declare(
+                {
+                    kind: "namespace",
+                    name: module.namespace,
+                    declNode: module.importNode,
+                    scope: this.moduleScope(module),
+                },
+                module.importNode,
+            );
+        }
+    }
+
+    /**
+     * Analyzes an imported module in its own scope and returns the facade holding
+     * only its public symbols. The module sees the stdlib and its own imports, never the importer's symbols.
+     */
+    private moduleScope(module: ImportedModule): Scope {
+        const cached = this.moduleScopes.get(module.sourcePath);
+        if (cached) return cached;
+
+        const inner = new Scope("global", this.stdlibScope);
+        const facade = new Scope("namespace", this.stdlibScope);
+        this.moduleScopes.set(module.sourcePath, facade);
+
+        const savedReporter = this.reporter;
+        const savedScope = this.current;
+        const savedReturnType = this.currentReturnType;
+        this.reporter = module.reporter;
+        this.current = inner;
+        this.currentReturnType = null;
+
+        this.loadImports(module.imports);
+        this.hoist(module.ast.body);
+        for (const stmt of module.ast.body) this.visit(stmt);
+
+        this.reporter = savedReporter;
+        this.current = savedScope;
+        this.currentReturnType = savedReturnType;
+
+        // Only `public` declarations cross the file boundary. Imported modules cannot be re-exported
+        for (const symbols of inner.entries().values())
+            for (const sym of symbols)
+                if ((sym.declNode as { access?: string }).access === "public") facade.declare(sym);
+
+        // The imported file's own errors carry its line numbers, so they cannot be shown agaist this file. Surface first.
+        const [first] = module.reporter.getErrors();
+        if (first)
+            this.error(
+                `Imported file '${module.sourcePath}' has errors: ${first.message} (line ${first.location.line})`,
+                module.importNode,
+            );
+
+        return facade;
     }
 
     /** Resolve hoisted stdlib so they can be earglerly loaded. */
@@ -431,6 +498,10 @@ export class SemanticAnalyzer {
             }
             case "SpriteDeclaration":
                 this.visitBlock(node.body, "sprite");
+                break;
+            case "ImportDeclaration":
+                if (this.current.kind !== "global")
+                    this.error("Imports are only allowed at the top level of a file", node);
                 break;
             case "HandlerStatement": {
                 if (this.current.kind !== "sprite") {

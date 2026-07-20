@@ -406,6 +406,7 @@ export class Parser {
                 return this.parseVariableDeclaration();
             }
             if (this.checkToken("value", ["sprite"])) return this.parseSpriteDefinition();
+            if (this.checkToken("value", ["import"])) return this.parseImportDeclaration();
 
             if (this.checkToken("value", ["if"])) return this.parseIfStatement();
             if (this.checkToken("value", ["for"])) return this.parseForStatement();
@@ -700,6 +701,27 @@ export class Parser {
                 start: access.start,
                 end: this.previous()?.end || { line: -1, column: -1 }
             }
+        };
+    }
+
+    /** Parses `import "./thing.knip";` or `import "../sub/thing.knip" as thing;` */
+    private parseImportDeclaration(): StatementNode {
+        const keyword = this.consume({ type: "Identifier", value: "import" }, "Expected 'import' keyword");
+        const specifier = this.consume({ type: "String" }, "Expected a quoted module path after 'import'");
+
+        let alias: string | undefined;
+        if (this.checkToken("value", ["as"])) {
+            this.advance();
+            alias = this.consume({ type: "Identifier" }, "Expected a namespace name after 'as'").token.value;
+        }
+
+        this.expectSemicolon("Expected ';' at the end of an import declaration");
+        return {
+            type: "ImportDeclaration",
+            specifier: specifier.token.value,
+            specifierLoc: { start: specifier.start, end: specifier.end },
+            alias,
+            loc: { start: keyword.start, end: this.previous()?.end || keyword.start }
         };
     }
 

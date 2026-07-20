@@ -5,11 +5,21 @@ import { loadStdlibModules, type StdlibModule } from "./semantic/StdlibLoader.js
 import { ErrorReporter, type KatnipError } from "./utils/ErrorReporter.js";
 import { Logger } from "./utils/Logger.js";
 
+import { loadImports, type ImportResolver } from "./semantic/ModuleLoader.js";
+
 export type { KatnipError } from "./utils/ErrorReporter.js";
+export type { ImportResolver } from "./semantic/ModuleLoader.js";
 
 let stdlibCache: StdlibModule[] | null = null;
 
-export function checkSource(source: string): readonly KatnipError[] {
+/**
+ * @param options.path - Identity of this source, passed to the resolver as the importing file.
+ * @param options.resolve - Host-supplied import resolver; without one, imports fail to resolve.
+ */
+export function checkSource(
+    source: string,
+    options: { path?: string; resolve?: ImportResolver } = {},
+): readonly KatnipError[] {
     const reporter = new ErrorReporter(source);
     const logger = new Logger(); // disabled by default
 
@@ -24,6 +34,12 @@ export function checkSource(source: string): readonly KatnipError[] {
     } catch {
         return reporter.getErrors();
     }
+
+    if (options.resolve)
+        analyzer.loadImports(
+            loadImports(ast, options.path ?? "", options.resolve, reporter, logger),
+        );
+
     analyzer.analyze(ast);
     return reporter.getErrors();
 }

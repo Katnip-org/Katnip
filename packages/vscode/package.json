@@ -2,7 +2,7 @@
   "name": "katnip-vscode",
   "displayName": "Katnip",
   "description": "Live diagnostics for the Katnip language (.knip).",
-  "version": "0.0.7",
+  "version": "0.0.8",
   "icon": "icon.png",
   "repository": {
     "type": "git",

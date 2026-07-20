@@ -5,14 +5,27 @@ import { Lexer } from "./lexer/Lexer.js";
 import { Parser } from "./parser/Parser.js";
 import { SemanticAnalyzer } from "./semantic/SemanticAnalyzer.js";
 import { loadStdlibModules } from "./semantic/StdlibLoader.js";
+import { loadImports, type ImportResolver } from "./semantic/ModuleLoader.js";
 import { ErrorReporter } from "./utils/ErrorReporter.js";
 import { Logger } from "./utils/Logger.js";
 
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
 import type { PathLike } from "fs";
-import { appendFileSync } from "node:fs";
+import { appendFileSync, readFileSync } from "node:fs";
 import path from "node:path";
+
+const fileResolver: ImportResolver = (specifier, fromPath) => {
+    const resolved = path.resolve(
+        path.dirname(fromPath),
+        specifier.endsWith(".knip") ? specifier : `${specifier}.knip`,
+    );
+    try {
+        return { path: resolved, source: readFileSync(resolved, "utf8") };
+    } catch {
+        return null;
+    }
+};
 
 class FileLogger extends Logger {
     private logFilePath = path.resolve(process.cwd(), "examples", "log.txt");
@@ -137,11 +150,15 @@ cli
 
                 const analyzer = new SemanticAnalyzer(reporter, logger);
                 try {
-                    analyzer.loadStdlib(await loadStdlibModules(logger));
+                    analyzer.loadStdlib(loadStdlibModules(logger));
                 } catch {
                     reporter.print(); // surface any parse errors we already collected
                     return; // the stdlib loader already printed its own errors
                 }
+
+                analyzer.loadImports(
+                    loadImports(ast, path.resolve(argv.source as string), fileResolver, reporter, logger),
+                );
                 // Analyze even when parsing reported errors: the parser recovers into a
                 // usable AST (error nodes are no-ops in the analyzer), so semantic errors
                 // surface alongside syntax errors instead of being hidden behind the first.

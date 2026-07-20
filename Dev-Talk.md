@@ -119,3 +119,10 @@ The one thing that did take a change in favor of compiler metadata was the abili
 
 Working on scratchDefs rn, I made a pretty nice construct to store all the metadata for scratch. I'm debating adding specfic input types per each input scratch type.
 Unsure whether or not to accomodate for this in the codegen or ts definitions files.
+
+---
+
+readcallbacks for imports? seems to be best way; let user define how imports are handled so cli and web both work
+Imports should probably include an `import { x } from "package.knip";` funcitonality, but thats a good TODO for later.
+- Also worth noting that circular import error msgs are a bit big--error msgs don't know where they're from
+- Multi-file diagnostics don't exactly work. Currently a note appears on the import line, instead of erroring on the file

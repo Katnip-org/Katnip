@@ -1,6 +1,23 @@
 import * as vscode from "vscode";
 
-import type { KatnipError } from "../compiler/build/index.js" with { "resolution-mode": "import" };
+import { readFileSync } from "node:fs";
+import * as path from "node:path";
+
+import type { KatnipError, ImportResolver } from "../compiler/build/index.js" with { "resolution-mode": "import" };
+
+const fileResolver: ImportResolver = (specifier, fromPath) => {
+    const resolved = path.resolve(
+        path.dirname(fromPath),
+        specifier.endsWith(".knip") ? specifier : `${specifier}.knip`,
+    );
+    const open = vscode.workspace.textDocuments.find((d) => d.uri.fsPath === resolved);
+    if (open) return { path: resolved, source: open.getText() };
+    try {
+        return { path: resolved, source: readFileSync(resolved, "utf8") };
+    } catch {
+        return null;
+    }
+};
 
 type Compiler = typeof import("../compiler/build/index.js", { with: { "resolution-mode": "import" } });
 
@@ -40,7 +57,7 @@ async function check(context: vscode.ExtensionContext, doc: vscode.TextDocument)
     if (doc.languageId !== "katnip") return;
     try {
         const { checkSource } = await loadCompiler(context);
-        const errors = await checkSource(doc.getText());
+        const errors = await checkSource(doc.getText(), { path: doc.uri.fsPath, resolve: fileResolver });
         diagnostics.set(doc.uri, errors.map(toDiagnostic));
         output.appendLine(`Checked ${doc.uri.fsPath}: ${errors.length} diagnostic(s).`);
     } catch (err) {

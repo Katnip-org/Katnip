@@ -103,6 +103,10 @@ export class Scope {
         return null;
     }
 
+    entries(): ReadonlyMap<string, SymbolEntry[]> {
+        return this.symbols;
+    }
+
     lookupLocal(name: string): SymbolEntry[] | null {
         return this.symbols.get(name) ?? null; // for duplicate checks
     }

@@ -97,6 +97,7 @@ export type StatementNode =
     | CaseDeclarationNode
     | DefaultCaseDeclarationNode
     | SpriteDeclarationNode
+    | ImportDeclarationNode
     | ReturnStatementNode
     | ErrorStatementNode;
 
@@ -197,6 +198,14 @@ export interface SwitchDeclarationNode extends NodeBase {
 export interface SpriteDeclarationNode extends BlockStatementBase {
   type: "SpriteDeclaration";
   name: string;
+}
+
+export interface ImportDeclarationNode extends NodeBase {
+    type: "ImportDeclaration";
+    specifier: string;
+    /** Span of the quoted specifier, so resolution errors underline the path itself. */
+    specifierLoc: SourceLocation;
+    alias?: string;
 }
 
 export interface ErrorStatementNode extends NodeBase {
