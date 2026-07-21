@@ -149,3 +149,33 @@ built both of them in scratch, and the parallel lists is such a better approach.
 
 ### IR Internals
 
+Looking through, one thing I need to handle correctly is mangling of procs. Since a user could overload a function with the same amount/types of inputs and the same name. Scratch doesn't allow this, and will just go with the first def. So I have to deliniate which proc is which overload.
+
+Going to stick with `procName-1 (input) <input>`, `procName-2 (input) <input>` etc etc for now. I will probably add a better way to denote wich one is which, but for now, this will do.
+
+Following the same track of thinking, parsing procs are a little weird. Because I have overloading, as well as the complexity of different return methods, I need to put extra thought into this part. The return methods require boilerplate, and depend largely on what the content of the proc is. So I think I have to hoist that first into a metadata store or som.
+
+---
+
+whats the best way to impl default values for arugments in procs in scratch? 
+Should katnip pre-compile them to be present in the actual call block itself?
+Or should it be a runtime check (slower, but *maybe* cleaner) that checks for empty values
+
+Oops that had an easy answer. Def the first. I would need extra vars and bloat and boilerplate to pull the latter off. Maybe a better solution will come later, but this is by far the best.
+
+---
+
+Returning values via var method with a tuple (multi-value) return type is interesting. I need to omit a stack above it, but also check to see if things have been nested alongside each other. Thats where the offset comes in handy for vstack method.
+
+---
+
+2 systems
+    a. temp vars -> storage
+    b. returns -> ABI
+Don't share lists
+
+TODO: actually implement temps. Its a lot more complicated than a key-value list. Var mangling or a stack or other methods are better. Lots to think through, and a lil overwhelmed with the scale atm.
+
+---
+
+Potential issue with stacks: if procs are atmoic (run without screen refresh), theres potential for a proc to yield mid-body, and have a false row read.
