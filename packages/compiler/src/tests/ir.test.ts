@@ -96,7 +96,7 @@ test("vstack proc: registers its stack list and pushes returns onto it", NO_PROC
     );
     const p = procOf(program, "Cat", "f");
     assert.equal(p.strategy, "vstack");
-    assert.equal(p.vlist, "f_stack");
+    assert.equal(p.vStackName, "f_stack");
     assert(program.sprites[0].lists.includes("f_stack"), "vlist was not registered on the sprite");
 
     // Both returns (0 and f(n-1)) push onto the stack; none write a ret var.

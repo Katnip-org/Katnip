@@ -32,7 +32,7 @@ interface ReturnPlan {
     returns: ReturnMethod;
     strategy: "var" | "vstack" | null;
     retVars: string[];
-    vlist: string | null;
+    vStackName: string | null;
 }
 
 export class IRGenerator {
@@ -123,23 +123,28 @@ export class IRGenerator {
     private planReturns(): void {
         for (const [decl, sig] of this.analyzer.procSignatures) {
             if (sig.meta?.lower !== "userproc") continue;
+
             const mangled = this.mangle(decl.name);
             const returns = sig.meta.returns ?? { kind: "void" };
+
             this.plans.set(sig, this.planFor(mangled, returns, sig.meta.retResolved));
         }
     }
 
     private planFor(mangled: string, returns: ReturnMethod, resolved?: "var" | "vstack"): ReturnPlan {
         if (returns.kind === "void")
-            return { mangled, returns, strategy: null, retVars: [], vlist: null };
+            return { mangled, returns, strategy: null, retVars: [], vStackName: null };
         if (resolved === "vstack")
-            return { mangled, returns, strategy: "vstack", retVars: [], vlist: `${mangled}_stack` };
+            return { mangled, returns, strategy: "vstack", retVars: [], vStackName: `${mangled}_stack` };
         const width = returns.kind === "tuple" ? returns.width : 1;
-        const retVars =
-            width === 1
-                ? [`${mangled}_ret`]
-                : Array.from({ length: width }, (_, i) => `${mangled}_ret${i}`);
-        return { mangled, returns, strategy: "var", retVars, vlist: null };
+
+        let retVars;
+        if (width === 1)
+            retVars = [`${mangled}_ret`];
+        else
+            retVars = Array.from({ length: width }, (_, i) => `${mangled}_ret${i}`);
+
+        return { mangled, returns, strategy: "var", retVars, vStackName: null };
     }
 
     private mangle(base: string): string {
@@ -152,20 +157,25 @@ export class IRGenerator {
     private lowerProc(stmt: ProcedureDeclarationNode): IRProc {
         const sig = this.analyzer.procSignatures.get(stmt);
         const plan = this.plans.get(sig!)!;
-        if (plan.vlist) this.sprite?.lists.push(plan.vlist); // TODO: toplevel procs need handling
+
+        if (plan.vStackName)
+            this.sprite?.lists.push(plan.vStackName); // TODO: toplevel procs need handling
+
         const params: IRParam[] = stmt.parameters.map((param, i) => ({
             name: param.name,
             type: paramTypeOf(sig?.resolvedParamTypes?.[i]),
         }));
+
         this.currentPlan = plan;
         const body = this.lowerBlock(stmt.body);
         this.currentPlan = null;
+
         return {
             name: plan.mangled,
             params,
             returns: plan.returns,
             strategy: plan.strategy,
-            vlist: plan.vlist,
+            vStackName: plan.vStackName,
             retVars: plan.retVars,
             temps: [], // TODO: collected while lowering the body
             body: body,
@@ -198,33 +208,44 @@ export class IRGenerator {
                 break;
             }
             case "ReturnStatement": { // TODO: impl the other forms of return statements
+                if (!node.argument) break;
+                
                 const plan = this.currentPlan!;
-                if (node.argument && plan.strategy === "var") {
-                    const values = node.argument.type === "TupleExpression"
-                        ? node.argument.elements
-                        : [node.argument];
-                    values.forEach((expr, i) => {
-                        const value = this.lowerExpr(expr, out);
-                        out.push({
-                            kind: "raw",
-                            opcode: "data_setvariableto",
-                            inputs: [{ kind: "var", name: plan.retVars[i] }, value],
-                        });
+                
+                const values = node.argument.type === "TupleExpression" ? node.argument.elements : [node.argument];
+                
+                for (let i = 0; i < values.length; i ++) {
+                    const expr = values[i];
+                    
+                    let opcode;
+                    let var_name;
+                    if (plan.strategy === "var") {
+                        opcode = "data_setvariableto";
+                        var_name = plan.retVars[i];
+                    } else if (plan.strategy === "vstack") {
+                        opcode = "data_addtolist";
+                        var_name = plan.vStackName!;
+                    } else {
+                        break;
+                    }
+                    
+                    out.push({
+                        kind: "raw",
+                        opcode,
+                        inputs: [
+                            { kind: "var", name: var_name },
+                            this.lowerExpr(expr, out)
+                        ]
                     });
-                } else if (node.argument && plan.strategy === "vstack") {
-                    const values = node.argument.type === "TupleExpression"
-                        ? node.argument.elements
-                        : [node.argument];
-                    values.forEach((expr, _) => {
-                        const value = this.lowerExpr(expr, out);
-                        out.push({
-                            kind: "raw",
-                            opcode: "data_addtolist",
-                            inputs: [{ kind: "var", name: plan.vlist!}, value]
-                        })
-                    })
                 }
-                out.push({ kind: "raw", opcode: "control_stop", inputs: [{ kind: "lit", value: "this script" }] });
+
+                out.push({
+                    kind: "raw",
+                    opcode: "control_stop",
+                    inputs: [
+                        { kind: "lit", value: "this script" }
+                    ]
+                });
                 break;
             }
             case "VariableAssignment": {
@@ -308,7 +329,7 @@ export class IRGenerator {
                     }
                 } else if (plan.strategy === "vstack") {
                     if (plan.returns.kind === "scalar") {
-                        return { kind: "stackref", list: plan.vlist!, depth: 0 }
+                        return { kind: "stackref", list: plan.vStackName!, depth: 0 }
                     }
                 }
             }

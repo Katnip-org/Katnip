@@ -40,7 +40,7 @@ export interface IRProc {
     params: IRParam[];
     returns: ReturnMethod;
     strategy: "var" | "vstack" | null;
-    vlist: string | null;
+    vStackName: string | null;
     retVars: string[];
     // Mangled globals backing this proc's `temp` vars. Scope-less by design:
     // mangling stops two procs colliding, but recursion still clobbers them.
@@ -71,6 +71,6 @@ export interface IRProgram {
     sprites: IRSprite[];
     /** Stage-owned globals: top-level user vars, retVars, temps. */
     variables: string[];
-    /** Stage-owned lists: user lists, vstack vlists. */
+    /** Stage-owned lists: user lists, vstack vStackNames. */
     lists: string[];
 }
