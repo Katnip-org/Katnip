@@ -39,11 +39,7 @@ function countOpcode(body: IRStmt[], opcode: string): number {
 
 const HAT = `proc onflag(@opcode = "event_whenflagclicked", @hat) -> void {}\n`;
 
-// User procs don't round-trip yet: return plans come from procSignatures (top-level procs only),
-// but lowering only emits sprite-inner procs. Neither set overlaps. Unskip once both sides agree.
-const NO_PROC_ROUNDTRIP = { skip: "blocked: procSignatures is top-level only, lowering is sprite-only" };
-
-test("scalar var proc: return writes the ret var, then stops the script", NO_PROC_ROUNDTRIP, () => {
+test("scalar var proc: return writes the ret var, then stops the script", () => {
     const p = procOf(lower(`sprite Cat { proc addone(x: num) -> num { return x + 1; } }`), "Cat", "addone");
     assert.equal(p.strategy, "var");
     assert.equal(p.returns.kind, "scalar");
@@ -55,7 +51,7 @@ test("scalar var proc: return writes the ret var, then stops the script", NO_PRO
     assert.equal(raws(p.body, "control_stop").length, 1);
 });
 
-test("scalar var call site: emits a call, then reads the ret var into the target", NO_PROC_ROUNDTRIP, () => {
+test("scalar var call site: emits a call, then reads the ret var into the target", () => {
     const program = lower(
         HAT +
             `sprite Cat {
@@ -77,7 +73,7 @@ test("scalar var call site: emits a call, then reads the ret var into the target
     assert.deepEqual(set.inputs[1], { kind: "var", name: "addone_ret" });
 });
 
-test("tuple var proc: one ret var per element, written in order", NO_PROC_ROUNDTRIP, () => {
+test("tuple var proc: one ret var per element, written in order", () => {
     const p = procOf(lower(`sprite Cat { proc pair() -> (num, num) { return (1, 2); } }`), "Cat", "pair");
     assert.equal(p.strategy, "var");
     assert.deepEqual(p.retVars, ["pair_ret0", "pair_ret1"]);
@@ -88,7 +84,7 @@ test("tuple var proc: one ret var per element, written in order", NO_PROC_ROUNDT
     assert.deepEqual(sets[1].inputs[0], { kind: "var", name: "pair_ret1" });
 });
 
-test("vstack proc: registers its stack list and pushes returns onto it", NO_PROC_ROUNDTRIP, () => {
+test("vstack proc: registers its stack list and pushes returns onto it", () => {
     const program = lower(
         `sprite Cat {
             proc f(n: num) -> num { if (n < 1) { return 0; } return f(n - 1); }
@@ -125,4 +121,96 @@ test("command in statement position emits a raw block (no plan lookup crash)", (
     );
     assert(say, "expected console.log to lower to a raw command block");
     assert.deepEqual(say.inputs, [{ kind: "lit", value: "hi" }]);
+});
+
+/** The IRExpr assigned to `x` by `temp x = <expr>;` in a flag script. */
+function exprOf(source: string) {
+    const program = lower(HAT + `sprite Cat { onflag() { temp x = ${source}; } }`, { stdlib: true });
+    const set = raws(program.sprites[0].scripts[0].body, "data_setvariableto")[0];
+    assert(set, "expected a setvariableto for x");
+    return set.inputs[1];
+}
+
+const A = { kind: "var", name: "a" };
+const B = { kind: "var", name: "b" };
+const not = (inner: unknown) => ({ kind: "op", opcode: "operator_not", inputs: [inner] });
+const op = (opcode: string) => ({ kind: "op", opcode, inputs: [A, B] });
+
+test("operators with no Scratch block inline their builds proc", () => {
+    const declare = `temp a = true; temp b = false; `;
+    const of = (src: string) => {
+        const program = lower(HAT + `sprite Cat { onflag() { ${declare} temp x = ${src}; } }`, {
+            stdlib: true,
+        });
+        return raws(program.sprites[0].scripts[0].body, "data_setvariableto")[2].inputs[1];
+    };
+
+    assert.deepEqual(of("a !& b"), not(op("operator_and")));
+    assert.deepEqual(of("a !| b"), not(op("operator_or")));
+    assert.deepEqual(of("a !^ b"), op("operator_equals"));
+    assert.deepEqual(of("a ^ b"), not(op("operator_equals")));
+});
+
+test("<= and >= lower to a negated gt/lt", () => {
+    assert.deepEqual(exprOf("1 <= 2"), {
+        kind: "op",
+        opcode: "operator_not",
+        inputs: [
+            {
+                kind: "op",
+                opcode: "operator_gt",
+                inputs: [{ kind: "lit", value: 1 }, { kind: "lit", value: 2 }],
+            },
+        ],
+    });
+    assert.deepEqual(exprOf("1 >= 2"), {
+        kind: "op",
+        opcode: "operator_not",
+        inputs: [
+            {
+                kind: "op",
+                opcode: "operator_lt",
+                inputs: [{ kind: "lit", value: 1 }, { kind: "lit", value: 2 }],
+            },
+        ],
+    });
+});
+
+test("a builds proc called by name inlines the same way, with no proc call emitted", () => {
+    const program = lower(HAT + `sprite Cat { onflag() { temp x = lte(1, 2); } }`, { stdlib: true });
+    const body = program.sprites[0].scripts[0].body;
+    assert.equal(body.filter((s) => s.kind === "call").length, 0, "builds procs must not emit calls");
+    assert.deepEqual(raws(body, "data_setvariableto")[0].inputs[1], {
+        kind: "op",
+        opcode: "operator_not",
+        inputs: [
+            {
+                kind: "op",
+                opcode: "operator_gt",
+                inputs: [{ kind: "lit", value: 1 }, { kind: "lit", value: 2 }],
+            },
+        ],
+    });
+});
+
+test("builds procs get no return plan and emit no proc of their own", () => {
+    const program = lower(HAT + `sprite Cat { onflag() { temp x = 1 <= 2; } }`, { stdlib: true });
+    assert.equal(program.procs.size, 0);
+    assert.equal(program.sprites[0].procs.size, 0);
+});
+
+test("unary ! and - lower to not / 0 - x", () => {
+    assert.deepEqual(exprOf("!(1 == 2)"), not({
+        kind: "op",
+        opcode: "operator_equals",
+        inputs: [{ kind: "lit", value: 1 }, { kind: "lit", value: 2 }],
+    }));
+    assert.deepEqual(exprOf("-(1 + 2)"), {
+        kind: "op",
+        opcode: "operator_subtract",
+        inputs: [
+            { kind: "lit", value: 0 },
+            { kind: "op", opcode: "operator_add", inputs: [{ kind: "lit", value: 1 }, { kind: "lit", value: 2 }] },
+        ],
+    });
 });

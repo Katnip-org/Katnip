@@ -99,7 +99,7 @@ export function resolveReturnStrategies(
 
     for (const [declaration, sig] of procs) {
         const meta = sig.meta ?? (sig.meta = {});
-        if (meta.opcode || meta.returns?.kind === "void") continue;
+        if (meta.opcode || meta.lower === "builds" || meta.returns?.kind === "void") continue;
         const requested = meta.ret ?? "auto";
         const inCycle = cyclic.has(sig);
         if (requested === "var" && inCycle) {

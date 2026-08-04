@@ -136,8 +136,24 @@ test("@lower and @ret values are validated", () => {
     assert.match(errorsOf(`proc f(@ret = "vstack") -> num { return 1; }`), /^$/);
 });
 
-test("@lower = \"builds\" is rejected as unsupported", () => {
-    assert.match(errorsOf(`proc f(@lower = "builds") -> num { return 1; }`), /not supported yet/);
+test("@lower = \"builds\" requires a body of exactly one return expression", () => {
+    assert.match(errorsOf(`proc f(@lower = "builds") -> num { return 1; }`), /^$/);
+    assert.match(
+        errorsOf(`proc f(@lower = "builds") -> num { }`),
+        /must be exactly one 'return <expression>;'/,
+    );
+    assert.match(
+        errorsOf(`proc f(@lower = "builds", a: num) -> num { a = 1; return a; }`),
+        /must be exactly one 'return <expression>;'/,
+    );
+});
+
+test("@operator is only allowed on a builds proc", () => {
+    assert.match(errorsOf(`proc f(@lower = "builds", @operator = "^^") -> num { return 1; }`), /^$/);
+    assert.match(
+        errorsOf(`proc f(@operator = "^^") -> num { return 1; }`),
+        /@operator is only valid on a @lower = "builds" proc/,
+    );
 });
 
 test("list and dict returns on user procs are rejected", () => {

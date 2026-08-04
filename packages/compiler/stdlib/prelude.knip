@@ -29,6 +29,16 @@ proc enumerate(@opcode = "katnip_enumerate", items: list<T>) -> (list<num>, list
 public true: bool = "true" == "true";
 public false: bool = "false" == "";
 
+# operators Scratch has no block for. @lower = "builds" inlines the body expression
+# at every use site, so these stay nestable reporters instead of becoming proc calls.
+# @operator binds the proc to a binary operator; the IR lowers that operator through it.
+proc nand(@lower = "builds", @operator = "!&", a: bool, b: bool) -> bool { return !(a && b); }
+proc nor(@lower = "builds", @operator = "!|", a: bool, b: bool) -> bool { return !(a || b); }
+proc xnor(@lower = "builds", @operator = "!^", a: bool, b: bool) -> bool { return a == b; }
+proc xor(@lower = "builds", @operator = "^", a: bool, b: bool) -> bool { return !(a == b); }
+proc lte(@lower = "builds", @operator = "<=", a: any, b: any) -> bool { return !(a > b); }
+proc gte(@lower = "builds", @operator = ">=", a: any, b: any) -> bool { return !(a < b); }
+
 # misc
 proc len(@opcode = "operator_length", input: str) -> num {}
 

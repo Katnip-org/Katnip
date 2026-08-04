@@ -2,6 +2,13 @@
 
 Compiler and type-checker for the **Katnip** language (`.knip`), targeting Scratch SB3.
 
+## NOTICE
+
+* This repo is under construction.
+* Currently usable: lexer, parser, semantic analyis
+* Currently WIP: IR
+* Currently UN-usable: codegen
+
 ## Install
 
 ```

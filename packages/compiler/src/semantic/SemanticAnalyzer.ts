@@ -340,10 +340,21 @@ export class SemanticAnalyzer {
                 : "userproc";
         }
 
-        // TODO: Implement the features the program currently blocks
         if (meta.lower === "builds") {
-            this.error(`@lower = "builds" is not supported yet`, node); // TODO: implement this
+            const [only] = node.body.body;
+            if (node.body.body.length !== 1 || only?.type !== "ReturnStatement" || !only.argument) {
+                this.error(
+                    `A @lower = "builds" proc's body must be exactly one 'return <expression>;'`,
+                    node,
+                );
+            } else {
+                meta.buildsExpr = only.argument;
+            }
+        } else if (meta.operator) {
+            this.error(`@operator is only valid on a @lower = "builds" proc`, node);
         }
+
+        // TODO: Implement the features the program currently blocks
         if (
             !meta.opcode &&
             node.returnType?.type === "Type" &&
@@ -388,6 +399,7 @@ export class SemanticAnalyzer {
         for (const decorator of decorators) {
             const value = decorator.value.type === "Literal" ? decorator.value.value : undefined;
             if (decorator.name === "opcode" && typeof value === "string") meta.opcode = value;
+            if (decorator.name === "operator" && typeof value === "string") meta.operator = value;
             if (decorator.name === "hat") meta.hat = value === "true" || value === true;
             if (decorator.name === "lower") {
                 if (typeof value === "string" && (loweringKinds as string[]).includes(value)) {
@@ -511,7 +523,12 @@ export class SemanticAnalyzer {
                 break;
             }
             case "SpriteDeclaration":
-                this.visitBlock(node.body, "sprite");
+                this.enter("sprite");
+                // Procs only: `visit` already declares sprite-scoped variables, and enums/structs are top-level.
+                for (const stmt of node.body.body)
+                    if (stmt.type === "ProcedureDeclaration") this.hoistProcedure(stmt);
+                for (const stmt of node.body.body) this.visit(stmt);
+                this.exit();
                 break;
             case "ImportDeclaration":
                 if (this.current.kind !== "global")

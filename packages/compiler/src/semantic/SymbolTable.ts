@@ -1,6 +1,7 @@
 import type {
     DecoratorNode,
     EnumMemberNode,
+    ExpressionNode,
     NodeBase,
     ParameterNode,
     StructFieldNode,
@@ -9,7 +10,11 @@ import type {
 } from "../parser/AST-nodes.js";
 import type { InternalType } from "./InternalTypes.js";
 
-/** How a call to this proc is emitted by the lowering pass. */
+/**
+ * How a call to this proc is emitted by the lowering pass.
+ * "builds" procs have no opcode of their own: their body is a single `return <expr>`
+ * that the IR inlines at each use site, composing existing Scratch reporters.
+ */
 export type LoweringKind = "reporter" | "command" | "yields" | "userproc" | "builds";
 
 /** Shape of a proc's return frame. Multi-size (list) returns are not supported yet. */
@@ -26,6 +31,10 @@ export interface SignatureMeta {
     hat?: boolean;
     /** Emission strategy (@lower), defaulted from opcode/return shape when absent. */
     lower?: LoweringKind;
+    /** Binary operator this proc backs (@operator), e.g. "!&". Only meaningful with @lower = "builds". */
+    operator?: string;
+    /** The `return` expression of a @lower = "builds" proc, inlined by the IR at each use site. */
+    buildsExpr?: ExpressionNode;
     /** Requested return strategy (@ret), default "auto". */
     ret?: "auto" | "var" | "vstack";
     /** Strategy after cycle analysis: "var" iff the proc is in no call cycle. */

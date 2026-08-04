@@ -12,8 +12,8 @@ import type {
     ProcedureDeclarationNode,
     SpriteDeclarationNode,
     StatementNode,
+    TypeNode,
 } from "../parser/AST-nodes.js";
-import type { InternalType } from "../semantic/InternalTypes.js";
 import type { SemanticAnalyzer } from "../semantic/SemanticAnalyzer.js";
 import type { ReturnMethod, Signature } from "../semantic/SymbolTable.js";
 import {
@@ -49,6 +49,11 @@ export class IRGenerator {
     private readonly usedNames = new Set<string>();
     private currentPlan: ReturnPlan | null = null;
 
+    /** Binary operators with no Scratch block, mapped to the @lower = "builds" proc that composes them. */
+    private readonly operatorProcs = new Map<string, Signature>();
+    /** Param name -> operand, while inlining a "builds" body. */
+    private substitutions: Map<string, IRExpr> | null = null;
+
     constructor(private analyzer: SemanticAnalyzer) {}
 
     generate(ast: AST): IRProgram {
@@ -61,7 +66,11 @@ export class IRGenerator {
                 case "VariableDeclaration":
                     this.program.variables.push(stmt.name); // TODO: unmangled; mangle once procs land
                     break;
-                case "ProcedureDeclaration":
+                case "ProcedureDeclaration": {
+                    const proc = this.lowerProc(stmt);
+                    if (proc) this.program.procs.set(proc.name, proc);
+                    break;
+                }
                 case "EnumDeclaration":
                 case "ImportDeclaration":
                 case "StructDeclaration":
@@ -111,9 +120,11 @@ export class IRGenerator {
                 case "VariableDeclaration":
                     this.sprite.variables.push(stmt.name);
                     break;
-                case "ProcedureDeclaration":
-                    this.sprite.procs.set(stmt.name, this.lowerProc(stmt));
+                case "ProcedureDeclaration": {
+                    const proc = this.lowerProc(stmt);
+                    if (proc) this.sprite.procs.set(stmt.name, proc);
                     break;
+                }
             }   
         }
 
@@ -122,6 +133,7 @@ export class IRGenerator {
 
     private planReturns(): void {
         for (const [decl, sig] of this.analyzer.procSignatures) {
+            if (sig.meta?.operator) this.operatorProcs.set(sig.meta.operator, sig);
             if (sig.meta?.lower !== "userproc") continue;
 
             const mangled = this.mangle(decl.name);
@@ -154,16 +166,17 @@ export class IRGenerator {
         return name;
     }
 
-    private lowerProc(stmt: ProcedureDeclarationNode): IRProc {
+    /** Returns null for procs that aren't lowered as userprocs (@opcode don't have bodies). */
+    private lowerProc(stmt: ProcedureDeclarationNode): IRProc | null {
         const sig = this.analyzer.procSignatures.get(stmt);
-        const plan = this.plans.get(sig!)!;
+        const plan = sig && this.plans.get(sig);
+        if (!plan) return null;
 
-        if (plan.vStackName)
-            this.sprite?.lists.push(plan.vStackName); // TODO: toplevel procs need handling
+        if (plan.vStackName) (this.sprite ?? this.program).lists.push(plan.vStackName);
 
-        const params: IRParam[] = stmt.parameters.map((param, i) => ({
+        const params: IRParam[] = stmt.parameters.map((param) => ({
             name: param.name,
-            type: paramTypeOf(sig?.resolvedParamTypes?.[i]),
+            type: paramTypeOf(param.paramType),
         }));
 
         this.currentPlan = plan;
@@ -192,13 +205,25 @@ export class IRGenerator {
     private lowerStmt(node: StatementNode, out: IRStmt[]): void {
         switch (node.type) {
             case "IfStatement": {
-                // TODO: fold node.elifs into nested else branches, innermost first
                 const cond = this.lowerExpr(node.condition, out);
+
+                let elseStmt: IRStmt[] = node.elseBlock ? this.lowerBlock(node.elseBlock) : [];
+
+                for (let idx = (node.elifs?.length ?? 0) - 1; idx >= 0; idx--) {
+                    const elif = node.elifs![idx];
+                    const pre: IRStmt[] = [];
+                    const elifCond = this.lowerExpr(elif.condition, pre);
+                    elseStmt = [
+                        ...pre,
+                        { kind: "if", cond: elifCond, then: this.lowerBlock(elif.block), else: elseStmt },
+                    ];
+                }
+
                 out.push({
                     kind: "if",
                     cond,
                     then: this.lowerBlock(node.thenBlock),
-                    else: node.elseBlock ? this.lowerBlock(node.elseBlock) : [],
+                    else: elseStmt,
                 });
                 break;
             }
@@ -299,15 +324,29 @@ export class IRGenerator {
             case "Literal":
                 return { kind: "lit", value: node.value ?? "" };
 
-            case "Identifier":
+            case "Identifier": {
+                const operand = this.substitutions?.get(node.name);
+                if (operand) return operand;
                 // TODO: needs analyzer.identBindings to tell param from var from enum member
                 return { kind: "var", name: node.name };
+            }
+
+            case "UnaryExpression": {
+                const arg = this.lowerExpr(node.argument, out);
+                if (node.operator === "!") return { kind: "op", opcode: "operator_not", inputs: [arg] };
+                return { kind: "op", opcode: "operator_subtract", inputs: [{ kind: "lit", value: 0 }, arg] };
+            }
 
             case "BinaryExpression": {
                 const left = this.lowerExpr(node.left, out);
                 const right = this.lowerExpr(node.right, out);
                 // TODO: `+` over str operands is operator_join, not operator_add- needs analyzer.exprTypes
-                return { kind: "op", opcode: binaryOpcodes[node.operator], inputs: [left, right] };
+                const opcode = binaryOpcodes[node.operator];
+                if (opcode) return { kind: "op", opcode, inputs: [left, right] };
+
+                const composed = this.operatorProcs.get(node.operator);
+                if (composed) return this.inlineBuilds(composed, [left, right], out);
+                return { kind: "lit", value: "" }; // TODO: **, % over non-num; no opcode and no builds proc
             }
             case "CallExpression": {
                 const sig = this.analyzer.callResolutions.get(node)!;
@@ -316,6 +355,7 @@ export class IRGenerator {
                 });
 
                 if (sig.meta?.lower === "reporter") return { kind: "op", opcode: sig.meta.opcode!, inputs: args };
+                if (sig.meta?.lower === "builds") return this.inlineBuilds(sig, args, out);
 
                 const plan = this.plans.get(sig)!;
                 out.push({ kind: "call", proc: plan.mangled, args });
@@ -325,7 +365,7 @@ export class IRGenerator {
                         return { kind: "var", name: plan.retVars[0] }
                     }
                     if (plan.returns.kind === "tuple") {
-
+                        
                     }
                 } else if (plan.strategy === "vstack") {
                     if (plan.returns.kind === "scalar") {
@@ -334,19 +374,30 @@ export class IRGenerator {
                 }
             }
 
-            // TODO: UnaryExpression, InterpolatedString (nested operator_join),
+            // TODO: InterpolatedString (nested operator_join),
             // MemberExpression, IndexerAccess, SliceAccess
         }
         return { kind: "lit", value: "" };
     }
+
+    /**
+     * Inlines a @lower = "builds" proc: lowers its `return` expression into one nested reporter tree.
+     * Keeps the result usable in boolean slots, which a proc call's ret var would not be.
+     */
+    private inlineBuilds(sig: Signature, args: IRExpr[], out: IRStmt[]): IRExpr {
+        const saved = this.substitutions;
+        this.substitutions = new Map(sig.params.map((param, i) => [param.name, args[i]]));
+        const result = this.lowerExpr(sig.meta!.buildsExpr!, out);
+        this.substitutions = saved;
+        return result;
+    }
 }
 
 /** Scratch inputs are only %n, %s, %b; num -> NUMBER, bool -> BOOLEAN, everything else -> STRING. */
-function paramTypeOf(type?: InternalType): paramType {
-    if (type?.kind === "primitive") {
-        if (type.name === "num") return paramType.NUMBER;
-        if (type.name === "bool") return paramType.BOOLEAN;
-    }
+function paramTypeOf(type: TypeNode): paramType {
+    if (type.type !== "Type") return paramType.STRING;
+    if (type.typeName === "num") return paramType.NUMBER;
+    if (type.typeName === "bool") return paramType.BOOLEAN;
     return paramType.STRING;
 }
 
@@ -361,5 +412,6 @@ const binaryOpcodes: Record<string, string> = {
     ">": "operator_gt",
     "&&": "operator_and",
     "||": "operator_or",
-    // TODO: **, <=, >=, and the negated ops (!&, !|, !^, ^) have no direct opcode; need to be composed
+    // <=, >=, !&, !|, !^ and ^ have no opcode: they come from the @lower = "builds" procs
+    // TODO: impl **
 }
