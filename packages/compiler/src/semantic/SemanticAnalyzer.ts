@@ -96,6 +96,9 @@ export class SemanticAnalyzer {
     /** User proc declarations to their signatures, for the call graph and IR lowering. */
     readonly procSignatures = new Map<ProcedureDeclarationNode, Signature>();
 
+    /** Every expression's inferred type, for IR lowering. */
+    readonly exprTypes = new Map<ExpressionNode, InternalType>();
+
     constructor(
         private reporter: ErrorReporter,
         private logger: Logger = new Logger(),
@@ -843,6 +846,12 @@ export class SemanticAnalyzer {
     }
 
     private inferType(expression: ExpressionNode): InternalType {
+        const type = this.computeType(expression);
+        this.exprTypes.set(expression, type);
+        return type;
+    }
+
+    private computeType(expression: ExpressionNode): InternalType {
         switch (expression.type) {
             case "Identifier": {
                 const sym = this.current.lookup(expression.name)?.[0];

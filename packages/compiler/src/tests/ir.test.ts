@@ -97,7 +97,7 @@ test("vstack proc: registers its stack list and pushes returns onto it", () => {
 
     // Both returns (0 and f(n-1)) push onto the stack; none write a ret var.
     assert.equal(countOpcode(p.body, "data_addtolist"), 2);
-    assert.equal(countOpcode(p.body, "data_setvariableto"), 0);
+    assert.deepEqual(p.retVars, []);
 });
 
 test("compound assignment desugars to setvariableto over the binop", () => {
@@ -213,4 +213,124 @@ test("unary ! and - lower to not / 0 - x", () => {
             { kind: "op", opcode: "operator_add", inputs: [{ kind: "lit", value: 1 }, { kind: "lit", value: 2 }] },
         ],
     });
+});
+
+test("interpolated strings lower to right-nested joins", () => {
+    const join = (a: unknown, b: unknown) => ({ kind: "op", opcode: "operator_join", inputs: [a, b] });
+    assert.deepEqual(exprOf(`f"a{1}b"`), join({ kind: "lit", value: "a" }, join({ kind: "lit", value: 1 }, { kind: "lit", value: "b" })));
+    assert.deepEqual(exprOf(`f"{1}"`), { kind: "lit", value: 1 });
+});
+
+test("vstack call sites read by depth from the top and pop what they pushed", () => {
+    const program = lower(
+        HAT +
+            `sprite Cat {
+                proc f(n: num) -> num { if (n < 1) { return 0; } return f(n - 1); }
+                onflag() { temp y = f(3) + f(f(2)); }
+            }`,
+    );
+    const body = program.sprites[0].scripts[0].body;
+    assert.equal(body.filter((s) => s.kind === "call").length, 3);
+
+    // the inner f(2) result is on top when f(f(2)) runs, so its ref is depth 0
+    const nested = body.filter((s) => s.kind === "call")[2];
+    assert(nested.kind === "call");
+    assert.deepEqual(nested.args, [{ kind: "stackref", list: "f_stack", depth: 0 }]);
+
+    const sum = raws(body, "data_setvariableto")[0];
+    assert.deepEqual(sum.inputs[1], {
+        kind: "op",
+        opcode: "operator_add",
+        inputs: [
+            { kind: "stackref", list: "f_stack", depth: 2 },
+            { kind: "stackref", list: "f_stack", depth: 0 },
+        ],
+    });
+    assert.equal(raws(body, "data_deleteoflist").length, 3, "every pushed slot must be popped");
+});
+
+test("a vstack return stages its value so the pops cannot eat it", () => {
+    const p = procOf(
+        lower(`sprite Cat { proc f(n: num) -> num { if (n < 1) { return 0; } return f(n - 1) + 1; } }`),
+        "Cat",
+        "f",
+    );
+    assert.deepEqual(p.temps, ["f_ret0"]);
+
+    const tail = p.body.slice(-4).map((s) => (s.kind === "raw" ? s.opcode : s.kind));
+    assert.deepEqual(tail, ["data_setvariableto", "data_deleteoflist", "data_addtolist", "control_stop"]);
+});
+
+test("bare return still stops the script", () => {
+    const p = procOf(lower(`sprite Cat { proc f(x: num) -> void { if (x < 1) { return; } } }`), "Cat", "f");
+    assert.equal(countOpcode(p.body, "control_stop"), 1);
+});
+
+test("params read as argument reporters, locals as mangled globals", () => {
+    const p = procOf(lower(`sprite Cat { proc f(x: num) -> void { temp y = x; } }`), "Cat", "f");
+    assert.deepEqual(p.temps, ["f_y"]);
+    assert.deepEqual(raws(p.body, "data_setvariableto")[0].inputs, [
+        { kind: "var", name: "f_y" },
+        { kind: "param", name: "x" },
+    ]);
+});
+
+test("+ over str operands is operator_join, not operator_add", () => {
+    assert.deepEqual(exprOf(`"a" + "b"`), {
+        kind: "op",
+        opcode: "operator_join",
+        inputs: [{ kind: "lit", value: "a" }, { kind: "lit", value: "b" }],
+    });
+    const num = exprOf("1 + 2");
+    assert.equal(num.kind === "op" && num.opcode, "operator_add");
+});
+
+test("do-while runs its body once before the loop", () => {
+    const program = lower(HAT + `sprite Cat { onflag() { temp t = 0; do { t += 1; } while (t < 3); } }`);
+    const body = program.sprites[0].scripts[0].body;
+    assert.deepEqual(
+        body.map((s) => (s.kind === "raw" ? s.opcode : s.kind)),
+        ["data_setvariableto", "data_setvariableto", "while"],
+    );
+});
+
+test("for over a list indexes it; for over a num counts directly", () => {
+    const program = lower(
+        HAT + `sprite Cat { onflag() { temp l = [1, 2]; temp t = 0; for (v, l) { t += v; } for (i, 5) { t += i; } } }`,
+    );
+    const loops = program.sprites[0].scripts[0].body.filter((s) => s.kind === "for");
+    assert.equal(loops.length, 2);
+
+    assert(loops[0].kind === "for");
+    assert.equal(loops[0].iter, "v_i");
+    assert.deepEqual(loops[0].times, { kind: "op", opcode: "data_lengthoflist", inputs: [{ kind: "var", name: "l" }] });
+    assert.deepEqual(loops[0].body[0], {
+        kind: "raw",
+        opcode: "data_setvariableto",
+        inputs: [
+            { kind: "var", name: "v" },
+            { kind: "op", opcode: "data_itemoflist", inputs: [{ kind: "var", name: "l" }, { kind: "var", name: "v_i" }] },
+        ],
+    });
+
+    assert(loops[1].kind === "for");
+    assert.equal(loops[1].iter, "i");
+    assert.deepEqual(loops[1].times, { kind: "lit", value: 5 });
+});
+
+test("switch lowers to an if chain, with default as the final else", () => {
+    const program = lower(
+        HAT + `sprite Cat { onflag() { temp t = 0; switch (t) { case (1, 2) { t = 9; } default { t = 8; } } } }`,
+    );
+    const chain = program.sprites[0].scripts[0].body.find((s) => s.kind === "if");
+    assert(chain?.kind === "if");
+    assert.deepEqual(chain.cond, {
+        kind: "op",
+        opcode: "operator_or",
+        inputs: [
+            { kind: "op", opcode: "operator_equals", inputs: [{ kind: "var", name: "t" }, { kind: "lit", value: 1 }] },
+            { kind: "op", opcode: "operator_equals", inputs: [{ kind: "var", name: "t" }, { kind: "lit", value: 2 }] },
+        ],
+    });
+    assert.equal(raws(chain.else, "data_setvariableto").length, 1, "default must be the trailing else");
 });

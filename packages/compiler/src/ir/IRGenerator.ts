@@ -9,6 +9,7 @@ import type {
     AST,
     BlockNode,
     ExpressionNode,
+    ForStatementNode,
     ProcedureDeclarationNode,
     SpriteDeclarationNode,
     StatementNode,
@@ -25,6 +26,8 @@ import {
     type IRSprite,
     type IRStmt,
 } from "./IRNode.js";
+
+type StackRef = Extract<IRExpr, { kind: "stackref" }>;
 
 /** Per-proc return ABI. */
 interface ReturnPlan {
@@ -53,6 +56,14 @@ export class IRGenerator {
     private readonly operatorProcs = new Map<string, Signature>();
     /** Param name -> operand, while inlining a "builds" body. */
     private substitutions: Map<string, IRExpr> | null = null;
+
+    /** Params of the proc being lowered. */
+    private params = new Set<string>();
+    /** Local name => mangled global. */
+    private temps = new Map<string, string>();
+
+    /** Vstack slots pushed and not yet popped: one list name per slot, in push order. */
+    private readonly pending: string[] = [];
 
     constructor(private analyzer: SemanticAnalyzer) {}
 
@@ -180,8 +191,13 @@ export class IRGenerator {
         }));
 
         this.currentPlan = plan;
+        this.params = new Set(params.map((param) => param.name));
+        this.temps = new Map();
         const body = this.lowerBlock(stmt.body);
+        const temps = [...this.temps.values()];
         this.currentPlan = null;
+        this.params = new Set();
+        this.temps = new Map();
 
         return {
             name: plan.mangled,
@@ -190,7 +206,7 @@ export class IRGenerator {
             strategy: plan.strategy,
             vStackName: plan.vStackName,
             retVars: plan.retVars,
-            temps: [], // TODO: collected while lowering the body
+            temps,
             body: body,
         };
     }
@@ -203,6 +219,7 @@ export class IRGenerator {
 
     /** Appends the lowering of one statement to `out`; may append more than one block. */
     private lowerStmt(node: StatementNode, out: IRStmt[]): void {
+        const mark = this.pending.length;
         switch (node.type) {
             case "IfStatement": {
                 const cond = this.lowerExpr(node.condition, out);
@@ -219,7 +236,7 @@ export class IRGenerator {
                     ];
                 }
 
-                out.push({
+                this.emit(out, {
                     kind: "if",
                     cond,
                     then: this.lowerBlock(node.thenBlock),
@@ -229,48 +246,77 @@ export class IRGenerator {
             }
             case "WhileStatement": {
                 const cond = this.lowerExpr(node.condition, out);
-                out.push({ kind: "while", cond, body: this.lowerBlock(node.body) });
+                this.emit(out, { kind: "while", cond, body: this.lowerBlock(node.body) });
                 break;
             }
-            case "ReturnStatement": { // TODO: impl the other forms of return statements
-                if (!node.argument) break;
-                
-                const plan = this.currentPlan!;
-                
-                const values = node.argument.type === "TupleExpression" ? node.argument.elements : [node.argument];
-                
-                for (let i = 0; i < values.length; i ++) {
-                    const expr = values[i];
-                    
-                    let opcode;
-                    let var_name;
-                    if (plan.strategy === "var") {
-                        opcode = "data_setvariableto";
-                        var_name = plan.retVars[i];
-                    } else if (plan.strategy === "vstack") {
-                        opcode = "data_addtolist";
-                        var_name = plan.vStackName!;
-                    } else {
-                        break;
+            case "DoWhileStatement": {
+                out.push(...this.lowerBlock(node.body));
+                const cond = this.lowerExpr(node.condition, out);
+                this.emit(out, { kind: "while", cond, body: this.lowerBlock(node.body) });
+                break;
+            }
+            case "ForStatement": {
+                this.lowerFor(node, out);
+                break;
+            }
+            case "SwitchDeclaration": {
+                const value = this.lowerExpr(node.value, out);
+                let chain: IRStmt[] = [];
+                for (let idx = node.body.length - 1; idx >= 0; idx--) {
+                    const clause = node.body[idx];
+                    if (clause.type === "DefaultCaseDeclaration") {
+                        chain = this.lowerBlock(clause.body);
+                        continue;
                     }
-                    
-                    out.push({
-                        kind: "raw",
-                        opcode,
-                        inputs: [
-                            { kind: "var", name: var_name },
-                            this.lowerExpr(expr, out)
-                        ]
-                    });
+                    const pre: IRStmt[] = [];
+                    const cond = clause.values
+                        .map(
+                            (test): IRExpr => ({
+                                kind: "op",
+                                opcode: "operator_equals",
+                                inputs: [structuredClone(value), this.lowerExpr(test, pre)],
+                            }),
+                        )
+                        .reduce((left, right) => ({ kind: "op", opcode: "operator_or", inputs: [left, right] }));
+                    chain = [...pre, { kind: "if", cond, then: this.lowerBlock(clause.body), else: chain }];
+                }
+                for (const stmt of chain) this.emit(out, stmt);
+                break;
+            }
+            case "ReturnStatement": {
+                const plan = this.currentPlan!;
+                const values =
+                    node.argument === null
+                        ? []
+                        : node.argument.type === "TupleExpression"
+                          ? node.argument.elements
+                          : [node.argument];
+                const lowered = values.map((expr) => this.lowerExpr(expr, out));
+
+                if (plan.strategy === "var")
+                    lowered.forEach((value, i) => this.emit(out, this.set(plan.retVars[i], value)));
+                else if (plan.strategy === "vstack") {
+                    let staged;
+                    if (this.pending.length > mark) {
+                        staged = lowered.map((value, i) => {
+                              const name = this.declare(`ret${i}`);
+                              this.emit(out, this.set(name, value));
+                              return { kind: "var", name } as IRExpr;
+                          })
+                    } else {
+                        staged = lowered;
+                    }
+                    this.popTo(out, mark);
+                    for (const value of staged)
+                        this.emit(out, {
+                            kind: "raw",
+                            opcode: "data_addtolist",
+                            inputs: [{ kind: "var", name: plan.vStackName! }, value],
+                        });
                 }
 
-                out.push({
-                    kind: "raw",
-                    opcode: "control_stop",
-                    inputs: [
-                        { kind: "lit", value: "this script" }
-                    ]
-                });
+                this.popTo(out, mark);
+                out.push({ kind: "raw", opcode: "control_stop", inputs: [{ kind: "lit", value: "this script" }] });
                 break;
             }
             case "VariableAssignment": {
@@ -283,16 +329,12 @@ export class IRGenerator {
                               opcode: binaryOpcodes[node.operator.slice(0, -1)],
                               inputs: [this.lowerExpr(node.left, out), this.lowerExpr(node.right, out)],
                           };
-                out.push({ kind: "raw", opcode: "data_setvariableto", inputs: [{ kind: "var", name: node.left.name }, value] });
+                this.emit(out, this.set(this.local(node.left.name), value));
                 break;
             }
             case "VariableDeclaration": {
                 const init = node.initializer ? this.lowerExpr(node.initializer, out) : null;
-                out.push({
-                    kind: "raw",
-                    opcode: "data_setvariableto",
-                    inputs: [{ kind: "var", name: node.name }, init ?? { kind: "lit", value: "" }],
-                });
+                this.emit(out, this.set(this.declare(node.name), init ?? { kind: "lit", value: "" }));
                 break;
             }
             case "ExpressionStatement": {
@@ -303,16 +345,99 @@ export class IRGenerator {
                         const args = sig.params.map((p, i) =>
                             this.lowerExpr((expr.arguments[i] ?? p.default!) as ExpressionNode, out),
                         );
-                        out.push({ kind: "raw", opcode: sig.meta.opcode!, inputs: args });
+                        this.emit(out, { kind: "raw", opcode: sig.meta.opcode!, inputs: args });
                         break;
                     }
                 }
                 this.lowerExpr(node.expression, out);
-                // `lowerExpr()` will automatically parse a userproc call and emit it; 
+                // `lowerExpr()` will automatically parse a userproc call and emit it;
                 // we ignore the return if its anything else (reporter/yields), as it shouldn't be here
                 break;
             }
         }
+        this.popTo(out, mark);
+    }
+
+    /** num => counter, list/str => index. */
+    private lowerFor(node: ForStatementNode, out: IRStmt[]): void {
+        if (node.pattern.type !== "Identifier") return; // TODO: dict destructuring
+        const type = this.analyzer.exprTypes.get(node.iterable);
+        const iterable = this.lowerExpr(node.iterable, out);
+        const name = this.declare(node.pattern.name);
+
+        if (type?.kind === "primitive" && type.name === "num") {
+            this.emit(out, { kind: "for", iter: name, times: iterable, body: this.lowerBlock(node.body) });
+            return;
+        }
+        const isList = type?.kind === "list";
+        if (!isList && !(type?.kind === "primitive" && type.name === "str")) return; // TODO: dict iteration
+
+        const idx = this.declare(`${node.pattern.name}_i`);
+        const element: IRExpr = isList
+            ? { kind: "op", opcode: "data_itemoflist", inputs: [iterable, { kind: "var", name: idx }] }
+            : { kind: "op", opcode: "operator_letter_of", inputs: [{ kind: "var", name: idx }, iterable] };
+        const times: IRExpr = {
+            kind: "op",
+            opcode: isList ? "data_lengthoflist" : "operator_length",
+            inputs: [structuredClone(iterable)],
+        };
+        const step: IRStmt = this.set(name, element);
+        this.emit(out, { kind: "for", iter: idx, times, body: [step, ...this.lowerBlock(node.body)] });
+    }
+
+    /** Registers a proc-local, mangled globally. */
+    private declare(name: string): string {
+        if (!this.currentPlan) return name;
+        const existing = this.temps.get(name);
+        if (existing) return existing;
+        const mangled = this.mangle(`${this.currentPlan.mangled}_${name}`);
+        this.temps.set(name, mangled);
+        return mangled;
+    }
+
+    private local(name: string): string {
+        return this.temps.get(name) ?? name;
+    }
+
+    private depthOf(list: string): number {
+        return this.pending.reduce((count, pushed) => count + (pushed === list ? 1 : 0), 0);
+    }
+
+    /** Pushes width slots, deepest ref first. */
+    private pushVstack(list: string, width: number): StackRef[] {
+        return Array.from({ length: width }, () => {
+            const ref: StackRef = { kind: "stackref", list, depth: 0, offset: this.depthOf(list) };
+            this.pending.push(list);
+            return ref;
+        });
+    }
+
+    private set(name: string, value: IRExpr): IRStmt {
+        return { kind: "raw", opcode: "data_setvariableto", inputs: [{ kind: "var", name }, value] };
+    }
+
+    private popTo(out: IRStmt[], mark: number): void {
+        while (this.pending.length > mark)
+            out.push({
+                kind: "raw",
+                opcode: "data_deleteoflist",
+                inputs: [{ kind: "var", name: this.pending.pop()! }, { kind: "lit", value: "last" }],
+            });
+    }
+
+    private emit(out: IRStmt[], stmt: IRStmt): void {
+        this.freeze(stmt);
+        out.push(stmt);
+    }
+
+    private freeze(node: unknown): void {
+        if (node === null || typeof node !== "object") return;
+        const ref = node as StackRef;
+        if (ref.kind === "stackref" && ref.offset !== undefined) {
+            ref.depth = this.depthOf(ref.list) - 1 - ref.offset;
+            delete ref.offset;
+        }
+        for (const value of Object.values(node)) this.freeze(value);
     }
 
     /**
@@ -327,8 +452,8 @@ export class IRGenerator {
             case "Identifier": {
                 const operand = this.substitutions?.get(node.name);
                 if (operand) return operand;
-                // TODO: needs analyzer.identBindings to tell param from var from enum member
-                return { kind: "var", name: node.name };
+                if (this.params.has(node.name)) return { kind: "param", name: node.name };
+                return { kind: "var", name: this.local(node.name) };
             }
 
             case "UnaryExpression": {
@@ -340,7 +465,10 @@ export class IRGenerator {
             case "BinaryExpression": {
                 const left = this.lowerExpr(node.left, out);
                 const right = this.lowerExpr(node.right, out);
-                // TODO: `+` over str operands is operator_join, not operator_add- needs analyzer.exprTypes
+                const type = this.analyzer.exprTypes.get(node);
+                if (node.operator === "+" && type?.kind === "primitive" && type.name === "str")
+                    return { kind: "op", opcode: "operator_join", inputs: [left, right] };
+
                 const opcode = binaryOpcodes[node.operator];
                 if (opcode) return { kind: "op", opcode, inputs: [left, right] };
 
@@ -358,24 +486,29 @@ export class IRGenerator {
                 if (sig.meta?.lower === "builds") return this.inlineBuilds(sig, args, out);
 
                 const plan = this.plans.get(sig)!;
-                out.push({ kind: "call", proc: plan.mangled, args });
+                this.emit(out, { kind: "call", proc: plan.mangled, args });
+                if (!plan.strategy) break;
 
-                if (plan.strategy === "var") {
-                    if (plan.returns.kind === "scalar") {
-                        return { kind: "var", name: plan.retVars[0] }
-                    }
-                    if (plan.returns.kind === "tuple") {
-                        
-                    }
-                } else if (plan.strategy === "vstack") {
-                    if (plan.returns.kind === "scalar") {
-                        return { kind: "stackref", list: plan.vStackName!, depth: 0 }
-                    }
-                }
+                // expression slot => first element
+                const width = plan.returns.kind === "tuple" ? plan.returns.width : 1;
+                if (plan.strategy === "var") return { kind: "var", name: plan.retVars[0] };
+                return this.pushVstack(plan.vStackName!, width)[0];
             }
-
-            // TODO: InterpolatedString (nested operator_join),
-            // MemberExpression, IndexerAccess, SliceAccess
+            case "InterpolatedString": {
+                // lexer pads holes with ""
+                const chunks: IRExpr[] = node.parts
+                    .filter((part) => part !== "")
+                    .map((part) =>
+                        typeof part === "string" ? { kind: "lit", value: part } : this.lowerExpr(part, out),
+                    );
+                if (chunks.length === 0) return { kind: "lit", value: "" };
+                return chunks.reduceRight((right, left) => ({
+                    kind: "op",
+                    opcode: "operator_join",
+                    inputs: [left, right],
+                }));
+            }
+            // TODO: MemberExpression, IndexerAccess, SliceAccess
         }
         return { kind: "lit", value: "" };
     }
