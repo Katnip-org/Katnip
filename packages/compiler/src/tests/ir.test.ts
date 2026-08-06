@@ -302,20 +302,58 @@ test("for over a list indexes it; for over a num counts directly", () => {
     assert.equal(loops.length, 2);
 
     assert(loops[0].kind === "for");
-    assert.equal(loops[0].iter, "v_i");
+    assert.equal(loops[0].iter, "v", "the loop var is its own index");
     assert.deepEqual(loops[0].times, { kind: "op", opcode: "data_lengthoflist", inputs: [{ kind: "var", name: "l" }] });
     assert.deepEqual(loops[0].body[0], {
         kind: "raw",
         opcode: "data_setvariableto",
         inputs: [
             { kind: "var", name: "v" },
-            { kind: "op", opcode: "data_itemoflist", inputs: [{ kind: "var", name: "l" }, { kind: "var", name: "v_i" }] },
+            { kind: "op", opcode: "data_itemoflist", inputs: [{ kind: "var", name: "l" }, { kind: "var", name: "v" }] },
         ],
     });
 
     assert(loops[1].kind === "for");
     assert.equal(loops[1].iter, "i");
     assert.deepEqual(loops[1].times, { kind: "lit", value: 5 });
+});
+
+test("for over range() counts instead of building a list", () => {
+    const program = lower(
+        HAT + `sprite Cat { onflag() { for (x, range(4, 10, 2)) { looks.say("a"); } } }`,
+        { stdlib: true },
+    );
+    const loop = program.sprites[0].scripts[0].body.find((s) => s.kind === "for");
+    assert(loop?.kind === "for", "range must lower to a counted for, not a list walk");
+    // range(4, 10, 2) => 4, 6, 8: ceil((10-4)/2) iterations, remapping the loop var in place
+    assert.equal(loop.iter, "x");
+    assert.deepEqual(loop.times, { kind: "lit", value: 3 });
+    assert.deepEqual(loop.body[0], {
+        kind: "raw",
+        opcode: "data_setvariableto",
+        inputs: [
+            { kind: "var", name: "x" },
+            {
+                kind: "op",
+                opcode: "operator_add",
+                inputs: [
+                    { kind: "op", opcode: "operator_multiply", inputs: [{ kind: "var", name: "x" }, { kind: "lit", value: 2 }] },
+                    { kind: "lit", value: 2 },
+                ],
+            },
+        ],
+    });
+});
+
+test("range(1, n) needs no remap block at all", () => {
+    const program = lower(HAT + `sprite Cat { onflag() { for (x, range(1, 9)) { looks.say("a"); } } }`, {
+        stdlib: true,
+    });
+    const loop = program.sprites[0].scripts[0].body.find((s) => s.kind === "for");
+    assert(loop?.kind === "for");
+    assert.equal(loop.iter, "x");
+    assert.deepEqual(loop.times, { kind: "lit", value: 8 });
+    assert.deepEqual(loop.body, [{ kind: "raw", opcode: "looks_say", inputs: [{ kind: "lit", value: "a" }] }]);
 });
 
 test("switch lowers to an if chain, with default as the final else", () => {

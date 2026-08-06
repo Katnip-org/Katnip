@@ -361,6 +361,7 @@ export class IRGenerator {
     /** num => counter, list/str => index. */
     private lowerFor(node: ForStatementNode, out: IRStmt[]): void {
         if (node.pattern.type !== "Identifier") return; // TODO: dict destructuring
+        if (this.lowerForRange(node, out)) return;
         const type = this.analyzer.exprTypes.get(node.iterable);
         const iterable = this.lowerExpr(node.iterable, out);
         const name = this.declare(node.pattern.name);
@@ -372,17 +373,80 @@ export class IRGenerator {
         const isList = type?.kind === "list";
         if (!isList && !(type?.kind === "primitive" && type.name === "str")) return; // TODO: dict iteration
 
-        const idx = this.declare(`${node.pattern.name}_i`);
-        const element: IRExpr = isList
-            ? { kind: "op", opcode: "data_itemoflist", inputs: [iterable, { kind: "var", name: idx }] }
-            : { kind: "op", opcode: "operator_letter_of", inputs: [{ kind: "var", name: idx }, iterable] };
+        const index: IRExpr = { kind: "var", name };
+        let element: IRExpr;
+        if (isList) {
+            element = { kind: "op", opcode: "data_itemoflist", inputs: [iterable, index] };
+        } else {
+            element = { kind: "op", opcode: "operator_letter_of", inputs: [index, iterable] };
+        }
+        
         const times: IRExpr = {
             kind: "op",
             opcode: isList ? "data_lengthoflist" : "operator_length",
             inputs: [structuredClone(iterable)],
         };
         const step: IRStmt = this.set(name, element);
-        this.emit(out, { kind: "for", iter: idx, times, body: [step, ...this.lowerBlock(node.body)] });
+        this.emit(out, { kind: "for", iter: name, times, body: [step, ...this.lowerBlock(node.body)] });
+    }
+
+    /**
+     * `for (x, range(start, stop, step))` becomes: `for (x, ceil((stop-start)/step)`
+     * Remaps the 1-based counter with `x = i * step + (start - step)`.
+     * Returns false if the iterable isn't a range() call.
+     */
+    private lowerForRange(node: ForStatementNode, out: IRStmt[]): boolean {
+        const call = node.iterable;
+        if (call.type !== "CallExpression") return false;
+        const sig = this.analyzer.callResolutions.get(call);
+        if (sig?.meta?.opcode !== "katnip_range") return false;
+
+        const arg = (want: string): IRExpr | null => {
+            const i = sig.params.findIndex((p) => p.name === want);
+            if (i < 0) return null;
+            return this.lowerExpr((call.arguments[i] ?? sig.params[i].default!) as ExpressionNode, out);
+        };
+        const start = arg("start") ?? { kind: "lit", value: 0 };
+        const stop = arg("stop")!;
+        const step = arg("step") ?? { kind: "lit", value: 1 };
+
+        /** The numeric value of a literal expr, or null if it isn't one. Drives the constant folding below. */
+        const num = (expr: IRExpr): number | null => {
+            if (expr.kind !== "lit") return null;
+            const n = Number(expr.value);
+            return Number.isFinite(n) ? n : null;
+        };
+        const [a, b, c] = [num(start), num(stop), num(step)];
+
+        let times: IRExpr;
+        if (a !== null && b !== null && c !== null) {
+            times = { kind: "lit", value: Math.ceil((b - a) / c) };
+        } else {
+            const span: IRExpr = a === 0 ? stop : { kind: "op", opcode: "operator_subtract", inputs: [stop, start] };
+            const div: IRExpr = c === 1 ? span : { kind: "op", opcode: "operator_divide", inputs: [span, step] };
+            times = { kind: "op", opcode: "operator_mathop", inputs: [{ kind: "lit", value: "ceiling" }, div] };
+        }
+
+        const iter = this.declare((node.pattern as { name: string }).name);
+        let value: IRExpr = { kind: "var", name: iter };
+        if (c !== 1) value = { kind: "op", opcode: "operator_multiply", inputs: [value, step] };
+        
+        let offset: IRExpr;
+        if (a !== null && c !== null) {
+            offset = { kind: "lit", value: a - c };
+        } else {
+            offset = { kind: "op", opcode: "operator_subtract", inputs: [start, step] };
+        }
+
+        if (num(offset) !== 0) value = { kind: "op", opcode: "operator_add", inputs: [value, offset] };
+
+        this.emit(out, {
+            kind: "for",
+            iter,
+            times,
+            body: [...(value.kind === "var" ? [] : [this.set(iter, value)]), ...this.lowerBlock(node.body)],
+        });
+        return true;
     }
 
     /** Registers a proc-local, mangled globally. */
