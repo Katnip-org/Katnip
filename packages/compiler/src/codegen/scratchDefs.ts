@@ -8,13 +8,17 @@
  *  - menu: input holding a shadow menu block; enum literals become the shadow's field value, dynamic expressions become a reporter over the shadow ([3, reporter, shadow]) with `default` left in the shadow.
  */
 
+import type { ColorPrimitive, NumPrimitive, TextPrimitive } from "./SB3TypeDefs.js";
+
+export type ShadowPrimitiveType = (NumPrimitive | ColorPrimitive | TextPrimitive)[0];
+
 export type Slot =
-    | { kind: "input"; name: string; prim?: number }
+    | { kind: "input"; name: string; prim?: ShadowPrimitiveType }
     | { kind: "broadcast"; name: string }
     | { kind: "field"; name: string; ref?: "variable" | "list" | "broadcast" }
     | { kind: "menu"; name: string; menuOpcode: string; menuField: string; default: string };
 
-const input = (name: string, prim?: number): Slot => ({ kind: "input", name, prim });
+const input = (name: string, prim?: ShadowPrimitiveType): Slot => ({ kind: "input", name, prim });
 const broadcast = (name: string): Slot => ({ kind: "broadcast", name });
 const field = (name: string, ref?: "variable" | "list" | "broadcast"): Slot => ({ kind: "field", name, ref });
 const menu = (name: string, menuOpcode: string, menuField: string, def: string): Slot =>

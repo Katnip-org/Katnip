@@ -11,6 +11,9 @@ importers:
       '@types/yargs':
         specifier: ^17.0.33
         version: 17.0.33
+      fflate:
+        specifier: ^0.8.3
+        version: 0.8.3
       picocolors:
         specifier: ^1.1.1
         version: 1.1.1
@@ -70,6 +73,9 @@ packages:
   escalade@3.2.0:
     resolution: {integrity: sha512-WUj2qlxaQtO4g6Pq5c29GTcWGDyd8itL8zTlipgECz3JesAiiOKotd8JU6otB3PACgG6xkJUyVhboMS+bje/jA==}
     engines: {node: '>=6'}
+
+  fflate@0.8.3:
+    resolution: {integrity: sha512-tbZNuJrLwGUp3zshBtdy4W+ORxZuIh8a5ilyIEQDC5rY1f3U20JMry0Ll3WBzU58EZKsEuJFXhb5gwv8CsPvgA==}
 
   get-caller-file@2.0.5:
     resolution: {integrity: sha512-DyFP3BM/3YHTQOCUL/w0OZHR0lpKeGrxotcHWcqNEdnltqFwXVfhEBQ94eIo34AfQpo0rGki4cyIiftY06h2Fg==}
@@ -139,6 +145,8 @@ snapshots:
   emoji-regex@10.4.0: {}
 
   escalade@3.2.0: {}
+
+  fflate@0.8.3: {}
 
   get-caller-file@2.0.5: {}
 
