@@ -44,6 +44,7 @@ export function activate(context: vscode.ExtensionContext): void {
         vscode.workspace.onDidChangeTextDocument((e) => scheduleCheck(context, e.document)),
         vscode.workspace.onDidCloseTextDocument((doc) => diagnostics.delete(doc.uri)),
         vscode.languages.registerCompletionItemProvider("katnip", { provideCompletionItems: complete }),
+        vscode.commands.registerCommand("katnip.build", () => build(context)),
     );
     vscode.workspace.textDocuments.forEach(run);
 }
@@ -63,6 +64,37 @@ async function check(context: vscode.ExtensionContext, doc: vscode.TextDocument)
     } catch (err) {
         const detail = err instanceof Error ? (err.stack ?? err.message) : String(err);
         output.appendLine(`Check FAILED for ${doc.uri.fsPath}:\n${detail}`);
+    }
+}
+
+async function build(context: vscode.ExtensionContext): Promise<void> {
+    const doc = vscode.window.activeTextEditor?.document;
+    if (doc?.languageId !== "katnip") {
+        vscode.window.showErrorMessage("Katnip: open a .knip file to build.");
+        return;
+    }
+
+    try {
+        const { compileToSb3 } = await loadCompiler(context);
+        const { errors, sb3 } = await compileToSb3(doc.getText(), {
+            path: doc.uri.fsPath,
+            resolve: fileResolver,
+        });
+        diagnostics.set(doc.uri, errors.map(toDiagnostic));
+
+        if (!sb3) {
+            vscode.window.showErrorMessage(`Katnip: build failed, ${errors.length} error(s).`);
+            return;
+        }
+
+        const target = doc.uri.with({ path: `${doc.uri.path.replace(/\.knip$/, "")}.sb3` });
+        await vscode.workspace.fs.writeFile(target, sb3);
+        output.appendLine(`Built ${target.fsPath}`);
+        vscode.window.showInformationMessage(`Katnip: built ${path.basename(target.fsPath)}`);
+    } catch (err) {
+        const detail = err instanceof Error ? (err.stack ?? err.message) : String(err);
+        output.appendLine(`Build FAILED for ${doc.uri.fsPath}:\n${detail}`);
+        vscode.window.showErrorMessage("Katnip: build failed, see the Katnip output channel.");
     }
 }
 

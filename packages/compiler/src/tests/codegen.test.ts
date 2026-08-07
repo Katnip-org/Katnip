@@ -1,8 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
+import { unzipSync } from "fflate";
 import { compile, expectClean } from "./helpers.js";
 import { IRGenerator } from "../ir/IRGenerator.js";
 import { SB3Generator } from "../codegen/SB3Generator.js";
+import { packSb3 } from "../codegen/pack.js";
 import { isBlock, type Block, type Sb3Project } from "../codegen/SB3TypeDefs.js";
 
 function build(source: string): Sb3Project {
@@ -58,6 +61,23 @@ test("proc ret vars and script temps reach a target's variable map", () => {
     const declared = project.targets.flatMap((t) => Object.values(t.variables).map((v) => v[0]));
     assert(declared.includes("addone_ret"), `ret var missing from ${declared}`);
     assert(declared.includes("y"), `script temp missing from ${declared}`);
+});
+
+test("packSb3 zips project.json and the default costume", () => {
+    const project = build(`sprite Cat { proc greet(who: str) -> void { looks.say(who); } }`);
+    const entries = unzipSync(packSb3(project));
+
+    const costume = project.targets[0]!.costumes[0]!;
+    assert.deepEqual(Object.keys(entries).sort(), ["project.json", costume.md5ext].sort());
+
+    const parsed = JSON.parse(new TextDecoder().decode(entries["project.json"]!));
+    assert.equal(parsed.targets[0].isStage, true);
+    assert.equal(parsed.meta.semver, "3.0.0");
+
+    // Scratch names each asset by the md5 of its bytes; a lossy embed breaks that.
+    const md5 = createHash("md5").update(entries[costume.md5ext!]!).digest("hex");
+    assert.equal(`${md5}.svg`, costume.md5ext);
+    assert.equal(md5, costume.assetId);
 });
 
 test("ids are unique across the var, list and block namespaces", () => {

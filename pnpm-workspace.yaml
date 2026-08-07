@@ -1,3 +1,10 @@
 packages:
   - "packages/compiler"
+  - "packages/vscode"
+allowBuilds:
+  # Both are vsce publish-time extras (marketplace signing, PAT keychain).
+  # `vsce package` does not need either, so skip the native builds.
+  '@vscode/vsce-sign': false
+  keytar: false
+
 #  - "packages/frontend"

@@ -121,8 +121,9 @@ export class SB3Generator {
             argumentids: JSON.stringify(sig.argumentids),
             argumentnames: JSON.stringify(proc.params.map((p) => p.name)),
             argumentdefaults: JSON.stringify(proc.params.map((p) => (p.type === paramType.BOOLEAN ? false : ""))),
-            // TODO: pull warp instead of default yes.
-            warp: "yes",
+            // TODO: pull warp from the proc instead of defaulting on.
+            // Must stay "true"/"false": the sb3 schema rejects anything else.
+            warp: "true",
         };
 
         // TODO: def.next = this.emitStack(proc.body, blocks, defId);

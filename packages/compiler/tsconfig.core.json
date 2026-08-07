@@ -8,5 +8,5 @@
     "composite": false
   },
   "include": ["src/**/*"],
-  "exclude": ["node_modules", "out", "build", "src/cli.ts"]
+  "exclude": ["node_modules", "out", "build", "src/cli.ts", "src/tests"]
 }

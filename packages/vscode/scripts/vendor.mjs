@@ -1,5 +1,6 @@
-// Copies the built compiler (JS + stdlib) into ./compiler so the packaged extension is fully self-contained
+// Copies the built compiler (JS + stdlib + its runtime deps) into ./compiler so the packaged extension is fully self-contained
 import { cp, rm, access, writeFile, mkdir } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
@@ -24,4 +25,12 @@ await mkdir(dest, { recursive: true });
 await cp(join(compiler, "build"), join(dest, "build"), noMaps);
 await cp(join(compiler, "stdlib"), join(dest, "stdlib"), { recursive: true });
 await writeFile(join(dest, "package.json"), JSON.stringify({ type: "module" }) + "\n");
+
+// `vsce package --no-dependencies` ships no node_modules, so the compiler's runtime deps have to come along by hand.
+const require = createRequire(import.meta.url);
+for (const name of ["fflate"]) {
+    const pkg = dirname(require.resolve(`${name}/package.json`, { paths: [compiler] }));
+    await cp(pkg, join(dest, "node_modules", name), noMaps);
+}
+
 console.log("Vendored compiler -> packages/vscode/compiler");

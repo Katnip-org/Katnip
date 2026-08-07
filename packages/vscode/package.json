@@ -17,6 +17,13 @@
   ],
   "main": "./build/extension.js",
   "contributes": {
+    "commands": [
+      {
+        "command": "katnip.build",
+        "title": "Build .sb3",
+        "category": "Katnip"
+      }
+    ],
     "languages": [
       {
         "id": "katnip",

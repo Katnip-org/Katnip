@@ -8,6 +8,7 @@ import { loadStdlibModules } from "./semantic/StdlibLoader.js";
 import { loadImports, type ImportResolver } from "./semantic/ModuleLoader.js";
 import { ErrorReporter } from "./utils/ErrorReporter.js";
 import { Logger } from "./utils/Logger.js";
+import { compileToSb3 } from "./index.js";
 
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
@@ -173,6 +174,42 @@ cli
             })
             .catch((err: any) => {
                 console.error('Error reading file:', err);
+            });
+    })
+    .command('build <source> [output]', 'Compile a file to a Scratch .sb3', (yargs: any) => {
+        yargs.positional('source', {
+            describe: 'The path to the source file',
+            type: 'string',
+            demandOption: true,
+        }).positional('output', {
+            describe: 'The path to write the .sb3 to (defaults to the source path with a .sb3 extension)',
+            type: 'string',
+        });
+    }, (argv: any) => {
+        const source = argv.source as string;
+        fs.readFile(source as PathLike, { encoding: 'utf-8' })
+            .then(async (fileContent: string) => {
+                const { errors, sb3 } = compileToSb3(fileContent, {
+                    path: path.resolve(source),
+                    resolve: fileResolver,
+                });
+
+                if (!sb3) {
+                    const reporter = new ErrorReporter(fileContent, true);
+                    for (const err of errors) reporter.add(err);
+                    reporter.print();
+                    process.exitCode = 1;
+                    return;
+                }
+
+                const output = (argv.output as string | undefined)
+                    ?? `${source.replace(/\.knip$/, '')}.sb3`;
+                await fs.writeFile(output as PathLike, sb3);
+                console.log(`Wrote ${output}`);
+            })
+            .catch((err: any) => {
+                console.error('Error building file:', err);
+                process.exitCode = 1;
             });
     })
     .command('help', 'List all available commands', () => {}, () => {

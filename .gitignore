@@ -35,5 +35,6 @@ coverage/
 packages/compiler/out/
 examples/
 
-# Generated stdlib bundle (produced by prebuild)
+# Generated bundles (produced by prebuild)
 packages/compiler/src/stdlib.generated.ts
+packages/compiler/src/assets.generated.ts
