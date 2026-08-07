@@ -184,6 +184,7 @@ export class IRGenerator {
         if (!plan) return null;
 
         if (plan.vStackName) (this.sprite ?? this.program).lists.push(plan.vStackName);
+        (this.sprite ?? this.program).variables.push(...plan.retVars);
 
         const params: IRParam[] = stmt.parameters.map((param) => ({
             name: param.name,
@@ -195,6 +196,7 @@ export class IRGenerator {
         this.temps = new Map();
         const body = this.lowerBlock(stmt.body);
         const temps = [...this.temps.values()];
+        (this.sprite ?? this.program).variables.push(...temps);
         this.currentPlan = null;
         this.params = new Set();
         this.temps = new Map();
@@ -449,9 +451,13 @@ export class IRGenerator {
         return true;
     }
 
-    /** Registers a proc-local, mangled globally. */
+    /** Registers a proc-local, mangled globally. Script-scope temps keep their name and are owned by the sprite. */
     private declare(name: string): string {
-        if (!this.currentPlan) return name;
+        if (!this.currentPlan) {
+            const scope = (this.sprite ?? this.program).variables;
+            if (!scope.includes(name)) scope.push(name);
+            return name;
+        }
         const existing = this.temps.get(name);
         if (existing) return existing;
         const mangled = this.mangle(`${this.currentPlan.mangled}_${name}`);
