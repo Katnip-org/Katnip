@@ -255,10 +255,24 @@ test("a vstack return stages its value so the pops cannot eat it", () => {
         "Cat",
         "f",
     );
-    assert.deepEqual(p.temps, ["f_ret0"]);
+    // Named for the staging, not the ABI: `retVars` is empty on a vstack proc.
+    assert.deepEqual(p.temps, ["f_staged0"]);
+    assert.deepEqual(p.retVars, []);
 
     const tail = p.body.slice(-4).map((s) => (s.kind === "raw" ? s.opcode : s.kind));
     assert.deepEqual(tail, ["data_setvariableto", "data_deleteoflist", "data_addtolist", "control_stop"]);
+});
+
+test("a vstack return with nothing pending pushes inline, with no staging temp", () => {
+    // The trigger is pending stack slots, not the return strategy: this proc is
+    // recursive (so vstack) but neither return evaluates a call.
+    const p = procOf(
+        lower(`sprite Cat { proc f(n: num) -> num { if (n < 1) { return 0; } f(n - 1); return n * 10; } }`),
+        "Cat",
+        "f",
+    );
+    assert.deepEqual(p.temps, []);
+    assert.equal(raws(p.body, "data_setvariableto").length, 0);
 });
 
 test("bare return still stops the script", () => {

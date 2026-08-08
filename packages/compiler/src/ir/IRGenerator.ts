@@ -69,6 +69,11 @@ export class IRGenerator {
 
     /** Declared list/dict name => the sb3 list(s) backing it: [list], or [keys, vals] for a dict. */
     private readonly listNames = new Map<string, string[]>();
+
+    /** Top-level variable names, so a sprite member that shadows one can be renamed. */
+    private globalNames = new Set<string>();
+    /** Source name => sb3 name, for sprite members renamed to clear a global. Cleared per sprite. */
+    private renamed = new Map<string, string>();
     /** Contents that need blocks: top-level lists, and the current sprite's lists. */
     private readonly init: IRStmt[] = [];
     private spriteInit: IRStmt[] = [];
@@ -77,6 +82,11 @@ export class IRGenerator {
 
     generate(ast: AST): IRProgram {
         this.planReturns();
+        // Collected before any sprite is lowered, because a sprite may be declared ahead of the
+        // global it shadows and its members still have to be renamed clear of it.
+        this.globalNames = new Set(
+            ast.body.filter((stmt) => stmt.type === "VariableDeclaration").map((stmt) => stmt.name),
+        );
         for (const stmt of ast.body) {
             switch (stmt.type) {
                 case "SpriteDeclaration":
@@ -131,6 +141,12 @@ export class IRGenerator {
         };
         this.program.sprites.push(this.sprite);
         this.spriteInit = [];
+        this.renamed = new Map();
+
+        // Members first: a handler may be written above the member it reads, and lowering one needs
+        // the member's sb3 name and backing lists to be known already.
+        for (const stmt of node.body.body)
+            if (stmt.type === "VariableDeclaration") this.declareMember(stmt);
 
         for (const stmt of node.body.body) {
             switch (stmt.type) {
@@ -145,9 +161,6 @@ export class IRGenerator {
                     });
                     break;
                 }
-                case "VariableDeclaration":
-                    this.declareMember(stmt);
-                    break;
                 case "ProcedureDeclaration": {
                     const proc = this.lowerProc(stmt);
                     if (proc) this.sprite.procs.set(stmt.name, proc);
@@ -169,20 +182,22 @@ export class IRGenerator {
                 : node.initializer && this.analyzer.exprTypes.get(node.initializer)?.kind;
         const init = node.initializer;
 
+        const name = this.emittedName(node.name);
+
         if (kind !== "list" && kind !== "dict") {
-            target.variables.push(node.name); // TODO: unmangled; mangle once procs land
+            target.variables.push(name); // TODO: unmangled; mangle once procs land
             return;
         }
 
         const entries = init?.type === "DictExpression" ? init.entries : [];
         const columns: [string, ExpressionNode[]][] =
             kind === "list"
-                ? [[node.name, init?.type === "ListExpression" ? init.elements : []]]
+                ? [[name, init?.type === "ListExpression" ? init.elements : []]]
                 : [
-                      [`${node.name}_keys`, entries.map((entry) => entry.key)],
-                      [`${node.name}_vals`, entries.map((entry) => entry.value)],
+                      [`${name}_keys`, entries.map((entry) => entry.key)],
+                      [`${name}_vals`, entries.map((entry) => entry.value)],
                   ];
-        this.listNames.set(node.name, columns.map(([name]) => name));
+        this.listNames.set(node.name, columns.map(([column]) => column));
 
         const baked = columns.map(([, elements]) => literals(elements));
         const runtime = baked.some((values) => values === null);
@@ -387,7 +402,7 @@ export class IRGenerator {
                     let staged;
                     if (this.pending.length > mark) {
                         staged = lowered.map((value, i) => {
-                              const name = this.declare(`ret${i}`);
+                              const name = this.declare(`staged${i}`);
                               this.emit(out, this.set(name, value));
                               return { kind: "var", name } as IRExpr;
                           })
@@ -630,7 +645,18 @@ export class IRGenerator {
     }
 
     private local(name: string): string {
-        return this.temps.get(name) ?? name;
+        return this.temps.get(name) ?? this.renamed.get(name) ?? name;
+    }
+
+    /**
+     * The sb3 name for a declared member: its own, unless it is a sprite member colliding with a
+     * global, which Scratch cannot represent. Prefixing with the sprite keeps both readable.
+     */
+    private emittedName(name: string): string {
+        if (!this.sprite || !this.globalNames.has(name)) return name;
+        const renamed = `${this.sprite.name}_${name}`;
+        this.renamed.set(name, renamed);
+        return renamed;
     }
 
     private depthOf(list: string): number {

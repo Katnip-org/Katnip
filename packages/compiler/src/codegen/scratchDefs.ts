@@ -149,3 +149,25 @@ export const opcodeSlots: Record<string, Slot[]> = {
     pen_setPenSizeTo: [input("SIZE", 4)],
     pen_changePenSizeBy: [input("SIZE", 4)],
 };
+
+/**
+ * Opcodes that report a boolean, so their block is hexagonal.
+ * A boolean input only accepts these shapes; anything round has to be compared against "true" first, 
+ * or the editor rejects the connection outright.
+ */
+export const booleanOpcodes = new Set([
+    "operator_gt",
+    "operator_lt",
+    "operator_equals",
+    "operator_and",
+    "operator_or",
+    "operator_not",
+    "operator_contains",
+    "data_listcontainsitem",
+    "sensing_touchingobject",
+    "sensing_touchingcolor",
+    "sensing_coloristouchingcolor",
+    "sensing_keypressed",
+    "sensing_mousedown",
+    "sensing_online",
+]);

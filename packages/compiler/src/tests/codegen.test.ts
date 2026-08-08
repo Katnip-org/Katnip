@@ -7,6 +7,7 @@ import { IRGenerator } from "../ir/IRGenerator.js";
 import { SB3Generator } from "../codegen/SB3Generator.js";
 import { packSb3 } from "../codegen/pack.js";
 import { isBlock, type Block, type Sb3Project } from "../codegen/SB3TypeDefs.js";
+import { booleanOpcodes } from "../codegen/scratchDefs.js";
 
 function build(source: string): Sb3Project {
     const result = compile(source, { stdlib: true });
@@ -157,9 +158,15 @@ test("a sprite local shadows a global only inside that sprite", () => {
     const project = build(dense);
     const [stage, cat, dog] = project.targets;
 
+    // Scratch resolves stage and sprite names together, so a local keeping the global's
+    // name would be discarded on load. It is renamed instead, and the shadowing still holds.
     const globalID = Object.entries(stage!.variables).find(([, v]) => v[0] === "tally")![0];
-    const catID = Object.entries(cat!.variables).find(([, v]) => v[0] === "tally")![0];
+    const catID = Object.entries(cat!.variables).find(([, v]) => v[0] === "Cat_tally")![0];
     assert.notEqual(catID, globalID, "the sprite local should get its own id");
+    assert(
+        !Object.values(cat!.variables).some(([name]) => name === "tally"),
+        "a sprite local must not reuse a global's name",
+    );
 
     const reads = (target: typeof cat, id: string) =>
         Object.values(target!.blocks)
@@ -205,4 +212,45 @@ test("declared lists reach target.lists with their literal contents", () => {
     assert.deepEqual(byName.cfg_keys, ["a"]);
     assert.deepEqual(byName.cfg_vals, [3]);
     assert(!Object.values(stage.variables).some(([name]) => name === "scores" || name === "cfg"));
+});
+
+test("a boolean slot never receives a round reporter", () => {
+    // `flag` is a bool variable and `n > 0` is already hexagonal: only the first needs wrapping.
+    const blocks = blocksOf(build(`
+        proc want(loud: bool) -> void { if (loud) { looks.say("y"); } }
+        sprite Cat {
+            private flag: bool = true;
+            events.onFlag() { want(flag); want(1 > 0); if (flag) { looks.say("x"); } }
+        }`));
+
+    const calls = Object.values(blocks).filter((b) => b.opcode === "procedures_call");
+    assert.equal(calls.length, 2);
+
+    for (const call of calls) {
+        const [argId] = JSON.parse((call.mutation as { argumentids: string }).argumentids);
+        const input = call.inputs[argId]!;
+        const inner = blocks[input[1] as string]!;
+        assert(
+            booleanOpcodes.has(inner.opcode),
+            `boolean parameter got ${inner.opcode}, which is not hexagonal`,
+        );
+    }
+
+    // The `if` condition is a boolean slot too, so the bare variable is wrapped there as well.
+    const branch = Object.values(blocks).find((b) => b.opcode === "control_if")!;
+    assert.equal(blocks[branch.inputs.CONDITION![1] as string]!.opcode, "operator_equals");
+});
+
+test("a for loop matches the shape the editor serializes control_for_each with", () => {
+    const blocks = blocksOf(build(`sprite Cat { events.onFlag() { for (i, 3) { looks.say("hi"); } } }`));
+    const [loopId, loop] = find(blocks, "control_for_each")!;
+
+    // The counter binds through a VARIABLE field, and VALUE carries a text shadow.
+    assert.equal(loop.fields.VARIABLE![0], "i");
+    assert(loop.fields.VARIABLE![1], "the counter must resolve to a declared variable");
+    assert.deepEqual(loop.inputs.VALUE, [1, [10, "3"]]);
+
+    const [sayId, say] = find(blocks, "looks_say")!;
+    assert.deepEqual(loop.inputs.SUBSTACK, [2, sayId]);
+    assert.equal(say.parent, loopId);
 });

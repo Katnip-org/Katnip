@@ -18,7 +18,7 @@ import {
     type Target,
     type Uid,
 } from "./SB3TypeDefs.js";
-import { opcodeSlots, type ShadowPrimitiveType } from "./scratchDefs.js";
+import { booleanOpcodes, opcodeSlots, type ShadowPrimitiveType } from "./scratchDefs.js";
 
 interface ProcSignature {
     proccode: string;
@@ -36,6 +36,16 @@ const boolLit = (value: string | number | boolean): IRExpr => ({
         { kind: "lit", value: value ? "true" : "false" },
         { kind: "lit", value: value ? "true" : "" },
     ],
+});
+
+/**
+ * Wraps a round reporter so it fits a hexagonal slot. Katnip stores a bool as the string
+ * Scratch itself reports, so comparing against "true" round-trips the value unchanged.
+ */
+const boolCast = (expr: IRExpr): IRExpr => ({
+    kind: "op",
+    opcode: "operator_equals",
+    inputs: [expr, { kind: "lit", value: "true" }],
 });
 
 const stackItem = (ref: Extract<IRExpr, { kind: "stackref" }>): IRExpr => {
@@ -313,7 +323,8 @@ export class SB3Generator {
                 if (!varID) throw new Error(`undeclared variable '${stmt.iter}'`);
 
                 block.fields.VARIABLE = [stmt.iter, varID];
-                block.inputs.VALUE = this.input(stmt.times, blocks, id, 6);
+                // The editor serializes this shadow as text, so match it rather than a number.
+                block.inputs.VALUE = this.input(stmt.times, blocks, id, 10);
                 this.substack(block, "SUBSTACK", stmt.body, blocks, id);
                 return id;
             }
@@ -434,6 +445,10 @@ export class SB3Generator {
     private input(expr: IRExpr, blocks: BlockMap, parent: BlockId, prim?: ShadowPrimitiveType): Input {
         const shadow = prim ? ([prim, ""] as Primitive) : null;
 
+        // No prim means a boolean slot, which is hexagonal and rejects a round reporter.
+        if (!prim && expr.kind !== "lit" && !this.isBoolShaped(expr))
+            return this.input(boolCast(expr), blocks, parent);
+
         switch (expr.kind) {
             case "lit":
                 if (!prim) return this.input(boolLit(expr.value), blocks, parent);
@@ -450,5 +465,12 @@ export class SB3Generator {
                 return shadow ? [3, id, shadow] : [2, id];
             }
         }
+    }
+
+    /** Whether an expression already emits a hexagonal block, so a boolean slot takes it as-is. */
+    private isBoolShaped(expr: IRExpr): boolean {
+        if (expr.kind === "op") return booleanOpcodes.has(expr.opcode);
+        if (expr.kind === "param") return this.params.get(expr.name) === paramType.BOOLEAN;
+        return false;
     }
 }
