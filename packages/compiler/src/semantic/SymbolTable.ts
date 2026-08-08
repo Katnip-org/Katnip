@@ -29,6 +29,8 @@ export interface SignatureMeta {
     opcode?: string;
     /** Whether this is a hat block, usable only as an event handler (@hat). */
     hat?: boolean;
+    /** Whether the proc runs without screen refresh (@warp). */
+    warp?: boolean;
     /** Emission strategy (@lower), defaulted from opcode/return shape when absent. */
     lower?: LoweringKind;
     /** Binary operator this proc backs (@operator), e.g. "!&". Only meaningful with @lower = "builds". */

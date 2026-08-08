@@ -39,6 +39,7 @@ export interface IRProc {
     name: string;
     params: IRParam[];
     returns: ReturnMethod;
+    warp: boolean;
     strategy: "var" | "vstack" | null;
     vStackName: string | null;
     retVars: string[];

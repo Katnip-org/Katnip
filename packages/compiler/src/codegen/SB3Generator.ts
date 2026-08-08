@@ -9,18 +9,63 @@ import {
     type BlockId,
     type BlockMap,
     type Input,
+    type Primitive,
     type Sb3Project,
     type Sprite,
+    type StopMutation,
     type Target,
     type Uid,
 } from "./SB3TypeDefs.js";
+import { opcodeSlots, type ShadowPrimitiveType } from "./scratchDefs.js";
 
 interface ProcSignature {
     proccode: string;
     argumentids: string[];
+    types: paramType[];
+    warp: string;
 }
 
 const typeSpec = { [paramType.BOOLEAN]: "%b", [paramType.STRING]: "%s", [paramType.NUMBER]: "%n" };
+
+const boolLit = (value: string | number | boolean): IRExpr => ({
+    kind: "op",
+    opcode: "operator_equals",
+    inputs: [
+        { kind: "lit", value: value ? "true" : "false" },
+        { kind: "lit", value: value ? "true" : "" },
+    ],
+});
+
+const stackItem = (ref: Extract<IRExpr, { kind: "stackref" }>): IRExpr => {
+    const list: IRExpr = { kind: "var", name: ref.list };
+    const index: IRExpr =
+        ref.depth === 0
+            ? { kind: "lit", value: "last" }
+            : {
+                  kind: "op",
+                  opcode: "operator_subtract",
+                  inputs: [
+                      { kind: "op", opcode: "data_lengthoflist", inputs: [list] },
+                      { kind: "lit", value: ref.depth },
+                  ],
+              };
+    return { kind: "op", opcode: "data_itemoflist", inputs: [list, index] };
+};
+
+const defaultBroadcast = "message1";
+const topLevelGap = 400;
+
+const argPrim = (type: paramType): ShadowPrimitiveType | undefined => {
+    if (type === paramType.BOOLEAN) return undefined;
+    if (type === paramType.NUMBER) return 4;
+    return 10;
+};
+
+const stopMutation = (option: IRExpr): StopMutation => {
+    if (option.kind !== "lit") throw new Error("control_stop needs a literal option");
+    return { tagName: "mutation", children: [], hasnext: String(option.value === "other scripts in sprite") };
+};
+
 const reporterOpcode = (type: paramType) =>
     type === paramType.BOOLEAN ? "argument_reporter_boolean" : "argument_reporter_string_number";
 
@@ -34,27 +79,36 @@ export class SB3Generator {
         broadcast: 0,
     }
 
-    private varIds = new Map<string, Uid>();
-    private listIds = new Map<string, Uid>();
+    private varIDs = new Map<string, Uid>();
+    private listIDs = new Map<string, Uid>();
     private procSigs = new Map<string, ProcSignature>();
+    private broadcastIDs = new Map<string, Uid>();
+    private params = new Map<string, paramType>();
+    private topY = 0;
 
     constructor() {}
 
     generate(ir: IRProgram): Sb3Project {
         this.sb3 = minimalProject();
-        this.varIds.clear();
-        this.listIds.clear();
+        this.varIDs.clear();
+        this.listIDs.clear();
         this.procSigs.clear();
+        this.broadcastIDs.clear();
 
         const stage = minimalStage();
         this.sb3.targets.push(stage);
         this.declare(stage, ir.variables, ir.lists);
+
+        // Every signature up front, so a call emitted before its definition still resolves.
+        for (const sprite of ir.sprites) for (const proc of sprite.procs.values()) this.signature(proc);
+        for (const proc of ir.procs.values()) this.signature(proc);
 
         let idx = 1;
         for (const ir_sprite of ir.sprites) {
             const sprite: Sprite = minimalSprite(ir_sprite.name, idx);
             this.sb3.targets.push(sprite);
             this.declare(sprite, ir_sprite.variables, ir_sprite.lists);
+            this.topY = 0;
             sprite.blocks = this.processBlocks(ir_sprite.scripts);
 
             for (const proc of [...ir.procs.values(), ...ir_sprite.procs.values()])
@@ -66,7 +120,7 @@ export class SB3Generator {
         return this.sb3;
     }
 
-    private generateId(type: keyof typeof this.IDStore): string {
+    private generateID(type: keyof typeof this.IDStore): string {
         const id = this.IDStore[type];
         this.IDStore[type]++;
         return `${type}${id}`;
@@ -75,19 +129,19 @@ export class SB3Generator {
     /** Registers each name on the target and remembers its id, so references can resolve to it. */
     private declare(target: Target, variables: string[], lists: string[]): void {
         for (const name of variables) {
-            const id = this.generateId("var");
+            const id = this.generateID("var");
             target.variables[id] = [name, 0];
-            this.varIds.set(name, id);
+            this.varIDs.set(name, id);
         }
         for (const name of lists) {
-            const id = this.generateId("list");
+            const id = this.generateID("list");
             target.lists[id] = [name, []];
-            this.listIds.set(name, id);
+            this.listIDs.set(name, id);
         }
     }
 
     private newBlock(opcode: string, blocks: BlockMap, parent: BlockId | null, overrides: Partial<Block> = {}): [BlockId, Block] {
-        const id = this.generateId("block");
+        const id = this.generateID("block");
         blocks[id] = {
             opcode,
             next: null,
@@ -103,15 +157,17 @@ export class SB3Generator {
 
     private emitProc(proc: IRProc, blocks: BlockMap): void {
         const sig = this.signature(proc);
+        this.params = new Map(proc.params.map((p) => [p.name, p.type]));
 
-        const [defId, def] = this.newBlock("procedures_definition", blocks, null, { topLevel: true, x: 0, y: 0 });
-        const [protoId, proto] = this.newBlock("procedures_prototype", blocks, defId, { shadow: true });
-        def.inputs.custom_block = [1, protoId];
+        const [defID, def] = this.newBlock("procedures_definition", blocks, null, { topLevel: true, x: 0, y: this.topY });
+        this.topY += topLevelGap;
+        const [protoID, proto] = this.newBlock("procedures_prototype", blocks, defID, { shadow: true });
+        def.inputs.custom_block = [1, protoID];
 
         proc.params.forEach((param, i) => {
-            const [reporterId, reporter] = this.newBlock(reporterOpcode(param.type), blocks, protoId, { shadow: true });
+            const [reporterID, reporter] = this.newBlock(reporterOpcode(param.type), blocks, protoID, { shadow: true });
             reporter.fields.VALUE = [param.name, null];
-            proto.inputs[sig.argumentids[i]!] = [1, reporterId];
+            proto.inputs[sig.argumentids[i]!] = [1, reporterID];
         });
 
         proto.mutation = {
@@ -121,12 +177,10 @@ export class SB3Generator {
             argumentids: JSON.stringify(sig.argumentids),
             argumentnames: JSON.stringify(proc.params.map((p) => p.name)),
             argumentdefaults: JSON.stringify(proc.params.map((p) => (p.type === paramType.BOOLEAN ? false : ""))),
-            // TODO: pull warp from the proc instead of defaulting on.
-            // Must stay "true"/"false": the sb3 schema rejects anything else.
-            warp: "true",
+            warp: sig.warp,
         };
 
-        // TODO: def.next = this.emitStack(proc.body, blocks, defId);
+        def.next = this.emitStack(proc.body, blocks, defID);
     }
 
     private signature(proc: IRProc): ProcSignature {
@@ -134,31 +188,114 @@ export class SB3Generator {
         if (!sig) {
             sig = {
                 proccode: [proc.name, ...proc.params.map((p) => `${p.name} ${typeSpec[p.type]}`)].join(" "),
-                argumentids: proc.params.map(() => this.generateId("var")),
+                argumentids: proc.params.map(() => this.generateID("var")),
+                types: proc.params.map((p) => p.type),
+                // The sb3 schema rejects anything but "true"/"false".
+                warp: String(proc.warp),
             };
             this.procSigs.set(proc.name, sig);
         }
         return sig;
     }
 
-    // --- TODO: everything below ---
-
     /** One top-level hat block per script; `applySlots` routes the hat args, `emitStack` the body. */
     private processBlocks(scripts: IRScript[]): BlockMap {
-        const blockMap: BlockMap = {};
-        
-        void [this.emitStack, this.emitStmt, this.emitExpr, this.applySlots, this.input]; // TODO: remove this stub.
-        return blockMap;
+        const blocks: BlockMap = {};
+        this.params.clear(); // A script has no params, so an argument reporter here is a bug.
+
+        for (const script of scripts) {
+            const [id, hat] = this.newBlock(script.hatOpcode, blocks, null, { topLevel: true, x: 0, y: this.topY });
+            this.topY += topLevelGap;
+            this.applySlots(hat, id, blocks, script.hatOpcode, script.args);
+            hat.next = this.emitStack(script.body, blocks, id);
+        }
+        return blocks;
     }
 
     /** Emits a statement list as a linked stack, returning the first block id (null when empty). */
     private emitStack(stmts: IRStmt[], blocks: BlockMap, parent: BlockId | null): BlockId | null {
-        throw new Error("TODO: chain each emitStmt through next/parent");
+        let first: BlockId | null = null;
+        let prev: BlockId | null = null;
+
+        for (const stmt of stmts) {
+            const id = this.emitStmt(stmt, blocks, prev ?? parent);
+            if (prev) (blocks[prev] as Block).next = id;
+            else first = id;
+            prev = id;
+        }
+        return first;
+    }
+
+    /** Attaches a branch as a SUBSTACK. An empty branch has no input at all, the way sb3 stores it. */
+    private substack(block: Block, name: string, body: IRStmt[], blocks: BlockMap, parent: BlockId): void {
+        const first = this.emitStack(body, blocks, parent);
+        if (first) block.inputs[name] = [2, first];
     }
 
     /** One IRStmt -> one block. */
     private emitStmt(stmt: IRStmt, blocks: BlockMap, parent: BlockId | null): BlockId {
-        throw new Error(`TODO: emit ${stmt.kind}`);
+        switch (stmt.kind) {
+            case "raw": {
+                const [id, block] = this.newBlock(stmt.opcode, blocks, parent);
+                this.applySlots(block, id, blocks, stmt.opcode, stmt.inputs);
+                if (stmt.opcode === "control_stop") block.mutation = stopMutation(stmt.inputs[0]!);
+                return id;
+            }
+            case "call": {
+                const sig = this.procSigs.get(stmt.proc);
+                if (!sig) throw new Error(`call to unknown proc '${stmt.proc}'`);
+
+                const [id, block] = this.newBlock("procedures_call", blocks, parent);
+                stmt.args.forEach((arg, i) => {
+                    block.inputs[sig.argumentids[i]!] = this.input(arg, blocks, id, argPrim(sig.types[i]!));
+                });
+                block.mutation = {
+                    tagName: "mutation",
+                    children: [],
+                    proccode: sig.proccode,
+                    argumentids: JSON.stringify(sig.argumentids),
+                    warp: sig.warp,
+                };
+                return id;
+            }
+            case "if": {
+                let opcode = "control_if";
+                if (stmt.else.length > 0) opcode = "control_if_else";
+
+                const [id, block] = this.newBlock(opcode, blocks, parent);
+                block.inputs.CONDITION = this.input(stmt.cond, blocks, id);
+                this.substack(block, "SUBSTACK", stmt.then, blocks, id);
+                this.substack(block, "SUBSTACK2", stmt.else, blocks, id);
+                return id;
+            }
+            case "while": {
+                const [id, block] = this.newBlock("control_while", blocks, parent);
+                block.inputs.CONDITION = this.input(stmt.cond, blocks, id);
+                this.substack(block, "SUBSTACK", stmt.body, blocks, id);
+                return id;
+            }
+            case "repeat": {
+                const [id, block] = this.newBlock("control_repeat", blocks, parent);
+                block.inputs.TIMES = this.input(stmt.times, blocks, id, 6);
+                this.substack(block, "SUBSTACK", stmt.body, blocks, id);
+                return id;
+            }
+            case "for": {
+                const [id, block] = this.newBlock("control_for_each", blocks, parent);
+                const varID = this.varIDs.get(stmt.iter);
+                if (!varID) throw new Error(`undeclared variable '${stmt.iter}'`);
+
+                block.fields.VARIABLE = [stmt.iter, varID];
+                block.inputs.VALUE = this.input(stmt.times, blocks, id, 6);
+                this.substack(block, "SUBSTACK", stmt.body, blocks, id);
+                return id;
+            }
+            case "forever": {
+                const [id, block] = this.newBlock("control_forever", blocks, parent);
+                this.substack(block, "SUBSTACK", stmt.body, blocks, id);
+                return id;
+            }
+        }
     }
 
     /**
@@ -167,16 +304,124 @@ export class SB3Generator {
      * `stackref` becomes an item-of-list over the vstack.
      */
     private emitExpr(expr: IRExpr, blocks: BlockMap, parent: BlockId): BlockId {
-        throw new Error(`TODO: emit ${expr.kind}`);
+        switch (expr.kind) {
+            case "op": {
+                const [id, block] = this.newBlock(expr.opcode, blocks, parent);
+                this.applySlots(block, id, blocks, expr.opcode, expr.inputs);
+                return id;
+            }
+            case "param": {
+                const type = this.params.get(expr.name);
+                if (type === undefined) throw new Error(`'${expr.name}' is not a param of the current proc`);
+                const [id, block] = this.newBlock(reporterOpcode(type), blocks, parent);
+                block.fields.VALUE = [expr.name, null];
+                return id;
+            }
+            case "stackref":
+                return this.emitExpr(stackItem(expr), blocks, parent);
+            // `input` compresses a var to a [12, name, id] primitive, this is the unprocessed form.
+            case "var": {
+                const varID = this.varIDs.get(expr.name);
+                if (!varID) throw new Error(`undeclared variable '${expr.name}'`);
+                const [id, block] = this.newBlock("data_variable", blocks, parent);
+                block.fields.VARIABLE = [expr.name, varID];
+                return id;
+            }
+            case "lit":
+                throw new Error("lit has no block form");
+        }
     }
 
     /** Routes positional IR inputs into the slots opcodeSlots declares for the opcode. */
     private applySlots(block: Block, id: BlockId, blocks: BlockMap, opcode: string, inputs: IRExpr[]): void {
-        throw new Error(`TODO: route inputs for ${opcode}`);
+        const slots = opcodeSlots[opcode];
+        if (!slots) throw new Error(`no slot metadata for '${opcode}'`);
+        if (inputs.length !== slots.length)
+            throw new Error(`${opcode} takes ${slots.length} inputs, got ${inputs.length}`);
+
+        slots.forEach((slot, i) => {
+            const expr = inputs[i]!;
+            switch (slot.kind) {
+                case "input":
+                    block.inputs[slot.name] = this.input(expr, blocks, id, slot.prim);
+                    break;
+                case "field": {
+                    if (!slot.ref) {
+                        if (expr.kind !== "lit")
+                            throw new Error(`${opcode}.${slot.name} needs a constant, got ${expr.kind}`);
+                        block.fields[slot.name] = [String(expr.value), null];
+                        break;
+                    }
+                    
+                    const name = expr.kind === "var" ? expr.name : expr.kind === "lit" ? String(expr.value) : null;
+                    if (name === null)
+                        throw new Error(`${opcode}.${slot.name} needs a ${slot.ref} name, got ${expr.kind}`);
+
+                    let refID;
+                    if (slot.ref === "broadcast") refID = this.broadcastID(name);
+                    else if (slot.ref === "list") refID = this.listIDs.get(name);
+                    else refID = this.varIDs.get(name);
+
+                    if (!refID) throw new Error(`undeclared ${slot.ref} '${name}'`);
+                    block.fields[slot.name] = [name, refID];
+                    break;
+                }
+                case "menu": {
+                    const [menuID, menu] = this.newBlock(slot.menuOpcode, blocks, id, { shadow: true });
+                    if (expr.kind === "lit") {
+                        menu.fields[slot.menuField] = [String(expr.value), null];
+                        block.inputs[slot.name] = [1, menuID];
+                    } else {
+                        menu.fields[slot.menuField] = [slot.default, null];
+                        block.inputs[slot.name] = [3, this.emitExpr(expr, blocks, id), menuID];
+                    }
+                    break;
+                }
+                case "broadcast": {
+                    if (expr.kind === "lit") {
+                        const name = String(expr.value);
+                        block.inputs[slot.name] = [1, [11, name, this.broadcastID(name)]];
+                        break;
+                    }
+                    // The shadow under a computed name still has to name a real broadcast.
+                    const shadow: Primitive = [11, defaultBroadcast, this.broadcastID(defaultBroadcast)];
+                    block.inputs[slot.name] = [3, this.emitExpr(expr, blocks, id), shadow];
+                    break;
+                }
+            }
+        });
+    }
+
+    /** Broadcasts are registered on the stage, whichever target uses them. */
+    private broadcastID(name: string): Uid {
+        let id = this.broadcastIDs.get(name);
+        if (!id) {
+            id = this.generateID("broadcast");
+            this.broadcastIDs.set(name, id);
+            this.sb3.targets[0]!.broadcasts[id] = name;
+        }
+        return id;
     }
 
     /** Wraps an expression as an sb3 input value: [1, prim] for literals, [3, value, shadow] otherwise. */
-    private input(expr: IRExpr, blocks: BlockMap, parent: BlockId, prim?: number): Input {
-        throw new Error("TODO: serialize input");
+    private input(expr: IRExpr, blocks: BlockMap, parent: BlockId, prim?: ShadowPrimitiveType): Input {
+        const shadow = prim ? ([prim, ""] as Primitive) : null;
+
+        switch (expr.kind) {
+            case "lit":
+                if (!prim) return this.input(boolLit(expr.value), blocks, parent);
+                return [1, [prim, String(expr.value)] as Primitive];
+            case "var": {
+                const id = this.varIDs.get(expr.name);
+                if (!id) throw new Error(`undeclared variable '${expr.name}'`);
+                return [3, [12, expr.name, id], shadow];
+            }
+            case "op":
+            case "param":
+            case "stackref": {
+                const id = this.emitExpr(expr, blocks, parent);
+                return shadow ? [3, id, shadow] : [2, id];
+            }
+        }
     }
 }

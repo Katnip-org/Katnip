@@ -404,6 +404,7 @@ export class SemanticAnalyzer {
             if (decorator.name === "opcode" && typeof value === "string") meta.opcode = value;
             if (decorator.name === "operator" && typeof value === "string") meta.operator = value;
             if (decorator.name === "hat") meta.hat = value === "true" || value === true;
+            if (decorator.name === "warp") meta.warp = value === "true" || value === true;
             if (decorator.name === "lower") {
                 if (typeof value === "string" && (loweringKinds as string[]).includes(value)) {
                     meta.lower = value as LoweringKind;

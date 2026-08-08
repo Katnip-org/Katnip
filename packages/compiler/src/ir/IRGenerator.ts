@@ -205,6 +205,7 @@ export class IRGenerator {
             name: plan.mangled,
             params,
             returns: plan.returns,
+            warp: sig.meta?.warp ?? true,
             strategy: plan.strategy,
             vStackName: plan.vStackName,
             retVars: plan.retVars,
