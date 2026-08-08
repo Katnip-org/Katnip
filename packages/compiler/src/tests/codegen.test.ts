@@ -23,6 +23,27 @@ function blocksOf(project: Sb3Project, target = 1): Record<string, Block> {
 const find = (blocks: Record<string, Block>, opcode: string) =>
     Object.entries(blocks).find(([, b]) => b.opcode === opcode);
 
+/** A program dense enough to reach every emitter: loops, branches, calls, returns, an extension. */
+const dense = `
+public tally: num = 0;
+proc bump(n: num, loud: bool) -> num {
+    if (loud) { looks.say("hi"); } else { looks.think("shh"); }
+    return n + 1;
+}
+sprite Cat {
+    private tally: num = 5;
+    proc pounce(power: num) -> void { motion.forward(power); }
+    events.onFlag() {
+        pen.down();
+        for (i, 3) { tally = bump(tally, true); }
+        while (tally > 2) { tally = tally - 1; }
+        pounce(tally);
+    }
+}
+sprite Dog {
+    events.onFlag() { tally = bump(1, false); }
+}`;
+
 test("proc definition emits a prototype, mutation and argument reporters", () => {
     const blocks = blocksOf(build(`sprite Cat { proc greet(who: str, times: num) -> void { looks.say(who); } }`));
 
@@ -78,6 +99,85 @@ test("packSb3 zips project.json and the default costume", () => {
     const md5 = createHash("md5").update(entries[costume.md5ext!]!).digest("hex");
     assert.equal(`${md5}.svg`, costume.md5ext);
     assert.equal(md5, costume.assetId);
+});
+
+test("every id a block references resolves", () => {
+    const project = build(dense);
+    const stage = project.targets[0]!;
+
+    for (const target of project.targets) {
+        // Globals live on the stage but are named from every target.
+        const named = new Set([
+            ...Object.keys(target.variables), ...Object.keys(target.lists), ...Object.keys(target.broadcasts),
+            ...Object.keys(stage.variables), ...Object.keys(stage.lists), ...Object.keys(stage.broadcasts),
+        ]);
+        const blocks = target.blocks;
+        const protos = new Set(
+            Object.values(blocks)
+                .filter(isBlock)
+                .filter((b) => b.opcode === "procedures_prototype")
+                .map((b) => (b.mutation as { proccode: string }).proccode),
+        );
+
+        for (const [id, block] of Object.entries(blocks)) {
+            if (!isBlock(block)) continue;
+            const at = `${target.name}/${id} ${block.opcode}`;
+
+            if (block.next) assert(blocks[block.next], `${at}: next -> missing ${block.next}`);
+            if (block.parent) assert(blocks[block.parent], `${at}: parent -> missing ${block.parent}`);
+            assert.equal(block.topLevel, block.parent === null, `${at}: topLevel disagrees with parent`);
+
+            for (const [slot, input] of Object.entries(block.inputs))
+                for (const value of input.slice(1)) {
+                    if (typeof value === "string") assert(blocks[value], `${at}.${slot} -> missing block ${value}`);
+                    // Variable, list and broadcast primitives carry a registry id in slot 2.
+                    else if (Array.isArray(value) && value.length > 2)
+                        assert(named.has(value[2] as string), `${at}.${slot} -> unregistered ${value[2]}`);
+                }
+
+            for (const [slot, field] of Object.entries(block.fields))
+                if (field[1]) assert(named.has(field[1]), `${at}.${slot} -> unregistered ${field[1]}`);
+
+            if (block.opcode === "procedures_call") {
+                const call = block.mutation as { proccode: string; warp: string };
+                assert(protos.has(call.proccode), `${at}: no prototype for "${call.proccode}"`);
+            }
+        }
+    }
+});
+
+test("a sprite local shadows a global only inside that sprite", () => {
+    const project = build(dense);
+    const [stage, cat, dog] = project.targets;
+
+    const globalID = Object.entries(stage!.variables).find(([, v]) => v[0] === "tally")![0];
+    const catID = Object.entries(cat!.variables).find(([, v]) => v[0] === "tally")![0];
+    assert.notEqual(catID, globalID, "the sprite local should get its own id");
+
+    const reads = (target: typeof cat, id: string) =>
+        Object.values(target!.blocks)
+            .filter(isBlock)
+            .some((b) => Object.values(b.fields).some((f) => f[1] === id));
+
+    assert(reads(cat, catID), "Cat should reach its own tally");
+    assert(!reads(cat, globalID), "Cat should not reach the global tally");
+    assert(reads(dog, globalID), "Dog has no local, so it should reach the global");
+});
+
+test("extensions are declared for the blocks actually emitted", () => {
+    assert.deepEqual(build(dense).extensions, ["pen"]);
+    assert.deepEqual(build(`sprite Cat { events.onFlag() { looks.say("hi"); } }`).extensions, []);
+});
+
+test("a cap block ends its stack", () => {
+    const blocks = blocksOf(build(`
+        proc early(n: num) -> num { return n; looks.say("dead"); }
+        sprite Cat { events.onFlag() { temp a: num = early(1); } }`));
+
+    const [, stop] = find(blocks, "control_stop")!;
+    assert.equal(stop.next, null);
+    assert.equal((stop.mutation as { hasnext: string }).hasnext, "false");
+    assert(!find(blocks, "looks_say"), "statements after a return should not be emitted");
 });
 
 test("ids are unique across the var, list and block namespaces", () => {

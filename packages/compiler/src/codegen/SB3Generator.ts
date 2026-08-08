@@ -9,6 +9,7 @@ import {
     type BlockId,
     type BlockMap,
     type Input,
+    type KnownExtension,
     type Primitive,
     type Sb3Project,
     type Sprite,
@@ -55,6 +56,17 @@ const stackItem = (ref: Extract<IRExpr, { kind: "stackref" }>): IRExpr => {
 const defaultBroadcast = "message1";
 const topLevelGap = 400;
 
+/** Opcode prefixes Scratch will not load unless the project declares them. */
+const extensionIDs = new Set<KnownExtension>([
+    "pen", "music", "text2speech", "translate", "videoSensing",
+    "makeymakey", "microbit", "ev3", "boost", "wedo2", "gdxfor",
+]);
+
+const isCap = (block: Block): boolean => {
+    if (block.opcode === "control_forever" || block.opcode === "control_delete_this_clone") return true;
+    return block.opcode === "control_stop" && (block.mutation as StopMutation).hasnext === "false";
+};
+
 const argPrim = (type: paramType): ShadowPrimitiveType | undefined => {
     if (type === paramType.BOOLEAN) return undefined;
     if (type === paramType.NUMBER) return 4;
@@ -84,6 +96,7 @@ export class SB3Generator {
     private procSigs = new Map<string, ProcSignature>();
     private broadcastIDs = new Map<string, Uid>();
     private params = new Map<string, paramType>();
+    private used = new Set<KnownExtension>();
     private topY = 0;
 
     constructor() {}
@@ -95,9 +108,15 @@ export class SB3Generator {
         this.procSigs.clear();
         this.broadcastIDs.clear();
 
+        this.used.clear();
+
         const stage = minimalStage();
         this.sb3.targets.push(stage);
         this.declare(stage, ir.variables, ir.lists);
+
+        // Globals stay visible from every sprite; a sprite-local of the same name shadows them.
+        const globalVars = new Map(this.varIDs);
+        const globalLists = new Map(this.listIDs);
 
         // Every signature up front, so a call emitted before its definition still resolves.
         for (const sprite of ir.sprites) for (const proc of sprite.procs.values()) this.signature(proc);
@@ -107,6 +126,8 @@ export class SB3Generator {
         for (const ir_sprite of ir.sprites) {
             const sprite: Sprite = minimalSprite(ir_sprite.name, idx);
             this.sb3.targets.push(sprite);
+            this.varIDs = new Map(globalVars);
+            this.listIDs = new Map(globalLists);
             this.declare(sprite, ir_sprite.variables, ir_sprite.lists);
             this.topY = 0;
             sprite.blocks = this.processBlocks(ir_sprite.scripts);
@@ -117,6 +138,7 @@ export class SB3Generator {
             idx++;
         }
 
+        this.sb3.extensions = [...this.used];
         return this.sb3;
     }
 
@@ -142,6 +164,9 @@ export class SB3Generator {
 
     private newBlock(opcode: string, blocks: BlockMap, parent: BlockId | null, overrides: Partial<Block> = {}): [BlockId, Block] {
         const id = this.generateID("block");
+        const prefix = opcode.split("_")[0] as KnownExtension;
+        if (extensionIDs.has(prefix)) this.used.add(prefix);
+
         blocks[id] = {
             opcode,
             next: null,
@@ -222,6 +247,7 @@ export class SB3Generator {
             if (prev) (blocks[prev] as Block).next = id;
             else first = id;
             prev = id;
+            if (isCap(blocks[id] as Block)) break;
         }
         return first;
     }
