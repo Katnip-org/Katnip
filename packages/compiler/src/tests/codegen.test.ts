@@ -241,6 +241,63 @@ test("a boolean slot never receives a round reporter", () => {
     assert.equal(blocks[branch.inputs.CONDITION![1] as string]!.opcode, "operator_equals");
 });
 
+test("a menu slot takes a shadow for a literal, and overlays a reporter for anything else", () => {
+    const project = build(`sprite Cat {
+        private where: str = "_mouse_";
+        events.onFlag() { motion.goTo("_random_"); motion.goTo(where); }
+    }`);
+    const blocks = blocksOf(project);
+    const [literal, computed] = Object.values(blocks).filter((b) => b.opcode === "motion_goto");
+
+    // A literal is written straight into the menu shadow, which is all Scratch shows.
+    const shadow = blocks[literal!.inputs.TO![1] as string]!;
+    assert.deepEqual(literal!.inputs.TO, [1, literal!.inputs.TO![1]]);
+    assert.equal(shadow.opcode, "motion_goto_menu");
+    assert.equal(shadow.shadow, true);
+    assert.deepEqual(shadow.fields.TO, ["_random_", null]);
+
+    // A computed value covers the menu instead: [3, reporter, shadow], with the shadow
+    // still holding a valid default, since Scratch reads it back when the reporter is pulled out.
+    const [tag, reporter, under] = computed!.inputs.TO!;
+    assert.equal(tag, 3);
+    assert.equal(blocks[reporter as string]!.opcode, "data_variable");
+    assert.deepEqual(blocks[under as string]!.fields.TO, ["_random_", null]);
+});
+
+test("broadcasts are registered on the stage and referenced as primitives", () => {
+    const project = build(`sprite Cat {
+        private topic: str = "later";
+        events.onFlag() { events.broadcast("tally"); events.broadcast(topic); }
+    }`);
+    const blocks = blocksOf(project);
+    const names = Object.values(project.targets[0]!.broadcasts);
+    const [literal, computed] = Object.values(blocks).filter((b) => b.opcode === "event_broadcast");
+
+    assert(names.includes("tally"), `"tally" should be registered, got ${names}`);
+
+    const [tag, prim] = literal!.inputs.BROADCAST_INPUT!;
+    assert.equal(tag, 1);
+    assert.deepEqual((prim as [number, string, string]).slice(0, 2), [11, "tally"]);
+
+    // A computed name still needs a real broadcast under it, or the project will not load.
+    const [computedTag, reporter, under] = computed!.inputs.BROADCAST_INPUT!;
+    assert.equal(computedTag, 3);
+    assert.equal(blocks[reporter as string]!.opcode, "data_variable");
+    assert(names.includes((under as [number, string, string])[1]), "the fallback shadow must name a registered broadcast");
+});
+
+test("stopping other scripts is not a cap block, so the stack continues", () => {
+    const blocks = blocksOf(build(`sprite Cat {
+        events.onFlag() { stop(StopType.OTHER_SCRIPTS_IN_SPRITE); looks.say("still here"); }
+    }`));
+    const [, stop] = find(blocks, "control_stop")!;
+
+    // Scratch decides the block's shape from this mutation alone: "true" keeps the notch.
+    assert.equal((stop.mutation as { hasnext: string }).hasnext, "true");
+    assert.deepEqual(stop.fields.STOP_OPTION, ["other scripts in sprite", null]);
+    assert.equal(blocks[stop.next!]!.opcode, "looks_say");
+});
+
 test("a for loop matches the shape the editor serializes control_for_each with", () => {
     const blocks = blocksOf(build(`sprite Cat { events.onFlag() { for (i, 3) { looks.say("hi"); } } }`));
     const [loopId, loop] = find(blocks, "control_for_each")!;

@@ -116,3 +116,17 @@ test("carriage returns are stripped", () => {
     assert.deepEqual(types(tokens), ["Identifier", "Identifier", "<EOF>"]);
     assert.equal(tokens[1].start.line, 2);
 });
+
+test("the stream is terminated whatever state the source ends in", () => {
+    // Everything downstream stops at <EOF>; a stream without one walks off the end.
+    // Only the Start state emits it, so a source ending mid-comment or mid-string
+    // used to hand back an unterminated list, and the parser crashed on it.
+    for (const source of ["", "# trailing comment", "#< unterminated", `"unterminated`, "x = 1; # tail"]) {
+        const { tokens } = lex(source);
+        assert.equal(
+            types(tokens).at(-1),
+            "<EOF>",
+            `${JSON.stringify(source)} produced ${JSON.stringify(types(tokens))}`,
+        );
+    }
+});

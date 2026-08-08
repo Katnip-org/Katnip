@@ -105,6 +105,13 @@ export class Lexer {
                 );
             }
         }
+        
+        if (this.tokens.at(-1)?.token.type !== "<EOF>") {
+            this.buffer = "";
+            this.lineStart = this.line;
+            this.colStart = this.col;
+            this.emit("<EOF>");
+        }
 
         return this.tokens;
     }
