@@ -8,12 +8,14 @@
 import type {
     AST,
     BlockNode,
+    CallExpressionNode,
     ExpressionNode,
     ForStatementNode,
     ProcedureDeclarationNode,
     SpriteDeclarationNode,
     StatementNode,
     TypeNode,
+    VariableDeclarationNode,
 } from "../parser/AST-nodes.js";
 import type { SemanticAnalyzer } from "../semantic/SemanticAnalyzer.js";
 import type { ReturnMethod, Signature } from "../semantic/SymbolTable.js";
@@ -43,7 +45,7 @@ export class IRGenerator {
         procs: new Map(),
         sprites: [],
         variables: [],
-        lists: ["_GtempKeys", "_GtempVals"],
+        lists: new Map([["_GtempKeys", []], ["_GtempVals", []]]),
     };
 
     private sprite: IRSprite | null = null;
@@ -65,6 +67,12 @@ export class IRGenerator {
     /** Vstack slots pushed and not yet popped: one list name per slot, in push order. */
     private readonly pending: string[] = [];
 
+    /** Declared list/dict name => the sb3 list(s) backing it: [list], or [keys, vals] for a dict. */
+    private readonly listNames = new Map<string, string[]>();
+    /** Contents that need blocks: top-level lists, and the current sprite's lists. */
+    private readonly init: IRStmt[] = [];
+    private spriteInit: IRStmt[] = [];
+
     constructor(private analyzer: SemanticAnalyzer) {}
 
     generate(ast: AST): IRProgram {
@@ -75,7 +83,7 @@ export class IRGenerator {
                     this.lowerSprite(stmt);
                     break;
                 case "VariableDeclaration":
-                    this.program.variables.push(stmt.name); // TODO: unmangled; mangle once procs land
+                    this.declareMember(stmt);
                     break;
                 case "ProcedureDeclaration": {
                     const proc = this.lowerProc(stmt);
@@ -102,6 +110,14 @@ export class IRGenerator {
                     break;
             }
         }
+        // Scratch has no load hook, so list contents that need blocks are built by a green-flag script.
+        // It goes in the first sprite, ahead of that sprite's own scripts so its lists are ready for them.
+        if (this.init.length && this.program.sprites[0])
+            this.program.sprites[0].scripts.unshift({
+                hatOpcode: "event_whenflagclicked",
+                args: [],
+                body: this.init,
+            });
         return this.program;
     }
 
@@ -110,36 +126,105 @@ export class IRGenerator {
             name: node.name,
             scripts: [],
             variables: [],
-            lists: ["_tempKeys", "_tempVals"],
+            lists: new Map([["_tempKeys", []], ["_tempVals", []]]),
             procs: new Map(),
         };
         this.program.sprites.push(this.sprite);
+        this.spriteInit = [];
 
         for (const stmt of node.body.body) {
             switch (stmt.type) {
                 case "HandlerStatement": {
                     const out: IRStmt[] = [];
+                    const sig = this.analyzer.callResolutions.get(stmt.call);
                     this.sprite.scripts.push({
-                        hatOpcode: this.analyzer.callResolutions.get(stmt.call)?.meta?.opcode ?? "",
-                        args: stmt.call.arguments.map((a) =>
-                            this.lowerExpr(a as ExpressionNode, out),
-                        ), // TODO: NamedArgument, and hat args must be literals
+                        hatOpcode: sig?.meta?.opcode ?? "",
+                        // TODO: hat args must be literals
+                        args: sig ? this.callArgs(stmt.call, sig).map((arg) => this.lowerExpr(arg, out)) : [],
                         body: this.lowerBlock(stmt.body),
                     });
                     break;
                 }
                 case "VariableDeclaration":
-                    this.sprite.variables.push(stmt.name);
+                    this.declareMember(stmt);
                     break;
                 case "ProcedureDeclaration": {
                     const proc = this.lowerProc(stmt);
                     if (proc) this.sprite.procs.set(stmt.name, proc);
                     break;
                 }
-            }   
+            }
         }
 
+        if (this.spriteInit.length)
+            this.sprite.scripts.unshift({ hatOpcode: "event_whenflagclicked", args: [], body: this.spriteInit });
         this.sprite = null;
+    }
+
+    private declareMember(node: VariableDeclarationNode): void {
+        const target = this.sprite ?? this.program;
+        const kind =
+            node.varType?.type === "Type"
+                ? node.varType.typeName
+                : node.initializer && this.analyzer.exprTypes.get(node.initializer)?.kind;
+        const init = node.initializer;
+
+        if (kind !== "list" && kind !== "dict") {
+            target.variables.push(node.name); // TODO: unmangled; mangle once procs land
+            return;
+        }
+
+        const entries = init?.type === "DictExpression" ? init.entries : [];
+        const columns: [string, ExpressionNode[]][] =
+            kind === "list"
+                ? [[node.name, init?.type === "ListExpression" ? init.elements : []]]
+                : [
+                      [`${node.name}_keys`, entries.map((entry) => entry.key)],
+                      [`${node.name}_vals`, entries.map((entry) => entry.value)],
+                  ];
+        this.listNames.set(node.name, columns.map(([name]) => name));
+
+        const baked = columns.map(([, elements]) => literals(elements));
+        const runtime = baked.some((values) => values === null);
+
+        const out = this.sprite ? this.spriteInit : this.init;
+        const mark = this.pending.length;
+        columns.forEach(([name, elements], i) => {
+            target.lists.set(name, runtime ? [] : baked[i]!);
+            if (!runtime) return;
+
+            this.emit(out, { kind: "raw", opcode: "data_deletealloflist", inputs: [{ kind: "var", name }] });
+            for (const element of elements)
+                this.emit(out, {
+                    kind: "raw",
+                    opcode: "data_addtolist",
+                    inputs: [{ kind: "var", name }, this.lowerExpr(element, out)],
+                });
+        });
+        this.popTo(out, mark);
+    }
+
+
+    private listsOf(node: ExpressionNode): string[] {
+        const names = node.type === "Identifier" ? this.listNames.get(node.name) : undefined;
+        if (!names)
+            throw new Error(
+                `only a declared list or dict can be indexed, got ${node.type === "Identifier" ? `'${node.name}'` : node.type}`,
+            );
+        return names;
+    }
+
+    private callArgs(call: CallExpressionNode, sig: Signature): ExpressionNode[] {
+        const named = new Map<string, ExpressionNode>();
+        const positional: ExpressionNode[] = [];
+        for (const arg of call.arguments) {
+            if (arg.type === "NamedArgument") named.set(arg.name, arg.value);
+            else positional.push(arg);
+        }
+        if (sig.params[0]?.name === "self" && call.object.type === "MemberExpression")
+            positional.unshift(call.object.object);
+
+        return sig.params.map((param, i) => named.get(param.name) ?? positional[i] ?? param.default!);
     }
 
     private planReturns(): void {
@@ -183,7 +268,7 @@ export class IRGenerator {
         const plan = sig && this.plans.get(sig);
         if (!plan) return null;
 
-        if (plan.vStackName) (this.sprite ?? this.program).lists.push(plan.vStackName);
+        if (plan.vStackName) (this.sprite ?? this.program).lists.set(plan.vStackName, []);
         (this.sprite ?? this.program).variables.push(...plan.retVars);
 
         const params: IRParam[] = stmt.parameters.map((param) => ({
@@ -323,7 +408,59 @@ export class IRGenerator {
                 break;
             }
             case "VariableAssignment": {
-                if (node.left.type !== "Identifier") break; // TODO: IndexerAccess -> replaceitemoflist, member -> struct write
+                if (node.left.type === "IndexerAccess") {
+                    const lists = this.listsOf(node.left.object);
+                    const index = this.lowerExpr(node.left.index, out);
+                    const right = this.lowerExpr(node.right, out);
+                    const keys: IRExpr = { kind: "var", name: lists[0] };
+                    const vals: IRExpr = { kind: "var", name: lists[lists.length - 1] };
+
+                    const slot = (): IRExpr =>
+                        lists.length === 1
+                            ? structuredClone(index)
+                            : {
+                                  kind: "op",
+                                  opcode: "data_itemnumoflist",
+                                  inputs: [structuredClone(keys), structuredClone(index)],
+                              };
+                    const value = (): IRExpr =>
+                        node.operator === "="
+                            ? structuredClone(right)
+                            : {
+                                  kind: "op",
+                                  opcode: binaryOpcodes[node.operator.slice(0, -1)],
+                                  inputs: [
+                                      { kind: "op", opcode: "data_itemoflist", inputs: [structuredClone(vals), slot()] },
+                                      structuredClone(right),
+                                  ],
+                              };
+
+                    const replace: IRStmt = {
+                        kind: "raw",
+                        opcode: "data_replaceitemoflist",
+                        inputs: [structuredClone(vals), slot(), value()],
+                    };
+                    if (lists.length === 1) {
+                        this.emit(out, replace);
+                        break;
+                    }
+                    
+                    this.emit(out, {
+                        kind: "if",
+                        cond: { kind: "op", opcode: "operator_gt", inputs: [slot(), { kind: "lit", value: 0 }] },
+                        then: [replace],
+                        else: [
+                            {
+                                kind: "raw",
+                                opcode: "data_addtolist",
+                                inputs: [structuredClone(keys), structuredClone(index)],
+                            },
+                            { kind: "raw", opcode: "data_addtolist", inputs: [structuredClone(vals), value()] },
+                        ],
+                    });
+                    break;
+                }
+                if (node.left.type !== "Identifier") break; // TODO: member -> struct write
                 const value: IRExpr =
                     node.operator === "="
                         ? this.lowerExpr(node.right, out)
@@ -343,11 +480,9 @@ export class IRGenerator {
             case "ExpressionStatement": {
                 const expr = node.expression;
                 if (expr.type === "CallExpression") {
-                    const sig = this.analyzer.callResolutions.get(expr)!;
-                    if (sig.meta?.lower === "command") {
-                        const args = sig.params.map((p, i) =>
-                            this.lowerExpr((expr.arguments[i] ?? p.default!) as ExpressionNode, out),
-                        );
+                    const sig = this.analyzer.callResolutions.get(expr);
+                    if (sig?.meta?.lower === "command") {
+                        const args = this.callArgs(expr, sig).map((arg) => this.lowerExpr(arg, out));
                         this.emit(out, { kind: "raw", opcode: sig.meta.opcode!, inputs: args });
                         break;
                     }
@@ -361,11 +496,38 @@ export class IRGenerator {
         this.popTo(out, mark);
     }
 
-    /** num => counter, list/str => index. */
+    /** num => counter, list/str/dict => index. */
     private lowerFor(node: ForStatementNode, out: IRStmt[]): void {
-        if (node.pattern.type !== "Identifier") return; // TODO: dict destructuring
-        if (this.lowerForRange(node, out)) return;
         const type = this.analyzer.exprTypes.get(node.iterable);
+
+        if (type?.kind === "dict") {
+            const lists = this.listsOf(node.iterable);
+            const parts = node.pattern.type === "TupleExpression" ? node.pattern.elements : [node.pattern];
+            const names = parts.map((part) => (part.type === "Identifier" ? part.name : null));
+            if (names.length > 2 || names.some((name) => name === null)) return; // TODO: error
+
+            const iter = this.declare(names[0]!);
+            const item = (list: string): IRExpr => ({
+                kind: "op",
+                opcode: "data_itemoflist",
+                inputs: [{ kind: "var", name: list }, { kind: "var", name: iter }],
+            });
+            
+            const step: IRStmt[] = [];
+            if (names[1]) step.push(this.set(this.declare(names[1]), item(lists[1])));
+            step.push(this.set(iter, item(lists[0])));
+
+            this.emit(out, {
+                kind: "for",
+                iter,
+                times: { kind: "op", opcode: "data_lengthoflist", inputs: [{ kind: "var", name: lists[0] }] },
+                body: [...step, ...this.lowerBlock(node.body)],
+            });
+            return;
+        }
+
+        if (node.pattern.type !== "Identifier") return; // TODO: destructuring a non-dict
+        if (this.lowerForRange(node, out)) return;
         const iterable = this.lowerExpr(node.iterable, out);
         const name = this.declare(node.pattern.name);
 
@@ -404,10 +566,11 @@ export class IRGenerator {
         const sig = this.analyzer.callResolutions.get(call);
         if (sig?.meta?.opcode !== "katnip_range") return false;
 
+        const resolved = this.callArgs(call, sig);
         const arg = (want: string): IRExpr | null => {
             const i = sig.params.findIndex((p) => p.name === want);
-            if (i < 0) return null;
-            return this.lowerExpr((call.arguments[i] ?? sig.params[i].default!) as ExpressionNode, out);
+            if (i < 0 || !resolved[i]) return null;
+            return this.lowerExpr(resolved[i]!, out);
         };
         const start = arg("start") ?? { kind: "lit", value: 0 };
         const stop = arg("stop")!;
@@ -548,10 +711,9 @@ export class IRGenerator {
                 return { kind: "lit", value: "" }; // TODO: **, % over non-num; no opcode and no builds proc
             }
             case "CallExpression": {
-                const sig = this.analyzer.callResolutions.get(node)!;
-                const args = sig.params.map((param, i) => {
-                    return this.lowerExpr((node.arguments[i] ?? param.default!) as ExpressionNode, out);
-                });
+                const sig = this.analyzer.callResolutions.get(node);
+                if (!sig) break; // TODO: struct literal, the one call the analyzer resolves to no signature
+                const args = this.callArgs(node, sig).map((arg) => this.lowerExpr(arg, out));
 
                 if (sig.meta?.lower === "reporter") return { kind: "op", opcode: sig.meta.opcode!, inputs: args };
                 if (sig.meta?.lower === "builds") return this.inlineBuilds(sig, args, out);
@@ -579,7 +741,40 @@ export class IRGenerator {
                     inputs: [left, right],
                 }));
             }
-            // TODO: MemberExpression, IndexerAccess, SliceAccess
+            case "IndexerAccess": {
+                const index = this.lowerExpr(node.index, out);
+                const type = this.analyzer.exprTypes.get(node.object);
+                if (type?.kind === "primitive" && type.name !== "void")
+                    return {
+                        kind: "op",
+                        opcode: "operator_letter_of",
+                        inputs: [index, this.lowerExpr(node.object, out)],
+                    };
+
+                const lists = this.listsOf(node.object);
+                const at: IRExpr =
+                    lists.length === 1
+                        ? index
+                        : {
+                              kind: "op",
+                              opcode: "data_itemnumoflist",
+                              inputs: [{ kind: "var", name: lists[0] }, index],
+                          };
+                return {
+                    kind: "op",
+                    opcode: "data_itemoflist",
+                    inputs: [{ kind: "var", name: lists[lists.length - 1] }, at],
+                };
+            }
+            case "MemberExpression": {
+                // Enum members and namespace constants are compile-time values, folded by the analyzer.
+                if (node.object.type === "Identifier") {
+                    const value = this.analyzer.constMembers.get(`${node.object.name}.${node.property.name}`);
+                    if (value !== undefined) return { kind: "lit", value };
+                }
+                break; // TODO: struct field read
+            }
+            // TODO: SliceAccess
         }
         return { kind: "lit", value: "" };
     }
@@ -595,6 +790,16 @@ export class IRGenerator {
         this.substitutions = saved;
         return result;
     }
+}
+
+/** Initial list contents, or null when an element needs blocks to build and the column must be filled at runtime. */
+function literals(nodes: ExpressionNode[]): (string | number | boolean)[] | null {
+    const values: (string | number | boolean)[] = [];
+    for (const node of nodes) {
+        if (node.type !== "Literal") return null;
+        values.push(node.value ?? "");
+    }
+    return values;
 }
 
 /** Scratch inputs are only %n, %s, %b; num -> NUMBER, bool -> BOOLEAN, everything else -> STRING. */

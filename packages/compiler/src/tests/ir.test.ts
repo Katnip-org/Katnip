@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { compile, expectClean } from "./helpers.js";
 import { IRGenerator } from "../ir/IRGenerator.js";
-import type { IRProc, IRProgram, IRStmt } from "../ir/IRNode.js";
+import type { IRExpr, IRProc, IRProgram, IRStmt } from "../ir/IRNode.js";
 
 type Raw = Extract<IRStmt, { kind: "raw" }>;
 
@@ -93,7 +93,7 @@ test("vstack proc: registers its stack list and pushes returns onto it", () => {
     const p = procOf(program, "Cat", "f");
     assert.equal(p.strategy, "vstack");
     assert.equal(p.vStackName, "f_stack");
-    assert(program.sprites[0].lists.includes("f_stack"), "vlist was not registered on the sprite");
+    assert(program.sprites[0].lists.has("f_stack"), "vlist was not registered on the sprite");
 
     // Both returns (0 and f(n-1)) push onto the stack; none write a ret var.
     assert.equal(countOpcode(p.body, "data_addtolist"), 2);
@@ -371,4 +371,261 @@ test("switch lowers to an if chain, with default as the final else", () => {
         ],
     });
     assert.equal(raws(chain.else, "data_setvariableto").length, 1, "default must be the trailing else");
+});
+
+test("list and dict declarations become lists; scalars stay variables", () => {
+    const program = lower(
+        `private highScores: list<num> = [10, 20, 30];
+         private settings: dict<str, num> = {"volume": 100};
+         private level: num = 1;
+         sprite Cat {
+             private inventory = ["fish"];
+             private empty: list<str>;
+         }`,
+    );
+
+    assert.deepEqual(program.variables, ["level"]);
+    assert.deepEqual(program.lists.get("highScores"), [10, 20, 30]);
+    assert(!program.lists.has("settings"), "a dict must not become a single list");
+    assert.deepEqual(program.lists.get("settings_keys"), ["volume"]);
+    assert.deepEqual(program.lists.get("settings_vals"), [100]);
+
+    const cat = program.sprites[0];
+    assert.deepEqual(cat.variables, []);
+    assert.deepEqual(cat.lists.get("inventory"), ["fish"], "the type must be inferred without an annotation");
+    assert.deepEqual(cat.lists.get("empty"), []);
+});
+
+test("a non-literal initializer is built by a green-flag script ahead of the user's own", () => {
+    const program = lower(
+        `private seed: num = 7;
+         private xs: list<num> = [1, seed];
+         private d: dict<str, num> = {"a": seed};
+         sprite Cat { events.onFlag() { looks.say("go"); } }`,
+        { stdlib: true },
+    );
+
+    // Nothing can be baked: a half-baked dict would desync its columns on the next green flag.
+    assert.deepEqual(program.lists.get("xs"), []);
+    assert.deepEqual(program.lists.get("d_keys"), []);
+    assert.deepEqual(program.lists.get("d_vals"), []);
+
+    const [init, user] = program.sprites[0].scripts;
+    assert.equal(init.hatOpcode, "event_whenflagclicked", "init must be a green-flag script");
+    assert.equal(raws(user.body, "looks_say").length, 1, "the user's own handler must come after it");
+
+    assert.deepEqual(
+        init.body.map((s) => (s.kind === "raw" ? s.opcode : s.kind)),
+        [
+            "data_deletealloflist", "data_addtolist", "data_addtolist",
+            "data_deletealloflist", "data_addtolist",
+            "data_deletealloflist", "data_addtolist",
+        ],
+    );
+    const adds = raws(init.body, "data_addtolist");
+    assert.deepEqual(adds[0].inputs, [{ kind: "var", name: "xs" }, { kind: "lit", value: 1 }]);
+    assert.deepEqual(adds[1].inputs, [{ kind: "var", name: "xs" }, { kind: "var", name: "seed" }]);
+    assert.deepEqual(adds[2].inputs, [{ kind: "var", name: "d_keys" }, { kind: "lit", value: "a" }]);
+    assert.deepEqual(adds[3].inputs, [{ kind: "var", name: "d_vals" }, { kind: "var", name: "seed" }]);
+});
+
+/** The IRExpr assigned to `t` by `temp t = <expr>;`, with a list, a dict and a str in scope. */
+function indexed(source: string) {
+    const program = lower(
+        `private xs: list<num> = [1, 2];
+         private d: dict<str, num> = {"a": 1};
+         private s: str = "abc";
+         sprite Cat { events.onFlag() { temp t = ${source}; } }`,
+        { stdlib: true },
+    );
+    return raws(program.sprites[0].scripts[0].body, "data_setvariableto")[0].inputs[1];
+}
+
+test("indexed reads: a list indexes directly, a dict goes through its keys column, a str is letter-of", () => {
+    assert.deepEqual(indexed("xs[2]"), {
+        kind: "op",
+        opcode: "data_itemoflist",
+        inputs: [{ kind: "var", name: "xs" }, { kind: "lit", value: 2 }],
+    });
+    assert.deepEqual(indexed(`d["a"]`), {
+        kind: "op",
+        opcode: "data_itemoflist",
+        inputs: [
+            { kind: "var", name: "d_vals" },
+            {
+                kind: "op",
+                opcode: "data_itemnumoflist",
+                inputs: [{ kind: "var", name: "d_keys" }, { kind: "lit", value: "a" }],
+            },
+        ],
+    });
+    assert.deepEqual(indexed("s[1]"), {
+        kind: "op",
+        opcode: "operator_letter_of",
+        inputs: [{ kind: "lit", value: 1 }, { kind: "var", name: "s" }],
+    });
+});
+
+/** The statements `body` lowers to in a flag script, with a list and a dict in scope. */
+function stmts(body: string): IRStmt[] {
+    const program = lower(
+        `private xs: list<num> = [1, 2];
+         private d: dict<str, num> = {"a": 1};
+         sprite Cat { events.onFlag() { ${body} } }`,
+        { stdlib: true },
+    );
+    return program.sprites[0].scripts[0].body;
+}
+
+test("a list write replaces in place, and a compound one reads the slot back", () => {
+    assert.deepEqual(stmts("xs[2] = 9;"), [
+        {
+            kind: "raw",
+            opcode: "data_replaceitemoflist",
+            inputs: [{ kind: "var", name: "xs" }, { kind: "lit", value: 2 }, { kind: "lit", value: 9 }],
+        },
+    ]);
+    assert.deepEqual(raws(stmts("xs[2] += 1;"), "data_replaceitemoflist")[0].inputs[2], {
+        kind: "op",
+        opcode: "operator_add",
+        inputs: [
+            {
+                kind: "op",
+                opcode: "data_itemoflist",
+                inputs: [{ kind: "var", name: "xs" }, { kind: "lit", value: 2 }],
+            },
+            { kind: "lit", value: 1 },
+        ],
+    });
+});
+
+test("a dict write replaces a present key and appends to both columns otherwise", () => {
+    const [write] = stmts(`d["b"] = 5;`);
+    assert(write.kind === "if");
+
+    const at = {
+        kind: "op",
+        opcode: "data_itemnumoflist",
+        inputs: [{ kind: "var", name: "d_keys" }, { kind: "lit", value: "b" }],
+    };
+    assert.deepEqual(write.cond, { kind: "op", opcode: "operator_gt", inputs: [at, { kind: "lit", value: 0 }] });
+    assert.deepEqual(write.then, [
+        {
+            kind: "raw",
+            opcode: "data_replaceitemoflist",
+            inputs: [{ kind: "var", name: "d_vals" }, at, { kind: "lit", value: 5 }],
+        },
+    ]);
+    assert.deepEqual(write.else, [
+        {
+            kind: "raw",
+            opcode: "data_addtolist",
+            inputs: [{ kind: "var", name: "d_keys" }, { kind: "lit", value: "b" }],
+        },
+        {
+            kind: "raw",
+            opcode: "data_addtolist",
+            inputs: [{ kind: "var", name: "d_vals" }, { kind: "lit", value: 5 }],
+        },
+    ]);
+});
+
+test("dict iteration walks the keys column, binding the value before the key overwrites the counter", () => {
+    const [loop] = stmts(`for ((k, v), d) { looks.say(k); }`);
+    assert(loop.kind === "for");
+    assert.equal(loop.iter, "k");
+    assert.deepEqual(loop.times, {
+        kind: "op",
+        opcode: "data_lengthoflist",
+        inputs: [{ kind: "var", name: "d_keys" }],
+    });
+    assert.deepEqual(loop.body.slice(0, 2), [
+        {
+            kind: "raw",
+            opcode: "data_setvariableto",
+            inputs: [
+                { kind: "var", name: "v" },
+                {
+                    kind: "op",
+                    opcode: "data_itemoflist",
+                    inputs: [{ kind: "var", name: "d_vals" }, { kind: "var", name: "k" }],
+                },
+            ],
+        },
+        {
+            kind: "raw",
+            opcode: "data_setvariableto",
+            inputs: [
+                { kind: "var", name: "k" },
+                {
+                    kind: "op",
+                    opcode: "data_itemoflist",
+                    inputs: [{ kind: "var", name: "d_keys" }, { kind: "var", name: "k" }],
+                },
+            ],
+        },
+    ]);
+
+    // Without a tuple pattern there is nowhere to put the value, so only the key is bound.
+    const [single] = stmts(`for (k, d) { }`);
+    assert(single.kind === "for");
+    assert.equal(single.body.length, 1);
+});
+
+test("indexing anything but a declared list or dict fails loudly", () => {
+    assert.throws(
+        () => stmts(`temp t = range(3)[1];`),
+        /only a declared list or dict can be indexed/,
+    );
+});
+
+// -- constant member expressions --
+
+/** The value a single `temp c = <expr>;` script assigns. */
+function folded(decls: string, expr: string): IRExpr {
+    const program = lower(`${decls}sprite Cat { events.onFlag() { temp c = ${expr}; } }`, {
+        stdlib: true,
+    });
+    const [set] = raws(program.sprites[0].scripts[0].body, "data_setvariableto");
+    return set.inputs[1];
+}
+
+test("a user enum member folds to its qualified name, keeping explicit values", () => {
+    const decls = `enum Color { red, green }\nenum Paint { red = "R" }\n`;
+    // Implicit values qualify, so two enums sharing a member name never compare equal.
+    assert.deepEqual(folded(decls, "Color.red"), { kind: "lit", value: "Color.red" });
+    assert.deepEqual(folded(decls, "Paint.red"), { kind: "lit", value: "R" });
+});
+
+test("a namespace constant folds to its literal", () => {
+    assert.deepEqual(folded("", "math.pi"), { kind: "lit", value: 3.141592653589793 });
+});
+
+test("a stdlib enum keeps the bare value sb3 fields match on", () => {
+    // looks.costume()'s omitted `mode` defaults to NumberName.NUMBER, which sb3 reads as "number".
+    const value = folded("", "looks.costume()");
+    assert.equal(value.kind, "op");
+    assert.deepEqual(value.inputs[0], { kind: "lit", value: "number" });
+});
+
+test("an unresolved member expression stays empty rather than throwing", () => {
+    assert.deepEqual(folded("", "self.whatever"), { kind: "lit", value: "" });
+});
+
+// -- call arguments --
+
+test("a method call fills `self` from the receiver, not the first argument", () => {
+    const [add] = stmts(`xs.add(7);`);
+    assert.deepEqual(add, {
+        kind: "raw",
+        opcode: "data_addtolist",
+        inputs: [{ kind: "var", name: "xs" }, { kind: "lit", value: 7 }],
+    });
+});
+
+test("named arguments route by name, not by position", () => {
+    const [goto] = stmts(`motion.goTo(y = 5, x = 1);`);
+    assert(goto.kind === "raw");
+    assert.equal(goto.opcode, "motion_gotoxy");
+    assert.deepEqual(goto.inputs, [{ kind: "lit", value: 1 }, { kind: "lit", value: 5 }]);
 });

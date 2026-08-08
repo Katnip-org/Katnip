@@ -12,6 +12,7 @@ import {
     type KnownExtension,
     type Primitive,
     type Sb3Project,
+    type Scalar,
     type Sprite,
     type StopMutation,
     type Target,
@@ -149,15 +150,15 @@ export class SB3Generator {
     }
 
     /** Registers each name on the target and remembers its id, so references can resolve to it. */
-    private declare(target: Target, variables: string[], lists: string[]): void {
+    private declare(target: Target, variables: string[], lists: Map<string, Scalar[]>): void {
         for (const name of variables) {
             const id = this.generateID("var");
             target.variables[id] = [name, 0];
             this.varIDs.set(name, id);
         }
-        for (const name of lists) {
+        for (const [name, contents] of lists) {
             const id = this.generateID("list");
-            target.lists[id] = [name, []];
+            target.lists[id] = [name, contents];
             this.listIDs.set(name, id);
         }
     }

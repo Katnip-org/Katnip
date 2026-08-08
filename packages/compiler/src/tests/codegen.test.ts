@@ -26,17 +26,24 @@ const find = (blocks: Record<string, Block>, opcode: string) =>
 /** A program dense enough to reach every emitter: loops, branches, calls, returns, an extension. */
 const dense = `
 public tally: num = 0;
+public scores: list<num> = [3, 4];
+public counts: dict<str, num> = {"a": 1, "b": bump(1, false)};
 proc bump(n: num, loud: bool) -> num {
     if (loud) { looks.say("hi"); } else { looks.think("shh"); }
     return n + 1;
 }
 sprite Cat {
     private tally: num = 5;
+    private paws: list<num> = [tally, 4];
     proc pounce(power: num) -> void { motion.forward(power); }
     events.onFlag() {
         pen.down();
         for (i, 3) { tally = bump(tally, true); }
         while (tally > 2) { tally = tally - 1; }
+        scores[1] = scores[1] + 1;
+        paws[2] += 1;
+        counts["c"] = 2;
+        for ((k, v), counts) { looks.say(k); tally += v; }
         pounce(tally);
     }
 }
@@ -188,4 +195,14 @@ test("ids are unique across the var, list and block namespaces", () => {
         ...Object.keys(t.blocks),
     ]);
     assert.equal(new Set(ids).size, ids.length, "duplicate id across namespaces");
+});
+
+test("declared lists reach target.lists with their literal contents", () => {
+    const stage = build(`private scores: list<num> = [1, 2]; private cfg: dict<str, num> = {"a": 3};`).targets[0]!;
+    const byName = Object.fromEntries(Object.values(stage.lists));
+
+    assert.deepEqual(byName.scores, [1, 2]);
+    assert.deepEqual(byName.cfg_keys, ["a"]);
+    assert.deepEqual(byName.cfg_vals, [3]);
+    assert(!Object.values(stage.variables).some(([name]) => name === "scores" || name === "cfg"));
 });

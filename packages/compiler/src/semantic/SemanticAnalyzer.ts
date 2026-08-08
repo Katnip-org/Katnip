@@ -90,6 +90,9 @@ export class SemanticAnalyzer {
     /** True only while resolving stdlib signatures, where T/K/V typevars are legal. */
     private allowTypevars = false;
 
+    /** True only while hoisting a stdlib module, whose enum values are real sb3 field strings. */
+    private inStdlib = false;
+
     /** Which signature each call resolved to, for the call graph and IR lowering. */
     readonly callResolutions = new Map<CallExpressionNode, Signature>();
 
@@ -98,6 +101,8 @@ export class SemanticAnalyzer {
 
     /** Every expression's inferred type, for IR lowering. */
     readonly exprTypes = new Map<ExpressionNode, InternalType>();
+
+    readonly constMembers = new Map<string, string | number | boolean>();
 
     constructor(
         private reporter: ErrorReporter,
@@ -143,15 +148,18 @@ export class SemanticAnalyzer {
             const savedScope = this.current;
             this.reporter = module.reporter;
             this.allowTypevars = true;
+            this.inStdlib = true;
 
             const isPrelude = module.namespace === "prelude";
             const target = isPrelude ? this.stdlibScope : new Scope("namespace", this.stdlibScope);
             this.current = target;
             this.hoist(module.ast.body);
             this.finalizeStdlibScope(module.ast.body);
+            this.hoistNamespaceConsts(module.ast.body, isPrelude ? null : module.namespace);
 
             this.current = savedScope;
             this.allowTypevars = false;
+            this.inStdlib = false;
             this.reporter = savedReporter;
 
             if (!isPrelude) {
@@ -171,6 +179,18 @@ export class SemanticAnalyzer {
                 throw new Error(`stdlib module '${module.namespace}' failed to load`);
             }
         }
+    }
+
+    /**
+     * Records a module's literal top-level variables as constant members ("math.pi").
+     * IR lowering can fold `ns.const` without resolving scopes. 
+     * A non-literal initializer is skipped: it needs blocks to build, and there is no namespace-level storage to build it into.
+     */
+    private hoistNamespaceConsts(body: StatementNode[], namespace: string | null): void {
+        if (!namespace) return;
+        for (const stmt of body)
+            if (stmt.type === "VariableDeclaration" && stmt.initializer?.type === "Literal")
+                this.constMembers.set(`${namespace}.${stmt.name}`, stmt.initializer.value ?? "");
     }
 
     // -- Import loading --
@@ -217,6 +237,7 @@ export class SemanticAnalyzer {
 
         this.loadImports(module.imports);
         this.hoist(module.ast.body);
+        this.hoistNamespaceConsts(module.ast.body, module.namespace);
         for (const stmt of module.ast.body) this.visit(stmt);
 
         this.reporter = savedReporter;
@@ -428,6 +449,13 @@ export class SemanticAnalyzer {
             { kind: "enum", name: node.name, declNode: node, members: node.members },
             node,
         );
+        for (const member of node.members) {
+            const implicit = member.value === member.name;
+            this.constMembers.set(
+                `${node.name}.${member.name}`,
+                implicit && !this.inStdlib ? `${node.name}.${member.name}` : member.value,
+            );
+        }
     }
 
     private hoistStruct(node: StructDeclarationNode): void {
