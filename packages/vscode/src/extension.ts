@@ -150,7 +150,7 @@ function toDiagnostic(err: KatnipError): vscode.Diagnostic {
     const diag = new vscode.Diagnostic(
         new vscode.Range(start, end),
         err.message,
-        vscode.DiagnosticSeverity.Error,
+        err.severity === "warning" ? vscode.DiagnosticSeverity.Warning : vscode.DiagnosticSeverity.Error,
     );
     diag.source = `katnip:${err.source.toLowerCase()}`;
     return diag;

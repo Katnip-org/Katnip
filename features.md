@@ -9,8 +9,8 @@ Status of every language and toolchain feature, tracked against the compiler pip
 | 🟡 | Partial; implemented at some stages, named per row |
 | 🔴 | Not implemented, or implemented only far enough to type-check |
 
-Last verified against `main` (compiler `0.1.12`) with 179 tests — 171 passing and 8 `todo`
-cases pinned to the gaps below — and a clean
+Last verified against `main` (compiler `0.1.12`) with a green `node --test` run — every
+case passing except the 8 `todo` cases that pin the gaps below — and a clean
 `node packages/compiler/build/cli.js build examples/codegen.knip`.
 
 ---
@@ -207,7 +207,7 @@ also list sprite, costume or backdrop names, which the compiler cannot enumerate
 - 🟢 **CLI**; `katnip tokenize`, `parse`, `check`, `build`, `help`.
 - 🟢 **Error reporting**; source spans with line and column, colorized output, multiple errors per run; analysis continues past syntax errors so semantic errors surface alongside them.
 - 🟢 **VS Code extension**; live diagnostics on type or on save with a configurable debounce, syntax highlighting, language configuration, and a `Katnip: Build .sb3` command.
-- 🟢 **Tests**; 179 `node --test` cases across lexer, parser, semantic, callgraph, imports, IR, and codegen; 8 are `todo` cases pinned to the gaps above.
+- 🟢 **Tests**; `node --test` cases across lexer, parser, semantic, callgraph, imports, IR, and codegen, plus 8 `todo` cases in `gaps.test.ts` that each assert a gap above is still a gap, so closing one fails loudly.
 - 🟢 **Public API**; `checkSource` and `compileToSb3` exported for embedding, with a pluggable import resolver.
 - 🔴 **Language server**; the extension shells the compiler directly; no LSP, no completion, hover, or go-to-definition.
 - 🔴 **Formatter**.

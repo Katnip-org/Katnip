@@ -4,6 +4,7 @@ public pi: num = 3.141592653589793;
 public e: num = 2.718281828459045;
 public tau: num = 6.283185307179586;
 
+#>
 proc pow(base: num, exponent: num) -> num {
     if (exponent == 0) {
         return(1);
@@ -17,6 +18,7 @@ proc pow(base: num, exponent: num) -> num {
 
     return(result);
 }
+<#
 
 # --- Math-ops and its wrapped derivatives ---
 

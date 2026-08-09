@@ -167,12 +167,8 @@ cli
                 // surface alongside syntax errors instead of being hidden behind the first.
                 analyzer.analyze(ast);
 
-                if (reporter.hasErrors()) {
-                    reporter.print();
-                    return;
-                }
-
-                console.log('No semantic errors found.');
+                reporter.print(); // warnings too, which do not stop a build
+                if (!reporter.hasErrors()) console.log('No semantic errors found.');
             })
             .catch((err: any) => {
                 console.error('Error reading file:', err);
@@ -196,10 +192,11 @@ cli
                     resolve: fileResolver,
                 });
 
+                const reporter = new ErrorReporter(fileContent, true);
+                for (const err of errors) reporter.add(err);
+                reporter.print();
+
                 if (!sb3) {
-                    const reporter = new ErrorReporter(fileContent, true);
-                    for (const err of errors) reporter.add(err);
-                    reporter.print();
                     process.exitCode = 1;
                     return;
                 }

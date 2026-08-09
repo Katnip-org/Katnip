@@ -16,7 +16,9 @@ export class KatnipError extends Error {
         message: string,            // error message
         // Absent for IR/codegen: those run on lowered nodes with no source span.
         public location?: KatnipErrorData,
-        captureStack: boolean = true
+        // "warning" is reported but never blocks a build; only `severity: "error"` does.
+        public severity: "error" | "warning" = "error",
+        captureStack: boolean = severity === "error"
     ) {
         super(message);
         this.name = "KatnipError";
@@ -46,7 +48,7 @@ export class ErrorReporter {
     }
 
     hasErrors(): boolean {
-        return this.errors.length > 0;
+        return this.errors.some((e) => e.severity === "error");
     }
 
     getErrors(): readonly KatnipError[] {
@@ -60,8 +62,12 @@ export class ErrorReporter {
     }
 
     private format(err: KatnipError): string {
+        const warn = err.severity === "warning";
+        const tint = warn ? pc.yellow : pc.red;
+        const header = `${tint(pc.bold(`${err.source} ${warn ? "Warning" : "Error"}:`))} ${pc.yellow(err.message)}\n`;
+
         if (!err.location) {
-            let output = `${pc.red(pc.bold(`${err.source} Error:`))} ${pc.yellow(err.message)}\n`;
+            let output = header;
             if (this.showStackTrace && err.stackTrace) {
                 output +=
                     `\n${pc.gray("Internal stack trace:")}\n` +
@@ -91,10 +97,10 @@ export class ErrorReporter {
         caretLen = Math.min(Math.max(1, caretLen), available);
 
         const underline =
-            " ".repeat(column - 1) + pc.red("^".repeat(caretLen));
+            " ".repeat(column - 1) + tint("^".repeat(caretLen));
 
         let output =
-          `${pc.red(pc.bold(`${err.source} Error:`))} ${pc.yellow(err.message)}\n` +
+          header +
           `  at ${pc.cyan(`line ${line}, column ${column}`)}\n` +
           `  ${" ".repeat(gutterWidth)} ${pc.gray("|")}\n` +
           `  ${gutter} ${pc.white(sourceLine)}\n` +

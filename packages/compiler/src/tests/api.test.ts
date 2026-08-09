@@ -57,6 +57,16 @@ test("compileToSb3 returns bytes that unzip to a loadable project", () => {
     assert.equal(project.targets[1].isStage, false);
 });
 
+test("a sprite-less program still builds, but warns that it is empty", () => {
+    // Everything katnip emits is owned by a sprite, so a file of only top-level
+    // procs compiles clean to a project with nothing in it. A warning never blocks.
+    const { errors, sb3 } = compileToSb3(`proc double(n: num) -> num { return(n * 2); }`);
+
+    assert(sb3 instanceof Uint8Array, "expected sb3 bytes");
+    assert.deepEqual(errors.map((e) => e.severity), ["warning"]);
+    assert.match(errors[0]!.message, /no sprites/);
+});
+
 test("a program with errors yields no project at all", () => {
     // Emitting a partial project from a broken program would hand the user a
     // silently wrong .sb3, which is worse than refusing to build.
