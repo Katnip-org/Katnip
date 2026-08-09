@@ -52,6 +52,7 @@ export class IRGenerator {
     private sprite: IRSprite | null = null;
 
     private readonly plans = new Map<Signature, ReturnPlan>();
+    private readonly lowered = new Set<ProcedureDeclarationNode>();
     private readonly usedNames = new Set<string>();
     private currentPlan: ReturnPlan | null = null;
 
@@ -121,6 +122,14 @@ export class IRGenerator {
                     break;
             }
         }
+
+        
+        for (const [decl, sig] of this.analyzer.procSignatures) {
+            if (!this.plans.has(sig)) continue;
+            const proc = this.lowerProc(decl);
+            if (proc) this.program.procs.set(proc.name, proc);
+        }
+
         // Scratch has no load hook, so list contents that need blocks are built by a green-flag script.
         // It goes in the first sprite, ahead of that sprite's own scripts so its lists are ready for them.
         if (this.init.length && this.program.sprites[0])
@@ -289,7 +298,8 @@ export class IRGenerator {
     private lowerProc(stmt: ProcedureDeclarationNode): IRProc | null {
         const sig = this.analyzer.procSignatures.get(stmt);
         const plan = sig && this.plans.get(sig);
-        if (!plan) return null;
+        if (!plan || this.lowered.has(stmt)) return null;
+        this.lowered.add(stmt);
 
         if (plan.vStackName) (this.sprite ?? this.program).lists.set(plan.vStackName, []);
         (this.sprite ?? this.program).variables.push(...plan.retVars);
@@ -446,17 +456,16 @@ export class IRGenerator {
                                   opcode: "data_itemnumoflist",
                                   inputs: [structuredClone(keys), structuredClone(index)],
                               };
-                    const value = (): IRExpr =>
+                    const combined: IRExpr =
                         node.operator === "="
-                            ? structuredClone(right)
-                            : {
-                                  kind: "op",
-                                  opcode: binaryOpcodes[node.operator.slice(0, -1)],
-                                  inputs: [
-                                      { kind: "op", opcode: "data_itemoflist", inputs: [structuredClone(vals), slot()] },
-                                      structuredClone(right),
-                                  ],
-                              };
+                            ? right
+                            : this.binop(
+                                  node.operator.slice(0, -1),
+                                  { kind: "op", opcode: "data_itemoflist", inputs: [structuredClone(vals), slot()] },
+                                  right,
+                                  out,
+                              );
+                    const value = (): IRExpr => structuredClone(combined);
 
                     const replace: IRStmt = {
                         kind: "raw",
@@ -487,11 +496,12 @@ export class IRGenerator {
                 const value: IRExpr =
                     node.operator === "="
                         ? this.lowerExpr(node.right, out)
-                        : {
-                              kind: "op",
-                              opcode: binaryOpcodes[node.operator.slice(0, -1)],
-                              inputs: [this.lowerExpr(node.left, out), this.lowerExpr(node.right, out)],
-                          };
+                        : this.binop(
+                              node.operator.slice(0, -1),
+                              this.lowerExpr(node.left, out),
+                              this.lowerExpr(node.right, out),
+                              out,
+                          );
                 this.emit(out, this.set(this.local(node.left.name), value));
                 break;
             }
@@ -712,6 +722,15 @@ export class IRGenerator {
      * Lowers an expression, pushing any setup statements into `out`.
      * The returned IRExpr is always call-free.
      */
+    private binop(op: string, left: IRExpr, right: IRExpr, out: IRStmt[]): IRExpr {
+        const opcode = binaryOpcodes[op];
+        if (opcode) return { kind: "op", opcode, inputs: [left, right] };
+
+        const composed = this.operatorProcs.get(op);
+        if (composed) return this.inlineBuilds(composed, [left, right], out);
+        return { kind: "lit", value: "" }; // TODO: **, % over non-num; no opcode and no builds proc
+    }
+
     private lowerExpr(node: ExpressionNode, out: IRStmt[]): IRExpr {
         switch (node.type) {
             case "Literal":
@@ -737,12 +756,7 @@ export class IRGenerator {
                 if (node.operator === "+" && type?.kind === "primitive" && type.name === "str")
                     return { kind: "op", opcode: "operator_join", inputs: [left, right] };
 
-                const opcode = binaryOpcodes[node.operator];
-                if (opcode) return { kind: "op", opcode, inputs: [left, right] };
-
-                const composed = this.operatorProcs.get(node.operator);
-                if (composed) return this.inlineBuilds(composed, [left, right], out);
-                return { kind: "lit", value: "" }; // TODO: **, % over non-num; no opcode and no builds proc
+                return this.binop(node.operator, left, right, out);
             }
             case "CallExpression": {
                 const sig = this.analyzer.callResolutions.get(node);

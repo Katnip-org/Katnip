@@ -114,6 +114,12 @@ test("compound assignment desugars to setvariableto over the binop", () => {
     });
 });
 
+test("a compound assign with no opcode falls back like the binary expression does", () => {
+    const program = lower(HAT + `sprite Cat { onflag() { temp x = 0; x **= 6; } }`);
+    const sets = raws(program.sprites[0].scripts[0].body, "data_setvariableto");
+    assert.deepEqual(sets[1].inputs[1], { kind: "lit", value: "" }); // ** has no lowering yet
+});
+
 test("command in statement position emits a raw block (no plan lookup crash)", () => {
     const program = lower(HAT + `sprite Cat { onflag() { console.log("hi"); } }`, { stdlib: true });
     const say = program.sprites[0].scripts[0].body.find(

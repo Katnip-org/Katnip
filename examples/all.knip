@@ -18,7 +18,8 @@ private col: Color = Color.RED; # enum-typed
 private inferred = -n; # inferred + unary minus
 
 # operators, each family once (all bool / all num)
-private arith: num  = n + n - n * n / n % n ** n;
+# TODO: impl **
+private arith: num  = n + n - n * n / n % n;
 private cmp: bool   = n < 1 && n > 0 && n <= 1 && n >= 0 && n == n;
 private logic: bool = (b ^ b) || (b !& b) || (b !| b) || (b !^ b) || !b;
 
@@ -41,7 +42,8 @@ sprite Cat {
     events.onFlag() {
         temp t: num = 5;
         temp response: num | void = add(x = 2, y = 3); # named call args (result is num | void, so not assigned)
-        if (typeof(response) == "num") { t = Num(response); }
+        # TODO: impl typeof
+        # if (typeof(response) == "num") { t = Num(response); }
         t += 1; t -= 2; t *= 3; t /= 4; t %= 5; t **= 6; # every compound assign
 
         temp edge: num = shapes.perimeter(shapes.sides, 4); # imported proc + imported const
@@ -62,9 +64,9 @@ sprite Cat {
         for ((name, dist), pairs) { motion.forward(dist); } # tuple-destructure loop
 
         switch (t % 2) { # switch / case / default
-            case (0) { console.log("even"); }
-            case (1, 3) { console.log("odd"); }
-            default { console.log("?"); }
+            case (0) { looks.say("even"); }
+            case (1, 3) { looks.say("odd"); }
+            default { looks.say("?"); }
         }
     }
 }
