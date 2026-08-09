@@ -3,6 +3,8 @@
  * Replaces plain strings so parameterized types (list<T>, dict<K,V>) can be inspected.
  */
 
+import type { ExpressionNode } from "../parser/AST-nodes.js";
+
 export type InternalType =
     | { kind: "primitive"; name: "num" | "str" | "bool" | "void" }
     | { kind: "list"; element: InternalType }
@@ -14,22 +16,59 @@ export type InternalType =
     | { kind: "typevar"; name: string } // stdlib-only placeholder (T, K, V), substituted before checks
     | { kind: "unknown" };
 
-export function isAssignable(from: InternalType, to: InternalType): boolean {
+export interface AssignContext {
+    node?: ExpressionNode;
+    accepts(enumName: string, node: ExpressionNode | undefined): boolean;
+}
+
+/** The value a literal expression denotes, or undefined when it is not a literal. */
+export function literalValue(node: ExpressionNode | undefined): string | number | boolean | undefined {
+    if (node?.type !== "Literal" || node.value === null) return undefined;
+    return node.value;
+}
+
+/** Re-points a context at a sub-expression, so list/dict elements coerce like any other value. */
+function at(ctx: AssignContext | undefined, node: ExpressionNode | undefined): AssignContext | undefined {
+    return ctx && { ...ctx, node };
+}
+
+export function isAssignable(from: InternalType, to: InternalType, ctx?: AssignContext): boolean {
     if (from.kind === "unknown" || to.kind === "unknown") return true;
     // Typevars are substituted away before assignability runs; a stray one
     // degrades to unknown-like behavior instead of a false error.
     if (from.kind === "typevar" || to.kind === "typevar") return true;
     if (from.kind === "union")
-        return isAssignable(from.left, to) && isAssignable(from.right, to);
+        return isAssignable(from.left, to, ctx) && isAssignable(from.right, to, ctx);
     if (to.kind === "union")
-        return isAssignable(from, to.left) || isAssignable(from, to.right);
+        return isAssignable(from, to.left, ctx) || isAssignable(from, to.right, ctx);
+
+    if (to.kind === "enum" && from.kind === "primitive")
+        return ctx?.accepts(to.name, ctx.node) ?? false;
+
     if (from.kind !== to.kind) return false;
 
     const toAny = to as any;
     switch (from.kind) {
         case "primitive": return from.name === toAny.name;
-        case "list": return isAssignable(from.element, toAny.element);
-        case "dict": return (isAssignable(from.key, toAny.key) && isAssignable(from.value, toAny.value));
+        case "list": {
+            const elements = ctx?.node?.type === "ListExpression" ? ctx.node.elements : null;
+            if (elements?.length)
+                return elements.every((e) => isAssignable(from.element, toAny.element, at(ctx, e)));
+            return isAssignable(from.element, toAny.element, at(ctx, undefined));
+        }
+        case "dict": {
+            const entries = ctx?.node?.type === "DictExpression" ? ctx.node.entries : null;
+            if (entries?.length)
+                return entries.every(
+                    (e) =>
+                        isAssignable(from.key, toAny.key, at(ctx, e.key)) &&
+                        isAssignable(from.value, toAny.value, at(ctx, e.value)),
+                );
+            return (
+                isAssignable(from.key, toAny.key, at(ctx, undefined)) &&
+                isAssignable(from.value, toAny.value, at(ctx, undefined))
+            );
+        }
         case "tuple": return (from.elements.length === toAny.elements.length && from.elements.every((t, i) => isAssignable(t, toAny.elements[i])));
         case "enum": return from.name === toAny.name;
         case "struct": return from.name === toAny.name;

@@ -46,6 +46,13 @@ test("string literals with both quote styles and escapes", () => {
     assert.deepEqual(strings, ["a\nb", "c\td", "A"]);
 });
 
+test("unterminated strings are an error", () => {
+    assert.equal(lex(`temp x = "abc`).reporter.hasErrors(), true);
+    assert.equal(lex(`temp x = 'abc\\`).reporter.hasErrors(), true);
+    assert.equal(lex(`temp x = f"abc{y`).reporter.hasErrors(), true);
+    assert.equal(lex(`temp x = f"abc{y}`).reporter.hasErrors(), true);
+});
+
 test("interpolated string tokenizes into parts", () => {
     const { tokens, reporter } = lex(`f"pre{x + 1}post"`);
     assert.equal(reporter.hasErrors(), false);
@@ -58,6 +65,20 @@ test("interpolated string tokenizes into parts", () => {
     ]);
     assert.equal(valueOf(tokens[0]), "pre");
     assert.equal(valueOf(tokens[5]), "post");
+});
+
+test("interpolation may contain a string using the other quote", () => {
+    const { tokens, reporter } = lex(`f"hi {getName('first')}"; temp b = 1;`);
+    assert.equal(reporter.hasErrors(), false);
+    assert.deepEqual(types(tokens), [
+        "InterpolatedString", // "hi "
+        "Identifier", "(", "String", ")",
+        "InterpolatedStringEnd",
+        "InterpolatedString", // ""
+        ";", "Identifier", "Identifier", "=", "Number", ";",
+        "<EOF>",
+    ]);
+    assert.equal(valueOf(tokens[3]), "first");
 });
 
 test("operators use maximal munch", () => {

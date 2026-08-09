@@ -39,6 +39,7 @@ export class Lexer {
     private isInterpolatedString: boolean = false;
     private inInterpolatedExpression: boolean = false;
     private interpolatedBraceDepth: number = 0;
+    private stringFrames: { quote: "'" | '"' | null, isInterp: boolean, inExpr: boolean, depth: number }[] = [];
     private commentType: string = "";
 
     private operatorNode: OperatorTrieNode | null = null;
@@ -79,6 +80,7 @@ export class Lexer {
         this.isInterpolatedString = false;
         this.inInterpolatedExpression = false;
         this.interpolatedBraceDepth = 0;
+        this.stringFrames = [];
         this.commentType = "";
         this.operatorNode = null;
 
@@ -111,6 +113,17 @@ export class Lexer {
             }
         }
         
+        const endState = this.currentState as LexerState;
+        if (
+            endState === LexerState.String ||
+            endState === LexerState.EscapedString ||
+            endState === LexerState.InterpolatedExpression
+        ) {
+            this.reporter.add(
+                new KatnipError("Lexer", `Unterminated string literal`, { line: this.lineStart, column: this.colStart })
+            );
+        }
+
         if (this.tokens.at(-1)?.token.type !== "<EOF>") {
             this.buffer = "";
             this.lineStart = this.line;
@@ -276,7 +289,12 @@ export class Lexer {
                 if (this.isInterpolatedString && char === "{") {
                     this.emit("InterpolatedString");
                     this.buffer = "";
-                    this.isInterpolatedString = true;
+                    this.stringFrames.push({
+                        quote: this.stringQuote,
+                        isInterp: this.isInterpolatedString,
+                        inExpr: this.inInterpolatedExpression,
+                        depth: this.interpolatedBraceDepth,
+                    });
                     this.advance();
                     this.inInterpolatedExpression = true;
                     this.interpolatedBraceDepth = 0;
@@ -299,7 +317,13 @@ export class Lexer {
                         this.lineStart = this.line;
                         this.colStart = this.col;
                         this.advance();
-                        this.inInterpolatedExpression = false;
+                        
+                        const frame = this.stringFrames.pop();
+                        this.stringQuote = frame?.quote ?? this.stringQuote;
+                        this.isInterpolatedString = frame?.isInterp ?? true;
+                        this.inInterpolatedExpression = frame?.inExpr ?? false;
+                        this.interpolatedBraceDepth = frame?.depth ?? 0;
+
                         this.emit("InterpolatedStringEnd");
                         this.currentState = LexerState.String;
                         this.colStart = this.col;

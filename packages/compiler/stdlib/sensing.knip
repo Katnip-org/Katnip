@@ -14,7 +14,7 @@ proc distanceTo(@opcode = "sensing_distanceto", target: DistanceTarget | str) ->
 proc ask(@opcode = "sensing_askandwait", question: str) -> void {}
 proc answer(@opcode = "sensing_answer") -> str {}
 
-proc keyPressed(@opcode = "sensing_keypressed", key: Key | str) -> bool {}
+proc keyPressed(@opcode = "sensing_keypressed", key: Key) -> bool {}
 proc mouseDown(@opcode = "sensing_mousedown") -> bool {}
 proc mouseX(@opcode = "sensing_mousex") -> num {}
 proc mouseY(@opcode = "sensing_mousey") -> num {}

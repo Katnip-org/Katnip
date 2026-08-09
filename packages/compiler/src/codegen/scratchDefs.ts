@@ -143,6 +143,7 @@ export const opcodeSlots: Record<string, Slot[]> = {
     pen_penDown: [],
     pen_penUp: [],
     pen_clear: [],
+    pen_stamp: [],
     pen_setPenColorToColor: [input("COLOR", 9)],
     pen_setPenColorParamTo: [menu("COLOR_PARAM", "pen_menu_colorParam", "colorParam", "color"), input("VALUE", 4)],
     pen_changePenColorParamBy: [menu("COLOR_PARAM", "pen_menu_colorParam", "colorParam", "color"), input("VALUE", 4)],

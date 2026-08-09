@@ -801,9 +801,12 @@ export class IRGenerator {
                 };
             }
             case "MemberExpression": {
-                // Enum members and namespace constants are compile-time values, folded by the analyzer.
-                if (node.object.type === "Identifier") {
-                    const value = this.analyzer.constMembers.get(`${node.object.name}.${node.property.name}`);
+                const owner =
+                    node.object.type === "Identifier" ? node.object.name
+                    : node.object.type === "MemberExpression" ? node.object.property.name
+                    : null;
+                if (owner !== null) {
+                    const value = this.analyzer.constMembers.get(`${owner}.${node.property.name}`);
                     if (value !== undefined) return { kind: "lit", value };
                 }
                 break; // TODO: struct field read

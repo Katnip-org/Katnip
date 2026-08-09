@@ -38,8 +38,10 @@ import {
     bindReceiver,
     isAssignable,
     isStr,
+    literalValue,
     substitute,
     typeToString,
+    type AssignContext,
     type InternalType,
     type TypevarBindings,
 } from "./InternalTypes.js";
@@ -72,6 +74,35 @@ type MemberHead =
     | { kind: "error" }
     | { kind: "value" }; // fall through to inferType(objNode)
 
+/** Levenshtein distance, for dym suggestions. */
+function editDistance(a: string, b: string): number {
+    const row = [...Array(b.length + 1).keys()];
+    for (let i = 1; i <= a.length; i++) {
+        let diagonal = row[0];
+        row[0] = i;
+        for (let j = 1; j <= b.length; j++) {
+            const above = row[j];
+            row[j] = Math.min(row[j] + 1, row[j - 1] + 1, diagonal + (a[i - 1] === b[j - 1] ? 0 : 1));
+            diagonal = above;
+        }
+    }
+    return row[b.length];
+}
+
+/** The member `value` was most likely a typo for, or null when nothing is close enough. */
+function nearestMember(
+    value: string | number | boolean,
+    members: readonly (string | number)[],
+): string | number | null {
+    let best: string | number | null = null;
+    let bestDistance = 3;
+    for (const member of members) {
+        const distance = editDistance(String(value), String(member));
+        if (distance < bestDistance) [best, bestDistance] = [member, distance];
+    }
+    return best;
+}
+
 /** A placeholder declNode for symbols with no real source location (stdlib namespaces). */
 function syntheticNode(type: string): NodeBase {
     return { type, loc: { start: { line: 1, column: 1 }, end: { line: 1, column: 1 } } };
@@ -83,6 +114,9 @@ export class SemanticAnalyzer {
 
     /** Declared return type of the procedure being visited, or null at the top level. */
     private currentReturnType: InternalType | null = null;
+
+    /** Type of the enclosing `switch` value, so `case` labels can be checked against it. */
+    private currentSwitchType: InternalType | null = null;
 
     /** Keeps global scope clean- is the parent of the global scope */
     private readonly stdlibScope: Scope;
@@ -103,6 +137,14 @@ export class SemanticAnalyzer {
     readonly exprTypes = new Map<ExpressionNode, InternalType>();
 
     readonly constMembers = new Map<string, string | number | boolean>();
+
+    /**
+     * Member values of each enum, in declaration order, keyed by enum name (as `constMembers` is:
+     * a name shared across namespaces collides, last declaration wins).
+     * These are the *lowered* values — exactly what a member reference folds to — so a literal
+     * coerced by `isAssignable` and the equivalent member reference emit identical IR.
+     */
+    private readonly enumValues = new Map<string, (string | number)[]>();
 
     constructor(
         private reporter: ErrorReporter,
@@ -453,13 +495,14 @@ export class SemanticAnalyzer {
             { kind: "enum", name: node.name, declNode: node, members: node.members },
             node,
         );
+        const values: (string | number)[] = [];
         for (const member of node.members) {
             const implicit = member.value === member.name;
-            this.constMembers.set(
-                `${node.name}.${member.name}`,
-                implicit && !this.inStdlib ? `${node.name}.${member.name}` : member.value,
-            );
+            const value = implicit && !this.inStdlib ? `${node.name}.${member.name}` : member.value;
+            this.constMembers.set(`${node.name}.${member.name}`, value);
+            values.push(value);
         }
+        this.enumValues.set(node.name, values);
     }
 
     private hoistStruct(node: StructDeclarationNode): void {
@@ -501,10 +544,14 @@ export class SemanticAnalyzer {
                     this.error(`Variable '${node.name}' must have either a type annotation or an initial value`, node);
                 }
 
-                if (initType && varType && !isAssignable(initType, varType)) {
-                    this.error(
-                        `Variable '${node.name}' of type '${typeToString(varType)}' cannot be initialized with value of type '${typeToString(initType)}'`,
+                if (initType && varType) {
+                    this.checkAssign(
+                        initType,
+                        varType,
+                        node.initializer,
                         node,
+                        () =>
+                            `Variable '${node.name}' of type '${typeToString(varType)}' cannot be initialized with value of type '${typeToString(initType)}'`,
                     );
                 }
 
@@ -528,12 +575,14 @@ export class SemanticAnalyzer {
             case "VariableAssignment": {
                 const target = this.inferType(node.left);
                 const value = this.inferType(node.right);
-                if (!isAssignable(value, target)) {
-                    this.error(
+                this.checkAssign(
+                    value,
+                    target,
+                    node.right,
+                    node,
+                    () =>
                         `Cannot assign value of type '${typeToString(value)}' to target of type '${typeToString(target)}'`,
-                        node,
-                    );
-                }
+                );
                 break;
             }
             case "ProcedureDeclaration": {
@@ -660,12 +709,14 @@ export class SemanticAnalyzer {
                     ? this.inferType(node.argument)
                     : { kind: "primitive", name: "void" };
                 const expected = this.currentReturnType ?? { kind: "primitive", name: "void" };
-                if (!isAssignable(returned, expected)) {
-                    this.error(
+                this.checkAssign(
+                    returned,
+                    expected,
+                    node.argument,
+                    node.argument ?? node,
+                    () =>
                         `Return value of type '${typeToString(returned)}' is not assignable to return type '${typeToString(expected)}'`,
-                        node.argument ?? node,
-                    );
-                }
+                );
                 break;
             }
             case "SwitchDeclaration": {
@@ -690,12 +741,27 @@ export class SemanticAnalyzer {
                     );
                 }
 
-                this.inferType(node.value);
+                const previousSwitchType = this.currentSwitchType;
+                this.currentSwitchType = this.inferType(node.value);
                 for (const caseEntry of node.body) this.visit(caseEntry);
+                this.currentSwitchType = previousSwitchType;
                 break;
             }
             case "CaseDeclaration":
-                for (const caseExpr of node.values) this.inferType(caseExpr);
+                for (const caseExpr of node.values) {
+                    const labelType = this.inferType(caseExpr);
+                    const target = this.currentSwitchType;
+                    if (target) {
+                        this.checkAssign(
+                            labelType,
+                            target,
+                            caseExpr,
+                            caseExpr,
+                            () =>
+                                `Case label of type '${typeToString(labelType)}' cannot match a switch value of type '${typeToString(target)}'`,
+                        );
+                    }
+                }
                 this.visitBlock(node.body);
                 break;
             case "DefaultCaseDeclaration":
@@ -734,10 +800,14 @@ export class SemanticAnalyzer {
                     field,
                 );
             }
-            if (annotated && defaultType && !isAssignable(defaultType, annotated)) {
-                this.error(
-                    `Default for field '${field.name}' of type '${typeToString(annotated)}' cannot be a value of type '${typeToString(defaultType)}'`,
+            if (annotated && defaultType) {
+                this.checkAssign(
+                    defaultType,
+                    annotated,
+                    field.default,
                     field,
+                    () =>
+                        `Default for field '${field.name}' of type '${typeToString(annotated)}' cannot be a value of type '${typeToString(defaultType)}'`,
                 );
             }
         }
@@ -1205,12 +1275,14 @@ export class SemanticAnalyzer {
             const fieldType = field.fieldType
                 ? this.typeFromNode(field.fieldType)
                 : (field.default ? this.inferType(field.default) : { kind: "unknown" as const });
-            if (!isAssignable(provided.type, fieldType)) {
-                this.error(
+            this.checkAssign(
+                provided.type,
+                fieldType,
+                provided.node,
+                provided.node,
+                () =>
                     `Field '${field.name}' of struct '${struct.name}' expects '${typeToString(fieldType)}', got '${typeToString(provided.type)}'`,
-                    provided.node,
-                );
-            }
+            );
         }
         for (const [argName, arg] of args.named) {
             if (!fieldNames.has(argName)) this.error(`Struct '${struct.name}' has no field '${argName}'`, arg.node);
@@ -1357,6 +1429,20 @@ export class SemanticAnalyzer {
 
     /** Classifies a member expression's object identifier, emitting the shared self/undefined errors. */
     private resolveMemberHead(objNode: MemberExpressionNode["object"]): MemberHead {
+        // `ns.Enum.MEMBER`: the head is itself a member expression, so classify the enum here
+        // rather than letting inferType turn `ns.Enum` into a value of that enum's type.
+        if (objNode.type === "MemberExpression") {
+            if (objNode.object.type !== "Identifier") return { kind: "value" };
+            const namespace = this.current
+                .lookup(objNode.object.name)
+                ?.find((s): s is NamespaceSymbol => s.kind === "namespace");
+            const enumSym = namespace?.scope
+                .lookupLocal(objNode.property.name)
+                ?.find((s): s is EnumSymbol => s.kind === "enum");
+            return enumSym
+                ? { kind: "enum", symbol: enumSym, name: objNode.property.name }
+                : { kind: "value" };
+        }
         if (objNode.type !== "Identifier") return { kind: "value" };
         if (objNode.name === "self") {
             if (!this.inSprite()) this.error(`'self' can only be used inside a sprite`, objNode);
@@ -1496,15 +1582,16 @@ export class SemanticAnalyzer {
             // substituted); their TypeNodes must not reach typeFromNode here.
             const paramType =
                 sig.resolvedParamTypes?.[i] ?? this.typeFromNode(param.paramType);
-            if (!isAssignable(provided.type, paramType)) {
-                if (report) {
-                    this.error(
-                        `Argument '${param.name}' expects ${typeToString(paramType)}, got ${typeToString(provided.type)}`,
-                        provided.node,
-                    );
-                }
-                ok = false;
-            }
+            const matched = this.checkAssign(
+                provided.type,
+                paramType,
+                provided.node,
+                provided.node,
+                () =>
+                    `Argument '${param.name}' expects ${typeToString(paramType)}, got ${typeToString(provided.type)}`,
+                report,
+            );
+            if (!matched) ok = false;
         }
 
         for (const [argName, arg] of args.named) {
@@ -1517,6 +1604,74 @@ export class SemanticAnalyzer {
         }
 
         return ok;
+    }
+
+    // -- Assignability --
+
+    /**
+     * Checks a value expression against a target type, reporting on failure.
+     * Prefers the enum-specific diagnostic when the mismatch is an enum one, so every position gets it.
+     * @param report false while an overload is being tried speculatively.
+     * @returns true when the value is assignable.
+     */
+    private checkAssign(
+        from: InternalType,
+        to: InternalType,
+        value: ExpressionNode | null,
+        at: NodeBase,
+        generic: () => string,
+        report: boolean = true,
+    ): boolean {
+        if (isAssignable(from, to, this.assignContext(value))) return true;
+        if (report) this.error(this.enumMismatch(from, to, value) ?? generic(), at);
+        return false;
+    }
+
+    /** Binds a value expression to the enum-literal coercion rule in `isAssignable`. */
+    private assignContext(value: ExpressionNode | null): AssignContext {
+        return { node: value ?? undefined, accepts: this.acceptsEnumLiteral };
+    }
+
+    /** The coercion rule itself: a literal whose value is one of the enum's member values. */
+    private readonly acceptsEnumLiteral = (
+        enumName: string,
+        node: ExpressionNode | undefined,
+    ): boolean => {
+        const value = literalValue(node);
+        return value !== undefined && !!this.enumValues.get(enumName)?.some((v) => v === value);
+    };
+
+    /**
+     * The tailored message for a value that failed against an enum-typed slot, or null when
+     * the mismatch is an ordinary one the caller should describe itself.
+     */
+    private enumMismatch(
+        from: InternalType,
+        to: InternalType,
+        value: ExpressionNode | null,
+    ): string | null {
+        if (to.kind !== "enum" || from.kind !== "primitive") return null;
+        const members = this.enumValues.get(to.name);
+        if (!members) return null;
+
+        const allowed = members.map((m) => JSON.stringify(m)).join(", ");
+        const literal = literalValue(value ?? undefined);
+        if (literal === undefined) {
+            // No cast to an enum exists yet, so point at the member form instead.
+            return `Enum '${to.name}' expects one of its members here, not a computed '${typeToString(from)}'; use a member (e.g. ${to.name}.${this.enumFirstMember(to.name)}) or a literal: ${allowed}`;
+        }
+
+        const near = nearestMember(literal, members);
+        return (
+            `${JSON.stringify(literal)} is not a value of enum '${to.name}'; must be one of: ${allowed}` +
+            (near !== null ? `. Did you mean ${JSON.stringify(near)}?` : "")
+        );
+    }
+
+    /** A member name of `enumName`, for the "use a member" hint. */
+    private enumFirstMember(enumName: string): string {
+        const sym = [...this.constMembers.keys()].find((k) => k.startsWith(`${enumName}.`));
+        return sym?.slice(enumName.length + 1) ?? "MEMBER";
     }
 
     // -- Helpers --

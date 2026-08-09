@@ -31,6 +31,8 @@ Last verified against `main` with 146 passing tests and a clean
 - 🟢 **Tuple types**; `(num, num)`, checked structurally and used to size proc return frames.
 - 🟢 **Union types**; `Target | str`, with assignability in both directions.
 - 🟢 **Enums**; nominal, compared by name so two enums sharing a member never collide.
+- 🟢 **Enum literal coercion**; a *literal* whose value is one of an enum's member values is assignable to that enum, so `pen.setAttr("color", 10)` and `pen.setAttr(pen.ColorParam.COLOR, 10)` compile to the same blocks. The rule lives in `isAssignable`, so it covers arguments, initializers, assignments, returns, struct fields, list/dict elements and `case` labels alike. A non-literal of the backing type (a variable, a call, a concatenation) is **not** assignable: a Scratch menu input is a shadow block, so a reporter there is legal but almost always a mistake. A literal that misses is rejected with the enum's member list and a did-you-mean.
+  - 🔴 Explicit cast to an enum; there is no `Enum(x)` escape hatch for the non-literal case yet, so the diagnostic points at the member form instead.
 - 🟢 **Type inference**; every expression gets a type; annotations are optional on declarations with an initializer.
 - 🟢 **Generic stdlib typevars**; `T`, `K`, `V` bind from receivers and arguments, so `zip`/`enumerate`/`list.contains` return concrete types.
 - 🟡 **Structs**; nominal record types; fully analyzed, not lowered (see [Structs](#structs)).
@@ -50,7 +52,7 @@ Last verified against `main` with 146 passing tests and a clean
   - 🟢 Methods; a first parameter named `self` makes the proc callable as `receiver.method()`.
   - 🟢 Warp; on by default for user procs, `@warp` decorator overrides.
 - 🟢 **Sprites**; `sprite Name { ... }` holding members, procs, and event handlers.
-- 🟢 **Enums**; implicit members fold to the qualified `"Enum.member"`, explicit values are kept verbatim for sb3 fields and menus.
+- 🟢 **Enums**; implicit members fold to the qualified `"Enum.member"`, explicit values are kept verbatim for sb3 fields and menus. A coerced literal folds to the identical value, so it takes the same lowering path as the member reference.
 - 🟢 **Access control across files**; only `public` symbols cross a file boundary; imports are not re-exported.
 - 🔴 **Stage block**; no `stage { ... }` declaration; stage state is implied by top-level variables.
 
@@ -67,8 +69,9 @@ Last verified against `main` with 146 passing tests and a clean
 - 🟢 **`for` over a dict**; `for ((key, value), d)` walks the keys and values columns together.
 - 🟢 **`for` over `range()`**; folded into the loop counter with constant folding on literal `start`/`stop`/`step`, never built as a list.
 - 🟢 **`switch` / `case` / `default`**; lowers to an if/else chain; a case can hold several values.
+  - 🟢 Case labels are checked against the switch value's type, so a label on an enum-typed value must be a member or a literal that coerces to one.
   - 🔴 Fallthrough keyword; not designed or implemented.
-  - 🔴 Exhaustiveness checking over enums.
+  - 🔴 Exhaustiveness checking over enums; a switch missing members is still not reported.
 - 🟢 **`return`**; scalar and tuple frames, followed by `control_stop`.
 - 🟢 **Event handlers**; `events.onFlag() { }` and friends, gated by the analyzer to sprite top level.
 - 🟡 **Statement placement errors**; handlers, imports, and switch placement are checked, but statements the IR cannot place outside a sprite are silently dropped rather than reported.
@@ -152,6 +155,13 @@ Last verified against `main` with 146 passing tests and a clean
 ## Standard library
 
 Bundled `.knip` declaration files, generated into the compiler at build time.
+
+Menu parameters are typed by the enum alone where the Scratch menu is a closed set (`ColorParam`,
+`RotationStyle`, `GraphicEffect`, `LayerPosition`, `LayerDirection`, `NumberName`, `DragMode`,
+`TimeUnit`, `GreaterThanProperty`, `Key`), so a bare literal is checked against the members. Six menus
+also list sprite, costume or backdrop names, which the compiler cannot enumerate — `Target`,
+`TouchTarget`, `DistanceTarget`, `ObjectTarget`, `CloneTarget` and `Backdrop` keep an explicit
+`| str` arm for those, and are not checked.
 
 - 🟢 **`prelude`** (no namespace); `wait`, `stop`, `len`, `showVariable`, `hideVariable`, the `Key` and `StopType` enums, `true`/`false`, and the `builds` operator procs.
 - 🟢 **`events`**; `onFlag`, `onKey`, `onClick`, `onBackdropSwitch`, `onGreaterThan`, `onBroadcast`, `broadcast`, `broadcastAndWait`; computed broadcast names supported.

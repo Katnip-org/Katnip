@@ -12,7 +12,7 @@ proc glideTo(@opcode = "motion_glideto", time: num, position: Target | str) -> v
 proc glideTo(@opcode = "motion_glidesecstoxy", time: num, x: num, y: num) -> void {}
 
 proc point(@opcode = "motion_pointindirection", degrees: num) -> void {}
-proc point(@opcode = "motion_pointtowards", target: Target) -> void {}
+proc point(@opcode = "motion_pointtowards", target: Target | str) -> void {}
 
 proc changeX(@opcode = "motion_changexby", dX: num) -> void {}
 proc setX(@opcode = "motion_setx", x: num) -> void {}

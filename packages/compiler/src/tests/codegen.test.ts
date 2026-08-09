@@ -264,6 +264,48 @@ test("a menu slot takes a shadow for a literal, and overlays a reporter for anyt
     assert.deepEqual(blocks[under as string]!.fields.TO, ["_random_", null]);
 });
 
+test("a namespaced enum member folds to its Scratch value, same as the raw string", () => {
+    const blocks = blocksOf(build(`sprite Cat {
+        events.onFlag() {
+            motion.setRotationStyle(motion.RotationStyle.LEFT_RIGHT);
+            motion.setRotationStyle("all around");
+            looks.setEffect(looks.GraphicEffect.GHOST, 50);
+            sensing.setDragMode(sensing.DragMode.NOT_DRAGGABLE);
+            pen.setAttr(pen.ColorParam.SATURATION, 1);
+        }
+    }`));
+    const styles = Object.values(blocks)
+        .filter((b) => b.opcode === "motion_setrotationstyle")
+        .map((b) => b.fields.STYLE![0]);
+
+    assert.deepEqual(styles, ["left-right", "all around"]);
+    // Implicit stdlib members carry the bare name; folding "GraphicEffect.GHOST" would not match.
+    assert.deepEqual(find(blocks, "looks_seteffectto")![1].fields.EFFECT, ["GHOST", null]);
+    assert.deepEqual(find(blocks, "sensing_setdragmode")![1].fields.DRAG_MODE, ["not draggable", null]);
+    assert.deepEqual(find(blocks, "pen_menu_colorParam")![1].fields.colorParam, ["saturation", null]);
+});
+
+test("a coerced literal and the enum member it names build the identical sb3", () => {
+    const program = (attr: string) =>
+        `sprite Cat { events.onFlag() { pen.setAttr(${attr}, 10); } }`;
+    /** The packed project.json up to `meta`, whose timestamps differ on every build. */
+    const targetsJson = (attr: string) => {
+        const json = new TextDecoder().decode(
+            unzipSync(packSb3(build(program(attr))))["project.json"]!,
+        );
+        const meta = json.indexOf(`,"meta":`);
+        assert.notEqual(meta, -1);
+        return json.slice(0, meta);
+    };
+
+    assert.equal(targetsJson(`"color"`), targetsJson(`pen.ColorParam.COLOR`));
+
+    // And the field really is the menu shadow, not a reporter overlaying it.
+    const menu = find(blocksOf(build(program(`"color"`))), "pen_menu_colorParam")!;
+    assert.deepEqual(menu[1].fields.colorParam, ["color", null]);
+    assert.equal(menu[1].shadow, true);
+});
+
 test("broadcasts are registered on the stage and referenced as primitives", () => {
     const project = build(`sprite Cat {
         private topic: str = "later";

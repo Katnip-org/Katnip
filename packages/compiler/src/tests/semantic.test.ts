@@ -120,6 +120,94 @@ test("enum member access checks membership", () => {
     assert.match(errorsOf(decl + "temp c: Color = Color.purple;"), /has no member 'purple'/);
 });
 
+test("namespaced enum members resolve, and stay out of global scope", () => {
+    const wrap = (body: string) => `sprite A { events.onFlag() { ${body} } }`;
+    const opts = { stdlib: true };
+    assert.match(errorsOf(wrap(`motion.setRotationStyle(motion.RotationStyle.LEFT_RIGHT);`), opts), /^$/);
+    assert.match(errorsOf(wrap(`motion.setRotationStyle(motion.RotationStyle.SIDEWAYS);`), opts), /has no member 'SIDEWAYS'/);
+    assert.match(errorsOf(wrap(`motion.setRotationStyle(RotationStyle.LEFT_RIGHT);`), opts), /'RotationStyle' is not defined/);
+});
+
+// -- enum literal coercion --
+
+/** Wraps a statement in the smallest program that reaches the stdlib. */
+const inScript = (body: string) => `sprite A { events.onFlag() { ${body} } }`;
+const withStdlib = { stdlib: true };
+
+test("a literal that is a member value coerces to the enum, as an argument", () => {
+    assert.match(errorsOf(inScript(`pen.setAttr("color", 10);`), withStdlib), /^$/);
+    assert.match(errorsOf(inScript(`motion.setRotationStyle("left-right");`), withStdlib), /^$/);
+    assert.match(errorsOf(inScript(`sensing.setDragMode("not draggable");`), withStdlib), /^$/);
+});
+
+test("a literal that is a member value coerces to the enum, in an assignment", () => {
+    const decl = `enum Color { RED = "red", GREEN = "green" }\n`;
+    assert.match(errorsOf(decl + `temp c: Color = "red";`), /^$/);
+    assert.match(errorsOf(decl + `temp c: Color = "red";\nproc f() -> void { c = "green"; }`), /^$/);
+});
+
+test("a literal that is not a member value is rejected, listing the members", () => {
+    const errors = errorsOf(inScript(`pen.setAttr("magenta", 10);`), withStdlib);
+    assert.match(errors, /"magenta" is not a value of enum 'ColorParam'/);
+    assert.match(errors, /must be one of: "color", "saturation", "brightness", "transparency"/);
+});
+
+test("a near-miss literal gets a did-you-mean", () => {
+    assert.match(
+        errorsOf(inScript(`pen.setAttr("colour", 10);`), withStdlib),
+        /Did you mean "color"\?/,
+    );
+});
+
+test("an enum member reference still works unchanged", () => {
+    assert.match(errorsOf(inScript(`pen.setAttr(pen.ColorParam.COLOR, 10);`), withStdlib), /^$/);
+    assert.match(
+        errorsOf(inScript(`pen.setAttr(pen.ColorParam.MAGENTA, 10);`), withStdlib),
+        /has no member 'MAGENTA'/,
+    );
+});
+
+test("a non-literal of the backing type is rejected, pointing at the member form", () => {
+    const errors = errorsOf(
+        inScript(`temp attr: str = "color"; pen.setAttr(attr, 10);`),
+        withStdlib,
+    );
+    assert.match(errors, /Enum 'ColorParam' expects one of its members here, not a computed 'str'/);
+    assert.match(errors, /use a member \(e\.g\. ColorParam\.COLOR\)/);
+    // A concatenation is just as much a reporter as a variable is.
+    assert.match(
+        errorsOf(inScript(`pen.setAttr("col" + "or", 10);`), withStdlib),
+        /expects one of its members here/,
+    );
+});
+
+test("enum coercion matches by value, so numeric-backed enums work too", () => {
+    const decl = `enum Speed { SLOW = 1, FAST = 2 }\n`;
+    assert.match(errorsOf(decl + `temp s: Speed = 1;`), /^$/);
+    assert.match(errorsOf(decl + `temp s: Speed = 3;`), /3 is not a value of enum 'Speed'/);
+    // A str literal is not a num member value, even when it looks like one.
+    assert.match(errorsOf(decl + `temp s: Speed = "1";`), /"1" is not a value of enum 'Speed'/);
+});
+
+test("case labels check against the switch value's enum", () => {
+    const decl = `enum Color { RED = "red", GREEN = "green" }\n`;
+    const sw = (labels: string) =>
+        errorsOf(decl + `proc f(c: Color) -> void { switch (c) { case (${labels}) { } } }`);
+    assert.match(sw(`"red"`), /^$/);
+    assert.match(sw(`Color.GREEN`), /^$/);
+    assert.match(sw(`"reed"`), /"reed" is not a value of enum 'Color'.*Did you mean "red"\?/);
+});
+
+test("the open stdlib menus still take an arbitrary string", () => {
+    // Target/TouchTarget/ObjectTarget/CloneTarget/Backdrop menus also list sprite and
+    // backdrop names, so those params keep their `| str` arm.
+    assert.match(errorsOf(inScript(`motion.goTo("Sprite1");`), withStdlib), /^$/);
+    assert.match(errorsOf(inScript(`sensing.touching("Cat");`), withStdlib), /^$/);
+    assert.match(errorsOf(inScript(`looks.switchBackdrop("night sky");`), withStdlib), /^$/);
+    // A `| str` arm must still not steal the num overload.
+    assert.match(errorsOf(inScript(`motion.point(90); motion.point("_mouse_");`), withStdlib), /^$/);
+});
+
 test("'self' only valid inside a sprite", () => {
     assert.match(errorsOf("temp x = self.y;"), /'self' can only be used inside a sprite/);
 });
