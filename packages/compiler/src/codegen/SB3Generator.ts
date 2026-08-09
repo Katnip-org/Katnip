@@ -19,6 +19,7 @@ import {
     type Uid,
 } from "./SB3TypeDefs.js";
 import { booleanOpcodes, opcodeSlots, type ShadowPrimitiveType } from "./scratchDefs.js";
+import { KatnipError } from "../utils/ErrorReporter.js";
 
 interface ProcSignature {
     proccode: string;
@@ -85,7 +86,7 @@ const argPrim = (type: paramType): ShadowPrimitiveType | undefined => {
 };
 
 const stopMutation = (option: IRExpr): StopMutation => {
-    if (option.kind !== "lit") throw new Error("control_stop needs a literal option");
+    if (option.kind !== "lit") throw new KatnipError("Codegen","control_stop needs a literal option");
     return { tagName: "mutation", children: [], hasnext: String(option.value === "other scripts in sprite") };
 };
 
@@ -280,7 +281,7 @@ export class SB3Generator {
             }
             case "call": {
                 const sig = this.procSigs.get(stmt.proc);
-                if (!sig) throw new Error(`call to unknown proc '${stmt.proc}'`);
+                if (!sig) throw new KatnipError("Codegen",`call to unknown proc '${stmt.proc}'`);
 
                 const [id, block] = this.newBlock("procedures_call", blocks, parent);
                 stmt.args.forEach((arg, i) => {
@@ -320,7 +321,7 @@ export class SB3Generator {
             case "for": {
                 const [id, block] = this.newBlock("control_for_each", blocks, parent);
                 const varID = this.varIDs.get(stmt.iter);
-                if (!varID) throw new Error(`undeclared variable '${stmt.iter}'`);
+                if (!varID) throw new KatnipError("Codegen",`undeclared variable '${stmt.iter}'`);
 
                 block.fields.VARIABLE = [stmt.iter, varID];
                 // The editor serializes this shadow as text, so match it rather than a number.
@@ -350,7 +351,7 @@ export class SB3Generator {
             }
             case "param": {
                 const type = this.params.get(expr.name);
-                if (type === undefined) throw new Error(`'${expr.name}' is not a param of the current proc`);
+                if (type === undefined) throw new KatnipError("Codegen",`'${expr.name}' is not a param of the current proc`);
                 const [id, block] = this.newBlock(reporterOpcode(type), blocks, parent);
                 block.fields.VALUE = [expr.name, null];
                 return id;
@@ -360,22 +361,22 @@ export class SB3Generator {
             // `input` compresses a var to a [12, name, id] primitive, this is the unprocessed form.
             case "var": {
                 const varID = this.varIDs.get(expr.name);
-                if (!varID) throw new Error(`undeclared variable '${expr.name}'`);
+                if (!varID) throw new KatnipError("Codegen",`undeclared variable '${expr.name}'`);
                 const [id, block] = this.newBlock("data_variable", blocks, parent);
                 block.fields.VARIABLE = [expr.name, varID];
                 return id;
             }
             case "lit":
-                throw new Error("lit has no block form");
+                throw new KatnipError("Codegen","lit has no block form");
         }
     }
 
     /** Routes positional IR inputs into the slots opcodeSlots declares for the opcode. */
     private applySlots(block: Block, id: BlockId, blocks: BlockMap, opcode: string, inputs: IRExpr[]): void {
         const slots = opcodeSlots[opcode];
-        if (!slots) throw new Error(`no slot metadata for '${opcode}'`);
+        if (!slots) throw new KatnipError("Codegen",`no slot metadata for '${opcode}'`);
         if (inputs.length !== slots.length)
-            throw new Error(`${opcode} takes ${slots.length} inputs, got ${inputs.length}`);
+            throw new KatnipError("Codegen",`${opcode} takes ${slots.length} inputs, got ${inputs.length}`);
 
         slots.forEach((slot, i) => {
             const expr = inputs[i]!;
@@ -386,21 +387,21 @@ export class SB3Generator {
                 case "field": {
                     if (!slot.ref) {
                         if (expr.kind !== "lit")
-                            throw new Error(`${opcode}.${slot.name} needs a constant, got ${expr.kind}`);
+                            throw new KatnipError("Codegen",`${opcode}.${slot.name} needs a constant, got ${expr.kind}`);
                         block.fields[slot.name] = [String(expr.value), null];
                         break;
                     }
                     
                     const name = expr.kind === "var" ? expr.name : expr.kind === "lit" ? String(expr.value) : null;
                     if (name === null)
-                        throw new Error(`${opcode}.${slot.name} needs a ${slot.ref} name, got ${expr.kind}`);
+                        throw new KatnipError("Codegen",`${opcode}.${slot.name} needs a ${slot.ref} name, got ${expr.kind}`);
 
                     let refID;
                     if (slot.ref === "broadcast") refID = this.broadcastID(name);
                     else if (slot.ref === "list") refID = this.listIDs.get(name);
                     else refID = this.varIDs.get(name);
 
-                    if (!refID) throw new Error(`undeclared ${slot.ref} '${name}'`);
+                    if (!refID) throw new KatnipError("Codegen",`undeclared ${slot.ref} '${name}'`);
                     block.fields[slot.name] = [name, refID];
                     break;
                 }
@@ -455,7 +456,7 @@ export class SB3Generator {
                 return [1, [prim, String(expr.value)] as Primitive];
             case "var": {
                 const id = this.varIDs.get(expr.name);
-                if (!id) throw new Error(`undeclared variable '${expr.name}'`);
+                if (!id) throw new KatnipError("Codegen",`undeclared variable '${expr.name}'`);
                 return [3, [12, expr.name, id], shadow];
             }
             case "op":

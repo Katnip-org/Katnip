@@ -5,7 +5,7 @@
 
 import { Lexer } from "../lexer/Lexer.js";
 import { Parser } from "../parser/Parser.js";
-import { ErrorReporter } from "../utils/ErrorReporter.js";
+import { ErrorReporter, KatnipError } from "../utils/ErrorReporter.js";
 import { Logger } from "../utils/Logger.js";
 import { stdlibSources } from "../stdlib.generated.js";
 import type { AST } from "../parser/AST-nodes.js";
@@ -19,7 +19,7 @@ export interface StdlibModule {
 
 /**
  * Lexes and parses every stdlib file (embedded at build time). Errors here are compiler bugs, not user errors: they are printed with a banner and the load aborts.
- * @throws when any stdlib file fails to lex or parse.
+ * @throws a locationless KatnipError when any stdlib file fails to lex or parse.
  */
 export function loadStdlibModules(logger: Logger = new Logger()): StdlibModule[] {
     // The prelude declares bare globals; load first
@@ -39,7 +39,11 @@ export function loadStdlibModules(logger: Logger = new Logger()): StdlibModule[]
                 `Internal compiler error in stdlib file '${name}' (this is a Katnip bug):`,
             );
             reporter.print();
-            throw new Error(`stdlib file '${name}' failed to load`);
+            const [first] = reporter.getErrors();
+            throw new KatnipError(
+                "Stdlib",
+                `stdlib file '${name}' failed to load${first ? `: ${first.message}` : ""}`,
+            );
         }
 
         modules.push({

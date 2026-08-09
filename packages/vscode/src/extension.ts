@@ -134,7 +134,9 @@ function complete(doc: vscode.TextDocument): vscode.CompletionItem[] {
 }
 
 function toDiagnostic(err: KatnipError): vscode.Diagnostic {
-    const { line, column, length, endLine, endColumn } = err.location;
+    // IR/codegen errors carry no span; anchor them at the top of the file.
+    const loc: NonNullable<KatnipError["location"]> = err.location ?? { line: 1, column: 1 };
+    const { line, column, length, endLine, endColumn } = loc;
     const start = new vscode.Position(line - 1, column - 1);
     let end: vscode.Position;
     if (length != null) {

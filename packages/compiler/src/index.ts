@@ -2,7 +2,7 @@ import { Lexer } from "./lexer/Lexer.js";
 import { Parser } from "./parser/Parser.js";
 import { SemanticAnalyzer } from "./semantic/SemanticAnalyzer.js";
 import { loadStdlibModules, type StdlibModule } from "./semantic/StdlibLoader.js";
-import { ErrorReporter, type KatnipError } from "./utils/ErrorReporter.js";
+import { ErrorReporter, KatnipError } from "./utils/ErrorReporter.js";
 import { Logger } from "./utils/Logger.js";
 
 import { loadImports, type ImportResolver } from "./semantic/ModuleLoader.js";
@@ -11,7 +11,7 @@ import type { IRProgram } from "./ir/IRNode.js";
 import { SB3Generator } from "./codegen/SB3Generator.js";
 import { packSb3 } from "./codegen/pack.js";
 
-export type { KatnipError } from "./utils/ErrorReporter.js";
+export { KatnipError } from "./utils/ErrorReporter.js";
 export type { ImportResolver } from "./semantic/ModuleLoader.js";
 export type { IRProgram } from "./ir/IRNode.js";
 
@@ -35,7 +35,9 @@ function analyze(source: string, options: Options) {
     try {
         stdlibCache ??= loadStdlibModules(logger);
         analyzer.loadStdlib(stdlibCache);
-    } catch {
+    } catch (err) {
+        if (!(err instanceof KatnipError)) throw err;
+        reporter.add(err);
         return { reporter, ast: null, analyzer: null };
     }
 
@@ -61,7 +63,13 @@ export function compileToIR(
     const errors = reporter.getErrors();
     if (errors.length > 0 || !ast || !analyzer) return { errors };
 
-    return { errors, ir: new IRGenerator(analyzer).generate(ast) };
+    try {
+        return { errors, ir: new IRGenerator(analyzer).generate(ast) };
+    } catch (err) {
+        if (!(err instanceof KatnipError)) throw err;
+        reporter.add(err);
+        return { errors: reporter.getErrors() };
+    }
 }
 
 /** Compiles to .sb3 bytes. `sb3` is absent when `errors` is non-empty. */
@@ -73,6 +81,12 @@ export function compileToSb3(
     const errors = reporter.getErrors();
     if (errors.length > 0 || !ast || !analyzer) return { errors };
 
-    const ir = new IRGenerator(analyzer).generate(ast);
-    return { errors, sb3: packSb3(new SB3Generator().generate(ir)) };
+    try {
+        const ir = new IRGenerator(analyzer).generate(ast);
+        return { errors, sb3: packSb3(new SB3Generator().generate(ir)) };
+    } catch (err) {
+        if (!(err instanceof KatnipError)) throw err;
+        reporter.add(err);
+        return { errors: reporter.getErrors() };
+    }
 }

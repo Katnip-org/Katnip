@@ -176,7 +176,11 @@ export class SemanticAnalyzer {
                     `Internal compiler error in stdlib file '${module.sourcePath}' (this is a Katnip bug):`,
                 );
                 module.reporter.print();
-                throw new Error(`stdlib module '${module.namespace}' failed to load`);
+                const [first] = module.reporter.getErrors();
+                throw new KatnipError(
+                    "Stdlib",
+                    `stdlib module '${module.namespace}' failed to load${first ? `: ${first.message}` : ""}`,
+                );
             }
         }
     }
@@ -253,7 +257,7 @@ export class SemanticAnalyzer {
         const [first] = module.reporter.getErrors();
         if (first)
             this.error(
-                `Imported file '${module.sourcePath}' has errors: ${first.message} (line ${first.location.line})`,
+                `Imported file '${module.sourcePath}' has errors: ${first.message} (line ${first.location?.line ?? "?"})`,
                 module.importNode,
             );
 

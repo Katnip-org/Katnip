@@ -8,15 +8,18 @@ interface KatnipErrorData {
     endColumn?: number;
 }
 
-export class KatnipError {
+export class KatnipError extends Error {
     public stackTrace?: string;
 
     constructor(
         public source: string,      // e.g. "Lexer", "Parser"
-        public message: string,     // error message
-        public location: KatnipErrorData,
+        message: string,            // error message
+        // Absent for IR/codegen: those run on lowered nodes with no source span.
+        public location?: KatnipErrorData,
         captureStack: boolean = true
     ) {
+        super(message);
+        this.name = "KatnipError";
         // captureStackTrace is V8-only (Node/Chromium); cast avoids erors in other runtimes
         const captureStackTrace = (Error as { captureStackTrace?: (o: object, c?: unknown) => void }).captureStackTrace;
         if (captureStack && captureStackTrace) {
@@ -57,6 +60,16 @@ export class ErrorReporter {
     }
 
     private format(err: KatnipError): string {
+        if (!err.location) {
+            let output = `${pc.red(pc.bold(`${err.source} Error:`))} ${pc.yellow(err.message)}\n`;
+            if (this.showStackTrace && err.stackTrace) {
+                output +=
+                    `\n${pc.gray("Internal stack trace:")}\n` +
+                    pc.gray(this.formatStack(err.stackTrace));
+            }
+            return output;
+        }
+
         const { line, column, length, endLine, endColumn } = err.location;
         const sourceLine = this.sourceLines[line - 1] || "";
         const gutterWidth = String(this.sourceLines.length).length;

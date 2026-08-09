@@ -18,6 +18,7 @@ import type {
     VariableDeclarationNode,
 } from "../parser/AST-nodes.js";
 import type { SemanticAnalyzer } from "../semantic/SemanticAnalyzer.js";
+import { KatnipError } from "../utils/ErrorReporter.js";
 import type { ReturnMethod, Signature } from "../semantic/SymbolTable.js";
 import {
     paramType,
@@ -223,8 +224,15 @@ export class IRGenerator {
     private listsOf(node: ExpressionNode): string[] {
         const names = node.type === "Identifier" ? this.listNames.get(node.name) : undefined;
         if (!names)
-            throw new Error(
+            throw new KatnipError(
+                "IR",
                 `only a declared list or dict can be indexed, got ${node.type === "Identifier" ? `'${node.name}'` : node.type}`,
+                {
+                    line: node.loc.start.line,
+                    column: node.loc.start.column,
+                    endLine: node.loc.end.line,
+                    endColumn: node.loc.end.column,
+                },
             );
         return names;
     }

@@ -50,7 +50,7 @@ export function compile(
 export function formatErrors(reporter: ErrorReporter): string {
     return reporter
         .getErrors()
-        .map((e) => `[${e.source}] ${e.message} (line ${e.location.line})`)
+        .map((e) => `[${e.source}] ${e.message} (line ${e.location?.line ?? "?"})`)
         .join("\n");
 }
 

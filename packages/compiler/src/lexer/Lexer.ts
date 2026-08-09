@@ -99,10 +99,15 @@ export class Lexer {
             this.processChar(char);
 
             if (this.position === posBefore && this.currentState === stateBefore) {
-                throw new Error(
-                    `Internal lexer error: no forward progress in state ${LexerState[this.currentState]} ` +
-                    `on ${JSON.stringify(char)} at line ${this.line}, column ${this.col}`
+                this.reporter.add(
+                    new KatnipError(
+                        "Lexer",
+                        `Internal lexer error (this is a Katnip bug): no forward progress in state ` +
+                        `${LexerState[this.currentState]} on ${JSON.stringify(char)}`,
+                        { line: this.line, column: this.col },
+                    )
                 );
+                break; // the guard exists to stop an infinite loop, so stop
             }
         }
         

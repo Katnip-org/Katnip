@@ -6,7 +6,7 @@ import { Parser } from "./parser/Parser.js";
 import { SemanticAnalyzer } from "./semantic/SemanticAnalyzer.js";
 import { loadStdlibModules } from "./semantic/StdlibLoader.js";
 import { loadImports, type ImportResolver } from "./semantic/ModuleLoader.js";
-import { ErrorReporter } from "./utils/ErrorReporter.js";
+import { ErrorReporter, KatnipError } from "./utils/ErrorReporter.js";
 import { Logger } from "./utils/Logger.js";
 import { compileToIR, compileToSb3 } from "./index.js";
 
@@ -152,9 +152,11 @@ cli
                 const analyzer = new SemanticAnalyzer(reporter, logger);
                 try {
                     analyzer.loadStdlib(loadStdlibModules(logger));
-                } catch {
-                    reporter.print(); // surface any parse errors we already collected
-                    return; // the stdlib loader already printed its own errors
+                } catch (err) {
+                    if (!(err instanceof KatnipError)) throw err;
+                    reporter.add(err); // the loader already printed the stdlib's own located errors
+                    reporter.print();
+                    return;
                 }
 
                 analyzer.loadImports(
