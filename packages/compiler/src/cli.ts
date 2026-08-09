@@ -8,7 +8,7 @@ import { loadStdlibModules } from "./semantic/StdlibLoader.js";
 import { loadImports, type ImportResolver } from "./semantic/ModuleLoader.js";
 import { ErrorReporter } from "./utils/ErrorReporter.js";
 import { Logger } from "./utils/Logger.js";
-import { compileToSb3 } from "./index.js";
+import { compileToIR, compileToSb3 } from "./index.js";
 
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
@@ -209,6 +209,48 @@ cli
             })
             .catch((err: any) => {
                 console.error('Error building file:', err);
+                process.exitCode = 1;
+            });
+    })
+    .command('lower <source> [output]', 'Lower a file to IR and print it as JSON', (yargs: any) => {
+        yargs.positional('source', {
+            describe: 'The path to the source file',
+            type: 'string',
+            demandOption: true,
+        }).positional('output', {
+            describe: 'The path to write the IR JSON to (defaults to stdout)',
+            type: 'string',
+        });
+    }, (argv: any) => {
+        const source = argv.source as string;
+        fs.readFile(source as PathLike, { encoding: 'utf-8' })
+            .then(async (fileContent: string) => {
+                const { errors, ir } = compileToIR(fileContent, {
+                    path: path.resolve(source),
+                    resolve: fileResolver,
+                });
+
+                if (!ir) {
+                    const reporter = new ErrorReporter(fileContent, true);
+                    for (const err of errors) reporter.add(err);
+                    reporter.print();
+                    process.exitCode = 1;
+                    return;
+                }
+
+                // Maps are invisible to JSON.stringify, and the IR is full of them.
+                const json = JSON.stringify(ir, (_, v) => v instanceof Map ? Object.fromEntries(v) : v, 2);
+
+                const output = argv.output as string | undefined;
+                if (output) {
+                    await fs.writeFile(output as PathLike, json);
+                    console.log(`Wrote ${output}`);
+                } else {
+                    console.log(json);
+                }
+            })
+            .catch((err: any) => {
+                console.error('Error lowering file:', err);
                 process.exitCode = 1;
             });
     })

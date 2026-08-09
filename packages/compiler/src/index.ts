@@ -7,11 +7,13 @@ import { Logger } from "./utils/Logger.js";
 
 import { loadImports, type ImportResolver } from "./semantic/ModuleLoader.js";
 import { IRGenerator } from "./ir/IRGenerator.js";
+import type { IRProgram } from "./ir/IRNode.js";
 import { SB3Generator } from "./codegen/SB3Generator.js";
 import { packSb3 } from "./codegen/pack.js";
 
 export type { KatnipError } from "./utils/ErrorReporter.js";
 export type { ImportResolver } from "./semantic/ModuleLoader.js";
+export type { IRProgram } from "./ir/IRNode.js";
 
 let stdlibCache: StdlibModule[] | null = null;
 
@@ -48,6 +50,18 @@ function analyze(source: string, options: Options) {
 
 export function checkSource(source: string, options: Options = {}): readonly KatnipError[] {
     return analyze(source, options).reporter.getErrors();
+}
+
+/** Lowers to IR. `ir` is absent when `errors` is non-empty. */
+export function compileToIR(
+    source: string,
+    options: Options = {},
+): { errors: readonly KatnipError[]; ir?: IRProgram } {
+    const { reporter, ast, analyzer } = analyze(source, options);
+    const errors = reporter.getErrors();
+    if (errors.length > 0 || !ast || !analyzer) return { errors };
+
+    return { errors, ir: new IRGenerator(analyzer).generate(ast) };
 }
 
 /** Compiles to .sb3 bytes. `sb3` is absent when `errors` is non-empty. */
