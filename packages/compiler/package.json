@@ -1,6 +1,6 @@
 {
   "name": "@katnip-org/compiler",
-  "version": "0.1.11",
+  "version": "0.1.12",
   "description": "Compiler and type-checker for the Katnip language (.knip), targeting Scratch SB3.",
   "license": "Apache-2.0",
   "author": "Benjamin Clark",
