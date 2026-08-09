@@ -193,6 +193,28 @@ test("a builds proc called by name inlines the same way, with no proc call emitt
     });
 });
 
+test("a builds body containing a call inlines that call too, folding its enum argument", () => {
+    const program = lower(HAT + `sprite Cat { onflag() { temp x = math.ceil(1.5); } }`, { stdlib: true });
+    const body = program.sprites[0].scripts[0].body;
+    assert.equal(body.filter((s) => s.kind === "call").length, 0, "builds procs must not emit calls");
+    assert.deepEqual(raws(body, "data_setvariableto")[0].inputs[1], {
+        kind: "op",
+        opcode: "operator_mathop",
+        // "ceiling", not "ceil": the enum value is the sb3 OPERATOR field verbatim
+        inputs: [{ kind: "lit", value: "ceiling" }, { kind: "lit", value: 1.5 }],
+    });
+});
+
+test("a cast emits nothing: the operand reaches the use site untouched", () => {
+    const program = lower(HAT + `sprite Cat { onflag() { temp x: num = Num(1 + 2); } }`, { stdlib: true });
+    const body = program.sprites[0].scripts[0].body;
+    assert.deepEqual(raws(body, "data_setvariableto")[0].inputs[1], {
+        kind: "op",
+        opcode: "operator_add",
+        inputs: [{ kind: "lit", value: 1 }, { kind: "lit", value: 2 }],
+    });
+});
+
 test("builds procs get no return plan and emit no proc of their own", () => {
     const program = lower(HAT + `sprite Cat { onflag() { temp x = 1 <= 2; } }`, { stdlib: true });
     assert.equal(program.procs.size, 0);

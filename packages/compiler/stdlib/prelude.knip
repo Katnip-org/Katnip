@@ -13,10 +13,11 @@ enum Key { SPACE = "space", LEFT_ARROW = "left arrow", RIGHT_ARROW = "right arro
             NUM_5 = "5", NUM_6 = "6", NUM_7 = "7", NUM_8 = "8", NUM_9 = "9" }
 
 # casts
-proc Num(@opcode = "katnip_cast_num", value: any) -> num {}
-proc Str(@opcode = "katnip_cast_str", value: any) -> str {}
-proc Bool(@opcode = "katnip_cast_bool", value: any) -> bool {}
-proc List(@opcode = "katnip_cast_list", value: any) -> list<any> {}
+proc Num(@lower = "builds", value: any) -> num { return value; }
+proc Str(@lower = "builds", value: any) -> str { return value; }
+proc Bool(@lower = "builds", value: any) -> bool { return value; }
+# TODO: implement list returns to allow this to be a cast instead of a no-op
+# proc List(@lower = "builds", value: any) -> list<any> { return value; }
 
 # iter helpers
 proc range(@opcode = "katnip_range", stop: num) -> list<num> {}

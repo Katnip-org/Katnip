@@ -1,9 +1,44 @@
 #> math.knip ~ math operations + math constants. <#
 
-
-# TODO: impl this please
-proc pow(base: num, exponent: num) -> num {}
-
 public pi: num = 3.141592653589793;
 public e: num = 2.718281828459045;
 public tau: num = 6.283185307179586;
+
+proc pow(base: num, exponent: num) -> num {
+    if (exponent == 0) {
+        return(1);
+    }
+
+    temp result = epow(exponent * ln(abs(base)));
+
+    if (base < 0) {
+        result = result * (Num(abs(exponent) % 2 == 0) * 2 - 1);
+    }
+
+    return(result);
+}
+
+# --- Math-ops and its wrapped derivatives ---
+
+public enum MathOp { ABS = "abs", FLOOR = "floor", CEIL = "ceiling", SQRT = "sqrt",
+                     SIN = "sin", COS = "cos", TAN = "tan", 
+                     ASIN = "asin", ACOS = "acos", ATAN = "atan",
+                     LN = "ln", LOG = "log", EPOW = "e ^" }
+
+proc op(@opcode = "operator_mathop", op: MathOp, value: num) -> num {}
+
+proc abs(@lower = "builds", value: num) -> num { return(op(MathOp.ABS, value)); }
+proc floor(@lower = "builds", value: num) -> num { return(op(MathOp.FLOOR, value)); }
+proc ceil(@lower = "builds", value: num) -> num { return(op(MathOp.CEIL, value)); }
+proc sqrt(@lower = "builds", value: num) -> num { return(op(MathOp.SQRT, value)); }
+
+proc sin(@lower = "builds", value: num) -> num { return(op(MathOp.SIN, value)); }
+proc cos(@lower = "builds", value: num) -> num { return(op(MathOp.COS, value)); }
+proc tan(@lower = "builds", value: num) -> num { return(op(MathOp.TAN, value)); }
+proc asin(@lower = "builds", value: num) -> num { return(op(MathOp.ASIN, value)); }
+proc acos(@lower = "builds", value: num) -> num { return(op(MathOp.ACOS, value)); }
+proc atan(@lower = "builds", value: num) -> num { return(op(MathOp.ATAN, value)); }
+
+proc ln(@lower = "builds", value: num) -> num { return(op(MathOp.LN, value)); }
+proc log(@lower = "builds", value: num) -> num { return(op(MathOp.LOG, value)); }
+proc epow(@lower = "builds", value: num) -> num { return(op(MathOp.EPOW, value)); }

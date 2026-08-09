@@ -9,7 +9,8 @@ Status of every language and toolchain feature, tracked against the compiler pip
 | 🟡 | Partial; implemented at some stages, named per row |
 | 🔴 | Not implemented, or implemented only far enough to type-check |
 
-Last verified against `main` with 146 passing tests and a clean
+Last verified against `main` (compiler `0.1.12`) with 179 tests — 171 passing and 8 `todo`
+cases pinned to the gaps below — and a clean
 `node packages/compiler/build/cli.js build examples/codegen.knip`.
 
 ---
@@ -17,6 +18,8 @@ Last verified against `main` with 146 passing tests and a clean
 ## Pipeline
 
 - 🟢 **Lexer**; hand-written state machine, operator trie for multi-character tokens, tracks line/column for every token.
+  - 🟢 Interpolation nesting; a stack of string frames, so an interpolation may hold a string of either quote style, or another f-string.
+  - 🟢 Unterminated string literals are reported instead of running off the end of the file.
 - 🟢 **Parser**; Pratt parser with a binding-power table, recovers from syntax errors into error nodes so analysis still runs.
 - 🟢 **Semantic analyzer**; two-pass (hoist, then walk), scoped symbol table, structured `InternalType` with unions, tuples, generics.
 - 🟡 **IR generator**; lowers everything Scratch-shaped, with named gaps below (structs, slices, `**`, imports, `katnip_*` builtins).
@@ -168,7 +171,7 @@ also list sprite, costume or backdrop names, which the compiler cannot enumerate
 - 🟢 **`motion`**; movement, turning, `goTo`/`glideTo` overloads, pointing, x/y, edge bounce, rotation style.
 - 🟢 **`looks`**; say/think with both overloads, costumes, backdrops, size, graphic effects, show/hide, layers.
 - 🟢 **`sensing`**; touching, colors, distance, ask/answer, keys, mouse, drag mode, loudness, timer, `sensing_of`, date parts, online, username.
-- 🟢 **`pen`**; down, up, clear, hex color, color params, size; the extension is declared in the project automatically.
+- 🟢 **`pen`**; down, up, clear, stamp, hex color, color params, size; the extension is declared in the project automatically.
 - 🟢 **`clone`**; `onStart`, `create`, `delete`.
 - 🟡 **`list`**; `add`, `contains`, `length`, `clear`, `indexOf`, `show`, `hide` are 🟢; `remove` is 🔴 (yields), `merge` is 🔴 (`katnip_list_merge`).
 - 🟡 **`math`**; `pi`, `e`, `tau` fold to literals 🟢; `pow` is a stub with an empty body 🔴.
@@ -204,7 +207,7 @@ also list sprite, costume or backdrop names, which the compiler cannot enumerate
 - 🟢 **CLI**; `katnip tokenize`, `parse`, `check`, `build`, `help`.
 - 🟢 **Error reporting**; source spans with line and column, colorized output, multiple errors per run; analysis continues past syntax errors so semantic errors surface alongside them.
 - 🟢 **VS Code extension**; live diagnostics on type or on save with a configurable debounce, syntax highlighting, language configuration, and a `Katnip: Build .sb3` command.
-- 🟢 **Tests**; 146 `node --test` cases across lexer, parser, semantic, callgraph, imports, IR, and codegen.
+- 🟢 **Tests**; 179 `node --test` cases across lexer, parser, semantic, callgraph, imports, IR, and codegen; 8 are `todo` cases pinned to the gaps above.
 - 🟢 **Public API**; `checkSource` and `compileToSb3` exported for embedding, with a pluggable import resolver.
 - 🔴 **Language server**; the extension shells the compiler directly; no LSP, no completion, hover, or go-to-definition.
 - 🔴 **Formatter**.

@@ -198,6 +198,10 @@ export class SemanticAnalyzer {
             this.hoist(module.ast.body);
             this.finalizeStdlibScope(module.ast.body);
             this.hoistNamespaceConsts(module.ast.body, isPrelude ? null : module.namespace);
+            
+            for (const stmt of module.ast.body)
+                if (stmt.type === "ProcedureDeclaration" && this.procSignatures.get(stmt)?.meta?.lower === "builds")
+                    this.visit(stmt);
 
             this.current = savedScope;
             this.allowTypevars = false;
@@ -1495,6 +1499,9 @@ export class SemanticAnalyzer {
                 const arg = args.positional[i] ?? args.named.get(sig.params[i]?.name);
                 if (arg) bindReceiver(paramType, arg.type, bindings);
             });
+            // Cloning would break signature identity, which the IR uses to find a proc's return plan.
+            // Only a generic signature needs one, and those are all @opcode builtins with no plan.
+            if (bindings.size === 0) return sig;
             return {
                 ...sig,
                 resolvedParamTypes: sig.resolvedParamTypes.map((t) => substitute(t, bindings)),
