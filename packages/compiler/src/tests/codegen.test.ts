@@ -285,6 +285,18 @@ test("a boolean slot never receives a round reporter", () => {
     assert.equal(blocks[branch.inputs.CONDITION![1] as string]!.opcode, "operator_equals");
 });
 
+test("a variable plugged into a colour input gets a valid #rrggbb shadow, not an empty string", () => {
+    const blocks = blocksOf(build(`sprite Cat {
+        private hex: str = "#ff0000";
+        events.onFlag() { pen.setHex(hex); }
+    }`));
+
+    const [, call] = find(blocks, "pen_setPenColorToColor")!;
+    const shadow = call.inputs.COLOR![2] as [number, string];
+    assert.equal(shadow[0], 9, "still tagged as a colour primitive");
+    assert.match(shadow[1], /^#[a-fA-F0-9]{6}$/, "sb3 schema requires the shadow to be a real hex color");
+});
+
 test("a menu slot takes a shadow for a literal, and overlays a reporter for anything else", () => {
     const project = build(`sprite Cat {
         private where: str = "_mouse_";

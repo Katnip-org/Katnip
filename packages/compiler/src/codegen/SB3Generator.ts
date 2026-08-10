@@ -452,7 +452,8 @@ export class SB3Generator {
 
     /** Wraps an expression as an sb3 input value: [1, prim] for literals, [3, value, shadow] otherwise. */
     private input(expr: IRExpr, blocks: BlockMap, parent: BlockId, prim?: ShadowPrimitiveType): Input {
-        const shadow = prim ? ([prim, ""] as Primitive) : null;
+        // A color shadow must be a valid #rrggbb, unlike every other prim where "" is fine.
+        const shadow = prim ? ([prim, prim === 9 ? "#000000" : ""] as Primitive) : null;
 
         // No prim means a boolean slot, which is hexagonal and rejects a round reporter.
         if (!prim && expr.kind !== "lit" && !this.isBoolShaped(expr))
