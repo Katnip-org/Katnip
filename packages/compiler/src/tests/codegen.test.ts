@@ -83,6 +83,50 @@ test("proc definition emits a prototype, mutation and argument reporters", () =>
     }
 });
 
+test("@proccode sets the custom block label, with specs from the param types", () => {
+    const proccode = (source: string) => {
+        const [, proto] = find(blocksOf(build(source)), "procedures_prototype")!;
+        return (proto.mutation as { proccode: string }).proccode;
+    };
+
+    // placeholders named after the params, and the bare-spec form, both bind left to right
+    assert.equal(
+        proccode(`sprite Cat { proc add(@proccode = "%x + %y", x: num, y: num) -> void { looks.say("hi"); } }`),
+        "%n + %n",
+    );
+    assert.equal(
+        proccode(`sprite Cat { proc log(@proccode = "log %s", msg: str) -> void { looks.say(msg); } }`),
+        "log %s",
+    );
+    // the declared type wins over the spec that was written
+    assert.equal(
+        proccode(`sprite Cat { proc log(@proccode = "log %s", n: num) -> void { looks.say("hi"); } }`),
+        "log %n",
+    );
+    // no decorator, so the label is generated from the name
+    assert.equal(
+        proccode(`sprite Cat { proc greet(who: str) -> void { looks.say(who); } }`),
+        "greet who %s",
+    );
+});
+
+test("a @proccode that does not match the params is an error", () => {
+    const errors = (source: string) => compile(source, { stdlib: true }).reporter.getErrors();
+
+    assert.match(
+        errors(`sprite Cat { proc add(@proccode = "%x", x: num, y: num) -> void { looks.say("hi"); } }`)[0]!.message,
+        /1 placeholder\(s\) but 'add' takes 2/,
+    );
+    assert.match(
+        errors(`sprite Cat { proc add(@proccode = "%y + %x", x: num, y: num) -> void { looks.say("hi"); } }`)[0]!.message,
+        /%y must be %x \(parameter 1\)/,
+    );
+    assert.match(
+        errors(`proc wait2(@proccode = "wait %n", @opcode = "control_wait", secs: num) -> void {}`)[0]!.message,
+        /@proccode is only valid/,
+    );
+});
+
 test("proc ret vars and script temps reach a target's variable map", () => {
     const project = build(
         `sprite Cat { proc addone(x: num) -> num { return x + 1; } events.onFlag() { temp y = addone(2); } }`,

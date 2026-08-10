@@ -367,9 +367,9 @@ test("for over range() counts instead of building a list", () => {
     );
     const loop = program.sprites[0].scripts[0].body.find((s) => s.kind === "for");
     assert(loop?.kind === "for", "range must lower to a counted for, not a list walk");
-    // range(4, 10, 2) => 4, 6, 8: ceil((10-4)/2) iterations, remapping the loop var in place
+    // range(4, 10, 2) => 4, 6, 8, 10: floor((10-4)/2)+1 iterations, remapping the loop var in place
     assert.equal(loop.iter, "x");
-    assert.deepEqual(loop.times, { kind: "lit", value: 3 });
+    assert.deepEqual(loop.times, { kind: "lit", value: 4 });
     assert.deepEqual(loop.body[0], {
         kind: "raw",
         opcode: "data_setvariableto",
@@ -394,8 +394,123 @@ test("range(1, n) needs no remap block at all", () => {
     const loop = program.sprites[0].scripts[0].body.find((s) => s.kind === "for");
     assert(loop?.kind === "for");
     assert.equal(loop.iter, "x");
-    assert.deepEqual(loop.times, { kind: "lit", value: 8 });
+    assert.deepEqual(loop.times, { kind: "lit", value: 9 });
     assert.deepEqual(loop.body, [{ kind: "raw", opcode: "looks_say", inputs: [{ kind: "lit", value: "a" }] }]);
+});
+
+/** Evaluates the counter remap a literal range header emitted, giving the values the loop really yields. */
+function rangeValues(args: string): number[] {
+    const program = lower(HAT + `sprite Cat { onflag() { for (x, range(${args})) { looks.say("a"); } } }`, {
+        stdlib: true,
+    });
+    const loop = program.sprites[0].scripts[0].body.find((s) => s.kind === "for");
+    assert(loop?.kind === "for");
+    assert(loop.times.kind === "lit", "a fully literal range must fold to a literal count");
+
+    const first = loop.body[0];
+    const remap: IRExpr =
+        first?.kind === "raw" && first.opcode === "data_setvariableto"
+            ? first.inputs[1]!
+            : { kind: "var", name: "x" }; // no remap block => the counter is the value
+    const value = (expr: IRExpr, counter: number): number => {
+        if (expr.kind === "lit") return Number(expr.value);
+        if (expr.kind === "var") return counter;
+        assert(expr.kind === "op", `unexpected ${expr.kind} in a range remap`);
+        const [left, right] = expr.inputs.map((input) => value(input, counter));
+        if (expr.opcode === "operator_add") return left! + right!;
+        assert.equal(expr.opcode, "operator_multiply");
+        return left! * right!;
+    };
+    return Array.from({ length: Number(loop.times.value) }, (_, i) => value(remap, i + 1));
+}
+
+test("range is 1-based and stop-inclusive, matching Scratch's own counter", () => {
+    assert.deepEqual(rangeValues("5"), [1, 2, 3, 4, 5]);
+    assert.deepEqual(rangeValues("2, 6"), [2, 3, 4, 5, 6]);
+    assert.deepEqual(rangeValues("4, 10, 2"), [4, 6, 8, 10]);
+    assert.deepEqual(rangeValues("5, 1, -1"), [5, 4, 3, 2, 1]);
+    assert.deepEqual(rangeValues("0"), [], "an empty range runs zero times, not backwards");
+});
+
+const PAIRS = `sprite Cat {
+    private names: list<str> = ["a", "b"];
+    private powers: list<num> = [1, 2];
+    onflag() { BODY }
+}`;
+
+/** The single for loop a zip()/enumerate() header lowers to. */
+function pairLoop(body: string): Extract<IRStmt, { kind: "for" }> {
+    const program = lower(HAT + PAIRS.replace("BODY", body), { stdlib: true });
+    const loop = program.sprites[0].scripts[0].body.find((s) => s.kind === "for");
+    assert(loop?.kind === "for", "zip/enumerate must lower to a counted for, never be dropped");
+    return loop;
+}
+
+test("for over enumerate() reuses the counter as the index", () => {
+    const loop = pairLoop(`for ((i, v), enumerate(names)) { looks.say(v); }`);
+    // The 1-based counter already is the index, so only the value costs a block.
+    assert.equal(loop.iter, "i");
+    assert.deepEqual(loop.times, {
+        kind: "op",
+        opcode: "data_lengthoflist",
+        inputs: [{ kind: "var", name: "names" }],
+    });
+    assert.deepEqual(loop.body, [
+        {
+            kind: "raw",
+            opcode: "data_setvariableto",
+            inputs: [
+                { kind: "var", name: "v" },
+                {
+                    kind: "op",
+                    opcode: "data_itemoflist",
+                    inputs: [{ kind: "var", name: "names" }, { kind: "var", name: "i" }],
+                },
+            ],
+        },
+        { kind: "raw", opcode: "looks_say", inputs: [{ kind: "var", name: "v" }] },
+    ]);
+});
+
+test("for over zip() walks both lists by the first one's length, reading the index before it is clobbered", () => {
+    const loop = pairLoop(`for ((flower, thing), zip(names, powers)) { looks.say(flower); }`);
+    assert.equal(loop.iter, "flower");
+
+    // The first list sets the count; a shorter second one reads empty past its end, as Scratch does.
+    assert.deepEqual(loop.times, {
+        kind: "op",
+        opcode: "data_lengthoflist",
+        inputs: [{ kind: "var", name: "names" }],
+    });
+
+    const item = (list: string) => ({
+        kind: "op",
+        opcode: "data_itemoflist",
+        inputs: [{ kind: "var", name: list }, { kind: "var", name: "flower" }],
+    });
+    assert.deepEqual(loop.body.slice(0, 2), [
+        { kind: "raw", opcode: "data_setvariableto", inputs: [{ kind: "var", name: "thing" }, item("powers")] },
+        { kind: "raw", opcode: "data_setvariableto", inputs: [{ kind: "var", name: "flower" }, item("names")] },
+    ]);
+});
+
+test("one loop variable over a pair binds the first column", () => {
+    assert.deepEqual(pairLoop(`for (v, zip(names, powers)) { looks.say(v); }`).body[0], {
+        kind: "raw",
+        opcode: "data_setvariableto",
+        inputs: [
+            { kind: "var", name: "v" },
+            {
+                kind: "op",
+                opcode: "data_itemoflist",
+                inputs: [{ kind: "var", name: "names" }, { kind: "var", name: "v" }],
+            },
+        ],
+    });
+    // enumerate's first column is the counter, so the body is the user's block and nothing else.
+    assert.deepEqual(pairLoop(`for (i, enumerate(names)) { looks.say("a"); }`).body, [
+        { kind: "raw", opcode: "looks_say", inputs: [{ kind: "lit", value: "a" }] },
+    ]);
 });
 
 test("switch lowers to an if chain, with default as the final else", () => {

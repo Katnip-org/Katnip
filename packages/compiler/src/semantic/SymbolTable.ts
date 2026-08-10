@@ -35,6 +35,8 @@ export interface SignatureMeta {
     lower?: LoweringKind;
     /** Binary operator this proc backs (@operator), e.g. "!&". Only meaningful with @lower = "builds". */
     operator?: string;
+    /** Custom block label (@proccode); one %placeholder per param, in declaration order. */
+    proccode?: string;
     /** The `return` expression of a @lower = "builds" proc, inlined by the IR at each use site. */
     buildsExpr?: ExpressionNode;
     /** Requested return strategy (@ret), default "auto". */

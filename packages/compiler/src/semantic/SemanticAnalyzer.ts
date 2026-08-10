@@ -428,6 +428,8 @@ export class SemanticAnalyzer {
             this.error(`@operator is only valid on a @lower = "builds" proc`, node);
         }
 
+        if (meta.proccode !== undefined) this.checkProccode(meta.proccode, meta, node);
+
         // TODO: Implement the features the program currently blocks
         if (
             !meta.opcode &&
@@ -453,6 +455,33 @@ export class SemanticAnalyzer {
         );
     }
 
+    /**
+     * A @proccode placeholder is `%<param name>` or a bare `%s`/`%n`/`%b`, one per param in declaration
+     * order. Scratch keys a custom block's arguments off that order, so a mismatch is unloadable, not just wrong.
+     * ponytail: no reordering; allow it once someone wants a label that reads out of order.
+     */
+    private checkProccode(proccode: string, meta: SignatureMeta, node: ProcedureDeclarationNode): void {
+        if (meta.lower !== "userproc") {
+            this.error(`@proccode is only valid on a proc Katnip emits as a custom block`, node);
+            return;
+        }
+
+        const holes = [...proccode.matchAll(/%([A-Za-z_][A-Za-z_0-9]*)/g)].map((match) => match[1]!);
+        if (holes.length !== node.parameters.length) {
+            this.error(
+                `@proccode has ${holes.length} placeholder(s) but '${node.name}' takes ${node.parameters.length} parameter(s)`,
+                node,
+            );
+            return;
+        }
+
+        holes.forEach((hole, i) => {
+            const name = node.parameters[i]!.name;
+            if (hole !== name && hole !== "s" && hole !== "n" && hole !== "b")
+                this.error(`@proccode placeholder %${hole} must be %${name} (parameter ${i + 1}) or %s/%n/%b`, node);
+        });
+    }
+
     /** Return frame shape from the written return type. Only the width (Scratch slot count) matters. */
     private deriveReturns(returnType: TypeNode | null): ReturnMethod {
         if (!returnType) return { kind: "void" };
@@ -474,6 +503,7 @@ export class SemanticAnalyzer {
             const value = decorator.value.type === "Literal" ? decorator.value.value : undefined;
             if (decorator.name === "opcode" && typeof value === "string") meta.opcode = value;
             if (decorator.name === "operator" && typeof value === "string") meta.operator = value;
+            if (decorator.name === "proccode" && typeof value === "string") meta.proccode = value;
             if (decorator.name === "hat") meta.hat = value === "true" || value === true;
             if (decorator.name === "warp") meta.warp = value === "true" || value === true;
             if (decorator.name === "lower") {
@@ -664,7 +694,8 @@ export class SemanticAnalyzer {
 
                 let partTypes: InternalType[];
                 if (!isTuple) {
-                    partTypes = [elementType];
+                    // One variable over a pair (dict, zip, enumerate) binds the first column, as the IR walk does.
+                    partTypes = [elementType.kind === "tuple" ? elementType.elements[0]! : elementType];
                 } else if (
                     elementType.kind === "tuple" &&
                     elementType.elements.length === loopVars.length
@@ -854,6 +885,16 @@ export class SemanticAnalyzer {
                 return iterable.element;
             case "dict":
                 return { kind: "tuple", elements: [iterable.key, iterable.value] };
+            case "tuple":
+                // zip()/enumerate() hand back parallel lists; iterating walks them in step.
+                return iterable.elements.every((column) => column.kind === "list")
+                    ? {
+                          kind: "tuple",
+                          elements: iterable.elements.map((column) =>
+                              column.kind === "list" ? column.element : { kind: "unknown" },
+                          ),
+                      }
+                    : { kind: "unknown" };
             case "primitive":
                 // str -> characters, num -> counter value
                 return iterable.name === "str" || iterable.name === "num"

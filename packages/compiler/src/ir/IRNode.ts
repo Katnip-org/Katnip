@@ -38,6 +38,7 @@ export interface IRProc {
     /** Unique (mangled) name; overloads must not share it. Also the procs map key. */
     name: string;
     params: IRParam[];
+    proccode?: string;
     returns: ReturnMethod;
     warp: boolean;
     strategy: "var" | "vstack" | null;

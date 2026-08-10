@@ -1,6 +1,6 @@
 // import { zipSync } from 'fflate';
 
-import { paramType, type IRExpr, type IRProc, type IRProgram, type IRScript, type IRStmt } from "../ir/IRNode.js";
+import { paramType, type IRExpr, type IRParam, type IRProc, type IRProgram, type IRScript, type IRStmt } from "../ir/IRNode.js";
 import {
     minimalProject,
     minimalSprite,
@@ -29,6 +29,14 @@ interface ProcSignature {
 }
 
 const typeSpec = { [paramType.BOOLEAN]: "%b", [paramType.STRING]: "%s", [paramType.NUMBER]: "%n" };
+
+const proccodeOf = (proc: IRProc): string => {
+    if (proc.proccode === undefined)
+        return [proc.name, ...proc.params.map((p) => `${p.name} ${typeSpec[p.type]}`)].join(" ");
+
+    let i = 0;
+    return proc.proccode.replace(/%[A-Za-z_][A-Za-z_0-9]*/g, () => typeSpec[(proc.params[i++] as IRParam).type]);
+};
 
 const boolLit = (value: string | number | boolean): IRExpr => ({
     kind: "op",
@@ -224,7 +232,7 @@ export class SB3Generator {
         let sig = this.procSigs.get(proc.name);
         if (!sig) {
             sig = {
-                proccode: [proc.name, ...proc.params.map((p) => `${p.name} ${typeSpec[p.type]}`)].join(" "),
+                proccode: proccodeOf(proc),
                 argumentids: proc.params.map(() => this.generateID("var")),
                 types: proc.params.map((p) => p.type),
                 // The sb3 schema rejects anything but "true"/"false".

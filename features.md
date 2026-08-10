@@ -70,7 +70,9 @@ case passing except the 8 `todo` cases that pin the gaps below — and a clean
 - 🟢 **`for` over a list**; binds each element by index.
 - 🟢 **`for` over a string**; binds each letter through `operator_letter_of`.
 - 🟢 **`for` over a dict**; `for ((key, value), d)` walks the keys and values columns together.
-- 🟢 **`for` over `range()`**; folded into the loop counter with constant folding on literal `start`/`stop`/`step`, never built as a list.
+- 🟢 **`for` over `range()`**; folded into the loop counter with constant folding on literal `start`/`stop`/`step`, never built as a list. 1-based and stop-inclusive like Scratch's own counter, so `range(5)` yields `1 2 3 4 5`.
+- 🟢 **`for` over `zip()` / `enumerate()`**; walked by index instead of built: `for ((a, b), zip(l1, l2))` reads both lists under one counter, running `l1.length()` times; `for ((i, v), enumerate(l))` reuses the 1-based counter as the index, so it costs no extra block.
+  - 🟡 A second list shorter than the first reads empty past its end, rather than the loop stopping early.
 - 🟢 **`switch` / `case` / `default`**; lowers to an if/else chain; a case can hold several values.
   - 🟢 Case labels are checked against the switch value's type, so a label on an enum-typed value must be a member or a literal that coerces to one.
   - 🔴 Fallthrough keyword; not designed or implemented.
@@ -178,7 +180,7 @@ also list sprite, costume or backdrop names, which the compiler cannot enumerate
 - 🟡 **`str`**; `contains` is 🟢; the rest of the string surface is not written yet.
 - 🔴 **`dict`**; `contains`, `length`, `keys`, `values`, `merge` all resolve to `katnip_*` opcodes with no codegen metadata.
 - 🔴 **`console`**; `log`, `warn`, `error` are `katnip_*`; `input` is a yields proc.
-- 🔴 **Casts and helpers**; `Num`, `Str`, `Bool`, `List`, `typeof`, `zip`, `enumerate`, `motion.getPosition`, and `range()` used as a value all type-check but have no codegen metadata; using one throws `no slot metadata`.
+- 🔴 **Casts and helpers**; `Num`, `Str`, `Bool`, `List`, `typeof`, `motion.getPosition`, and `range()`/`zip()`/`enumerate()` used *as a value* all type-check but have no codegen metadata; using one throws `no slot metadata`. In a `for` header all three iter helpers are 🟢 — they are folded into the loop, never built.
 
 ---
 

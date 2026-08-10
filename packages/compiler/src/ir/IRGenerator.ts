@@ -322,6 +322,7 @@ export class IRGenerator {
         return {
             name: plan.mangled,
             params,
+            proccode: sig.meta?.proccode,
             returns: plan.returns,
             warp: sig.meta?.warp ?? true,
             strategy: plan.strategy,
@@ -559,6 +560,7 @@ export class IRGenerator {
             return;
         }
 
+        if (this.lowerForPairs(node, out)) return;
         if (node.pattern.type !== "Identifier") return; // TODO: destructuring a non-dict
         if (this.lowerForRange(node, out)) return;
         const iterable = this.lowerExpr(node.iterable, out);
@@ -589,8 +591,53 @@ export class IRGenerator {
     }
 
     /**
-     * `for (x, range(start, stop, step))` becomes: `for (x, ceil((stop-start)/step)`
-     * Remaps the 1-based counter with `x = i * step + (start - step)`.
+     * `for ((a, b), zip(l1, l2))` and `for ((i, v), enumerate(l))` walk by index.
+     * The 1-based loop counter is the index, and each pattern part is read out of its own list per iteration. 
+     * Returns false if the iterable isn't a zip()/enumerate() call.
+     */
+    private lowerForPairs(node: ForStatementNode, out: IRStmt[]): boolean {
+        const call = node.iterable;
+        if (call.type !== "CallExpression") return false;
+        const sig = this.analyzer.callResolutions.get(call);
+        const builtin = sig?.meta?.opcode;
+        if (builtin !== "katnip_zip" && builtin !== "katnip_enumerate") return false;
+
+        const parts = node.pattern.type === "TupleExpression" ? node.pattern.elements : [node.pattern];
+        const names = parts.map((part) => (part.type === "Identifier" ? part.name : null));
+        if (names.length > 2 || names.some((name) => name === null)) return true; // TODO: error
+
+        const lists = this.callArgs(call, sig!).map((arg) => this.lowerExpr(arg, out));
+        const iter = this.declare(names[0]!);
+        const item = (list: IRExpr): IRExpr => ({
+            kind: "op",
+            opcode: "data_itemoflist",
+            inputs: [structuredClone(list), { kind: "var", name: iter }],
+        });
+        const length = (list: IRExpr): IRExpr => ({
+            kind: "op",
+            opcode: "data_lengthoflist",
+            inputs: [structuredClone(list)],
+        });
+
+        const step: IRStmt[] = [];
+        let times: IRExpr;
+        if (builtin === "katnip_enumerate") {
+            times = length(lists[0]!);
+            if (names[1]) step.push(this.set(this.declare(names[1]!), item(lists[0]!)));
+        } else {
+            times = length(lists[0]!); // TODO: Switch to the smallest, using a check, if needed. this.minOf(length(lists[0]!), length(lists[1]!)); 
+            if (names[1]) step.push(this.set(this.declare(names[1]!), item(lists[1]!)));
+            step.push(this.set(iter, item(lists[0]!))); // last: this write clobbers the index
+        }
+
+        this.emit(out, { kind: "for", iter, times, body: [...step, ...this.lowerBlock(node.body)] });
+        return true;
+    }
+
+    /**
+     * `for (x, range(start, stop, step))` becomes: `for (x, floor((stop-start)/step) + 1)`.
+     * `range` is 1-based and stop-inclusive, matching Scratch's own repeat counter.
+     * Remaps the counter with `x = i * step + (start - step)`.
      * Returns false if the iterable isn't a range() call.
      */
     private lowerForRange(node: ForStatementNode, out: IRStmt[]): boolean {
@@ -605,7 +652,7 @@ export class IRGenerator {
             if (i < 0 || !resolved[i]) return null;
             return this.lowerExpr(resolved[i]!, out);
         };
-        const start = arg("start") ?? { kind: "lit", value: 0 };
+        const start = arg("start") ?? { kind: "lit", value: 1 };
         const stop = arg("stop")!;
         const step = arg("step") ?? { kind: "lit", value: 1 };
 
@@ -619,11 +666,20 @@ export class IRGenerator {
 
         let times: IRExpr;
         if (a !== null && b !== null && c !== null) {
-            times = { kind: "lit", value: Math.ceil((b - a) / c) };
+            times = { kind: "lit", value: Math.max(0, Math.floor((b - a) / c) + 1) };
+        } else if (a === 1 && c === 1) {
+            times = stop; // range(1, n) is already exactly Scratch's `repeat n`
         } else {
-            const span: IRExpr = a === 0 ? stop : { kind: "op", opcode: "operator_subtract", inputs: [stop, start] };
+            const span: IRExpr = { kind: "op", opcode: "operator_subtract", inputs: [stop, start] };
             const div: IRExpr = c === 1 ? span : { kind: "op", opcode: "operator_divide", inputs: [span, step] };
-            times = { kind: "op", opcode: "operator_mathop", inputs: [{ kind: "lit", value: "ceiling" }, div] };
+            times = {
+                kind: "op",
+                opcode: "operator_add",
+                inputs: [
+                    { kind: "op", opcode: "operator_mathop", inputs: [{ kind: "lit", value: "floor" }, div] },
+                    { kind: "lit", value: 1 },
+                ],
+            };
         }
 
         const iter = this.declare((node.pattern as { name: string }).name);

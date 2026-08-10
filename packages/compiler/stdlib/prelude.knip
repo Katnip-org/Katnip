@@ -20,6 +20,8 @@ proc Bool(@lower = "builds", value: any) -> bool { return value; }
 # proc List(@lower = "builds", value: any) -> list<any> { return value; }
 
 # iter helpers
+# In a `for` header these three are folded into the loop counter, never built as lists.
+# `range` is 1-based and stop-inclusive, like Scratch's own counter: range(5) is 1 2 3 4 5.
 proc range(@opcode = "katnip_range", stop: num) -> list<num> {}
 proc range(@opcode = "katnip_range", start: num, stop: num, step: num = 1) -> list<num> {}
 
