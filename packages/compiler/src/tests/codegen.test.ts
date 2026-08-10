@@ -129,7 +129,7 @@ test("a @proccode that does not match the params is an error", () => {
 
 test("proc ret vars and script temps reach a target's variable map", () => {
     const project = build(
-        `sprite Cat { proc addone(x: num) -> num { return x + 1; } events.onFlag() { temp y = addone(2); } }`,
+        `sprite Cat { proc addone(x: num) -> num { return x + 1; } events.onFlag() { private y = addone(2); } }`,
     );
     const declared = project.targets.flatMap((t) => Object.values(t.variables).map((v) => v[0]));
     assert(declared.includes("addone_ret"), `ret var missing from ${declared}`);
@@ -230,7 +230,7 @@ test("extensions are declared for the blocks actually emitted", () => {
 test("a cap block ends its stack", () => {
     const blocks = blocksOf(build(`
         proc early(n: num) -> num { return n; looks.say("dead"); }
-        sprite Cat { events.onFlag() { temp a: num = early(1); } }`));
+        sprite Cat { events.onFlag() { private a: num = early(1); } }`));
 
     const [, stop] = find(blocks, "control_stop")!;
     assert.equal(stop.next, null);

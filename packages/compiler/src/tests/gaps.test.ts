@@ -46,7 +46,7 @@ function varReads(body: IRStmt[]): string[] {
 const isEmptyLit = (expr: IRExpr) => expr.kind === "lit" && expr.value === "";
 
 test("the ** operator computes a power", { todo: "no opcode and no builds proc; the IR lowers it to an empty literal" }, () => {
-    const body = script(`sprite Cat { events.onFlag() { temp x: num = 2 ** 3; looks.say(f"{x}"); } }`);
+    const body = script(`sprite Cat { events.onFlag() { private x: num = 2 ** 3; looks.say(f"{x}"); } }`);
     const set = body.find((s): s is Extract<IRStmt, { kind: "raw" }> => s.kind === "raw" && s.opcode === "data_setvariableto")!;
 
     assert(!isEmptyLit(set.inputs[1]!), "2 ** 3 must lower to a real computation, not an empty literal");
@@ -70,7 +70,7 @@ test("imported procs reach codegen", { todo: "the IR walks only the entry file, 
 
 test("struct literals and field reads lower", { todo: "the IR no-ops every struct path; the analyzer is already complete" }, () => {
     const body = script(`struct Point { x: num, y: num }
-sprite Cat { events.onFlag() { temp p: Point = Point(x = 1, y = 2); looks.say(f"{p.x}"); } }`);
+sprite Cat { events.onFlag() { private p: Point = Point(x = 1, y = 2); looks.say(f"{p.x}"); } }`);
 
     const say = body.find((s): s is Extract<IRStmt, { kind: "raw" }> => s.kind === "raw" && s.opcode === "looks_say")!;
     assert(!isEmptyLit(say.inputs[0]!), "p.x must read the field, not an empty literal");
@@ -78,7 +78,7 @@ sprite Cat { events.onFlag() { temp p: Point = Point(x = 1, y = 2); looks.say(f"
 
 test("a @lower = \"yields\" proc lowers", { todo: "lowerExpr has no branch for it; the plan lookup crashes" }, () => {
     const body = script(`public s: list<num> = [1, 2];
-sprite Cat { events.onFlag() { temp gone: num = s.remove(1); looks.say(f"{gone}"); } }`);
+sprite Cat { events.onFlag() { private gone: num = s.remove(1); looks.say(f"{gone}"); } }`);
 
     const opcodes = body.filter((s): s is Extract<IRStmt, { kind: "raw" }> => s.kind === "raw").map((s) => s.opcode);
     assert(opcodes.includes("data_deleteoflist"), "list.remove must emit its block before the value is read");
@@ -103,7 +103,7 @@ test("every stdlib opcode has codegen metadata", { todo: "the katnip_* builtins 
 
 test("tuple destructuring reads every element", { todo: "a non-Identifier assignment target is skipped, dropping the call entirely" }, () => {
     const body = script(`proc two() -> (num, num) { return (1, 2); }
-sprite Cat { events.onFlag() { temp a: num = 0; temp b: num = 0; (a, b) = two(); looks.say(f"{a}{b}"); } }`);
+sprite Cat { events.onFlag() { private a: num = 0; private b: num = 0; (a, b) = two(); looks.say(f"{a}{b}"); } }`);
 
     assert.equal(body.filter((s) => s.kind === "call").length, 1, "the call must still be emitted");
     const slots = new Set(varReads(body).filter((name) => name.startsWith("two_ret")));
@@ -111,7 +111,7 @@ sprite Cat { events.onFlag() { temp a: num = 0; temp b: num = 0; (a, b) = two();
 });
 
 test("a list declared inside a script lowers", () => {
-    const body = script(`sprite Cat { events.onFlag() { temp xs: list<num> = [1, 2]; looks.say(f"{xs[1]}"); } }`);
+    const body = script(`sprite Cat { events.onFlag() { private xs: list<num> = [1, 2]; looks.say(f"{xs[1]}"); } }`);
 
     const say = body.find((s): s is Extract<IRStmt, { kind: "raw" }> => s.kind === "raw" && s.opcode === "looks_say")!;
     assert.equal((say.inputs[0] as { opcode?: string }).opcode, "data_itemoflist");

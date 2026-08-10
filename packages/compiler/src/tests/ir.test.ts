@@ -56,7 +56,7 @@ test("scalar var call site: emits a call, then reads the ret var into the target
         HAT +
             `sprite Cat {
                 proc addone(x: num) -> num { return x + 1; }
-                onflag() { temp y = addone(2); }
+                onflag() { private y = addone(2); }
             }`,
     );
     const script = program.sprites[0].scripts[0];
@@ -101,9 +101,9 @@ test("vstack proc: registers its stack list and pushes returns onto it", () => {
 });
 
 test("compound assignment desugars to setvariableto over the binop", () => {
-    const program = lower(HAT + `sprite Cat { onflag() { temp x = 0; x += 5; } }`);
+    const program = lower(HAT + `sprite Cat { onflag() { private x = 0; x += 5; } }`);
     const sets = raws(program.sprites[0].scripts[0].body, "data_setvariableto");
-    assert.equal(sets.length, 2); // temp x = 0, then x = x + 5
+    assert.equal(sets.length, 2); // private x = 0, then x = x + 5
 
     const compound = sets[1];
     assert.deepEqual(compound.inputs[0], { kind: "var", name: "x" });
@@ -115,7 +115,7 @@ test("compound assignment desugars to setvariableto over the binop", () => {
 });
 
 test("a compound assign with no opcode falls back like the binary expression does", () => {
-    const program = lower(HAT + `sprite Cat { onflag() { temp x = 0; x **= 6; } }`);
+    const program = lower(HAT + `sprite Cat { onflag() { private x = 0; x **= 6; } }`);
     const sets = raws(program.sprites[0].scripts[0].body, "data_setvariableto");
     assert.deepEqual(sets[1].inputs[1], { kind: "lit", value: "" }); // ** has no lowering yet
 });
@@ -129,9 +129,9 @@ test("command in statement position emits a raw block (no plan lookup crash)", (
     assert.deepEqual(say.inputs, [{ kind: "lit", value: "hi" }]);
 });
 
-/** The IRExpr assigned to `x` by `temp x = <expr>;` in a flag script. */
+/** The IRExpr assigned to `x` by `private x = <expr>;` in a flag script. */
 function exprOf(source: string) {
-    const program = lower(HAT + `sprite Cat { onflag() { temp x = ${source}; } }`, { stdlib: true });
+    const program = lower(HAT + `sprite Cat { onflag() { private x = ${source}; } }`, { stdlib: true });
     const set = raws(program.sprites[0].scripts[0].body, "data_setvariableto")[0];
     assert(set, "expected a setvariableto for x");
     return set.inputs[1];
@@ -143,9 +143,9 @@ const not = (inner: unknown) => ({ kind: "op", opcode: "operator_not", inputs: [
 const op = (opcode: string) => ({ kind: "op", opcode, inputs: [A, B] });
 
 test("operators with no Scratch block inline their builds proc", () => {
-    const declare = `temp a = true; temp b = false; `;
+    const declare = `private a = true; private b = false; `;
     const of = (src: string) => {
-        const program = lower(HAT + `sprite Cat { onflag() { ${declare} temp x = ${src}; } }`, {
+        const program = lower(HAT + `sprite Cat { onflag() { ${declare} private x = ${src}; } }`, {
             stdlib: true,
         });
         return raws(program.sprites[0].scripts[0].body, "data_setvariableto")[2].inputs[1];
@@ -183,7 +183,7 @@ test("<= and >= lower to a negated gt/lt", () => {
 });
 
 test("a builds proc called by name inlines the same way, with no proc call emitted", () => {
-    const program = lower(HAT + `sprite Cat { onflag() { temp x = lte(1, 2); } }`, { stdlib: true });
+    const program = lower(HAT + `sprite Cat { onflag() { private x = lte(1, 2); } }`, { stdlib: true });
     const body = program.sprites[0].scripts[0].body;
     assert.equal(body.filter((s) => s.kind === "call").length, 0, "builds procs must not emit calls");
     assert.deepEqual(raws(body, "data_setvariableto")[0].inputs[1], {
@@ -200,7 +200,7 @@ test("a builds proc called by name inlines the same way, with no proc call emitt
 });
 
 test("a builds body containing a call inlines that call too, folding its enum argument", () => {
-    const program = lower(HAT + `sprite Cat { onflag() { temp x = math.ceil(1.5); } }`, { stdlib: true });
+    const program = lower(HAT + `sprite Cat { onflag() { private x = math.ceil(1.5); } }`, { stdlib: true });
     const body = program.sprites[0].scripts[0].body;
     assert.equal(body.filter((s) => s.kind === "call").length, 0, "builds procs must not emit calls");
     assert.deepEqual(raws(body, "data_setvariableto")[0].inputs[1], {
@@ -212,7 +212,7 @@ test("a builds body containing a call inlines that call too, folding its enum ar
 });
 
 test("a cast emits nothing: the operand reaches the use site untouched", () => {
-    const program = lower(HAT + `sprite Cat { onflag() { temp x: num = Num(1 + 2); } }`, { stdlib: true });
+    const program = lower(HAT + `sprite Cat { onflag() { private x: num = Num(1 + 2); } }`, { stdlib: true });
     const body = program.sprites[0].scripts[0].body;
     assert.deepEqual(raws(body, "data_setvariableto")[0].inputs[1], {
         kind: "op",
@@ -222,7 +222,7 @@ test("a cast emits nothing: the operand reaches the use site untouched", () => {
 });
 
 test("builds procs get no return plan and emit no proc of their own", () => {
-    const program = lower(HAT + `sprite Cat { onflag() { temp x = 1 <= 2; } }`, { stdlib: true });
+    const program = lower(HAT + `sprite Cat { onflag() { private x = 1 <= 2; } }`, { stdlib: true });
     assert.equal(program.procs.size, 0);
     assert.equal(program.sprites[0].procs.size, 0);
 });
@@ -254,7 +254,7 @@ test("vstack call sites read by depth from the top and pop what they pushed", ()
         HAT +
             `sprite Cat {
                 proc f(n: num) -> num { if (n < 1) { return 0; } return f(n - 1); }
-                onflag() { temp y = f(3) + f(f(2)); }
+                onflag() { private y = f(3) + f(f(2)); }
             }`,
     );
     const body = program.sprites[0].scripts[0].body;
@@ -309,7 +309,7 @@ test("bare return still stops the script", () => {
 });
 
 test("params read as argument reporters, locals as mangled globals", () => {
-    const p = procOf(lower(`sprite Cat { proc f(x: num) -> void { temp y = x; } }`), "Cat", "f");
+    const p = procOf(lower(`sprite Cat { proc f(x: num) -> void { private y = x; } }`), "Cat", "f");
     assert.deepEqual(p.temps, ["f_y"]);
     assert.deepEqual(raws(p.body, "data_setvariableto")[0].inputs, [
         { kind: "var", name: "f_y" },
@@ -328,7 +328,7 @@ test("+ over str operands is operator_join, not operator_add", () => {
 });
 
 test("do-while runs its body once before the loop", () => {
-    const program = lower(HAT + `sprite Cat { onflag() { temp t = 0; do { t += 1; } while (t < 3); } }`);
+    const program = lower(HAT + `sprite Cat { onflag() { private t = 0; do { t += 1; } while (t < 3); } }`);
     const body = program.sprites[0].scripts[0].body;
     assert.deepEqual(
         body.map((s) => (s.kind === "raw" ? s.opcode : s.kind)),
@@ -338,7 +338,7 @@ test("do-while runs its body once before the loop", () => {
 
 test("for over a list indexes it; for over a num counts directly", () => {
     const program = lower(
-        HAT + `sprite Cat { onflag() { temp l = [1, 2]; temp t = 0; for (v, l) { t += v; } for (i, 5) { t += i; } } }`,
+        HAT + `sprite Cat { onflag() { private l = [1, 2]; private t = 0; for (v, l) { t += v; } for (i, 5) { t += i; } } }`,
     );
     const loops = program.sprites[0].scripts[0].body.filter((s) => s.kind === "for");
     assert.equal(loops.length, 2);
@@ -515,7 +515,7 @@ test("one loop variable over a pair binds the first column", () => {
 
 test("switch lowers to an if chain, with default as the final else", () => {
     const program = lower(
-        HAT + `sprite Cat { onflag() { temp t = 0; switch (t) { case (1, 2) { t = 9; } default { t = 8; } } } }`,
+        HAT + `sprite Cat { onflag() { private t = 0; switch (t) { case (1, 2) { t = 9; } default { t = 8; } } } }`,
     );
     const chain = program.sprites[0].scripts[0].body.find((s) => s.kind === "if");
     assert(chain?.kind === "if");
@@ -635,13 +635,13 @@ test("a non-literal initializer is built by a green-flag script ahead of the use
     assert.deepEqual(adds[3].inputs, [{ kind: "var", name: "d_vals" }, { kind: "var", name: "seed" }]);
 });
 
-/** The IRExpr assigned to `t` by `temp t = <expr>;`, with a list, a dict and a str in scope. */
+/** The IRExpr assigned to `t` by `private t = <expr>;`, with a list, a dict and a str in scope. */
 function indexed(source: string) {
     const program = lower(
         `private xs: list<num> = [1, 2];
          private d: dict<str, num> = {"a": 1};
          private s: str = "abc";
-         sprite Cat { events.onFlag() { temp t = ${source}; } }`,
+         sprite Cat { events.onFlag() { private t = ${source}; } }`,
         { stdlib: true },
     );
     return raws(program.sprites[0].scripts[0].body, "data_setvariableto")[0].inputs[1];
@@ -780,16 +780,16 @@ test("dict iteration walks the keys column, binding the value before the key ove
 
 test("indexing anything but a declared list or dict fails loudly", () => {
     assert.throws(
-        () => stmts(`temp t = range(3)[1];`),
+        () => stmts(`private t = range(3)[1];`),
         /only a declared list or dict can be indexed/,
     );
 });
 
 // -- constant member expressions --
 
-/** The value a single `temp c = <expr>;` script assigns. */
+/** The value a single `private c = <expr>;` script assigns. */
 function folded(decls: string, expr: string): IRExpr {
-    const program = lower(`${decls}sprite Cat { events.onFlag() { temp c = ${expr}; } }`, {
+    const program = lower(`${decls}sprite Cat { events.onFlag() { private c = ${expr}; } }`, {
         stdlib: true,
     });
     const [set] = raws(program.sprites[0].scripts[0].body, "data_setvariableto");

@@ -17,7 +17,7 @@ function strategies(source: string, opts?: { stdlib?: boolean }): Map<string, st
 test("collectCalls finds calls in every expression position", () => {
     const { ast } = compile(`
         proc f() -> void {
-            temp a = g(h(1)) + 2;
+            private a = g(h(1)) + 2;
             if (g(3) == 0) { k(); }
             xs.remove(g(4));
         }
@@ -96,7 +96,7 @@ test("stdlib calls do not create cycle edges", () => {
     // f calls reporters/commands only: still acyclic -> var
     const result = strategies(
         `
-        temp xs = [1];
+        private xs = [1];
         proc f() -> num { console.log("x"); return xs.length() + 1; }
     `,
         { stdlib: true },

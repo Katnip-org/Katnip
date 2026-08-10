@@ -10,7 +10,7 @@ proc pow(base: num, exponent: num) -> num {
         return(1);
     }
 
-    temp result = epow(exponent * ln(abs(base)));
+    private result = epow(exponent * ln(abs(base)));
 
     if (base < 0) {
         result = result * (Num(abs(exponent) % 2 == 0) * 2 - 1);

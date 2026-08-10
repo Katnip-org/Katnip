@@ -20,7 +20,7 @@ function parseStmt(source: string): StatementNode {
 }
 
 test("empty list literal parses to ListExpression with no elements", () => {
-    const decl = parseStmt("temp e = [];");
+    const decl = parseStmt("private e = [];");
     assert.equal(decl.type, "VariableDeclaration");
     if (decl.type !== "VariableDeclaration") return;
     assert.equal(decl.initializer?.type, "ListExpression");
@@ -29,7 +29,7 @@ test("empty list literal parses to ListExpression with no elements", () => {
 });
 
 test("nested and trailing-comma list literals parse", () => {
-    const decl = parseStmt("temp e = [[1], [2, 3],];");
+    const decl = parseStmt("private e = [[1], [2, 3],];");
     if (decl.type !== "VariableDeclaration" || decl.initializer?.type !== "ListExpression") {
         assert.fail("expected list initializer");
     }
@@ -38,13 +38,13 @@ test("nested and trailing-comma list literals parse", () => {
 });
 
 test("empty and populated dict literals parse", () => {
-    const empty = parseStmt("temp d = {};");
+    const empty = parseStmt("private d = {};");
     if (empty.type !== "VariableDeclaration") assert.fail("expected declaration");
     assert.equal(empty.initializer?.type, "DictExpression");
     if (empty.initializer?.type !== "DictExpression") return;
     assert.deepEqual(empty.initializer.entries, []);
 
-    const full = parseStmt(`temp d = {"a": 1, "b": 2};`);
+    const full = parseStmt(`private d = {"a": 1, "b": 2};`);
     if (full.type !== "VariableDeclaration" || full.initializer?.type !== "DictExpression") {
         assert.fail("expected dict initializer");
     }
@@ -187,12 +187,8 @@ test("handler statements attach the block to the call", () => {
     assert.equal(stmt.body.body.length, 1);
 });
 
-test("'temp' is a variable-only storage class", () => {
-    assert.match(parse("temp proc f() -> void { }").reporter.getErrors()[0]?.message ?? "",
-        /Procedures cannot be declared 'temp'/);
-    assert.match(parse("temp enum E { A }").reporter.getErrors()[0]?.message ?? "",
-        /Enums cannot be declared 'temp'/);
-    assert.equal(parse("temp x = 1;").reporter.hasErrors(), false);
+test("'private' is required on procs, and works on variables", () => {
+    assert.equal(parse("private x = 1;").reporter.hasErrors(), false);
     assert.equal(parse("private proc f() -> void { }").reporter.hasErrors(), false);
 });
 
@@ -242,13 +238,8 @@ test("struct field needs a type or a default", () => {
     assert.match(reporter.getErrors()[0]?.message ?? "", /needs a type annotation or a default/);
 });
 
-test("'temp' is rejected on a struct", () => {
-    assert.match(parse("temp struct S { x: num }").reporter.getErrors()[0]?.message ?? "",
-        /Structs cannot be declared 'temp'/);
-});
-
 test("missing semicolon reports an error but parsing continues", () => {
-    const { ast, reporter } = parse("temp a = 1\ntemp b = 2;");
+    const { ast, reporter } = parse("private a = 1\nprivate b = 2;");
     assert.equal(reporter.hasErrors(), true);
     // The second declaration still lands in the AST.
     assert.ok(ast.body.some((s) => s.type === "VariableDeclaration" && s.name === "b"));

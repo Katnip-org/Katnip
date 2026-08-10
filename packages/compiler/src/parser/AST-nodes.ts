@@ -175,11 +175,10 @@ export interface ReturnStatementNode extends NodeBase {
 
 export enum VariableDeclarationType {
     private = "private",
-    public = "public",
-    temp = "temp"
+    public = "public"
 }
 
-export type AccessModifier = Exclude<VariableDeclarationType, VariableDeclarationType.temp>;
+export type AccessModifier = VariableDeclarationType;
 
 export function isPublicVar(node: StatementNode): node is VariableDeclarationNode {
     return node.type === "VariableDeclaration" && node.access === VariableDeclarationType.public;

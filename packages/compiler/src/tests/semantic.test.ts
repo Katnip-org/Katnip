@@ -8,22 +8,22 @@ function errorsOf(source: string, opts?: { stdlib?: boolean }): string {
 }
 
 test("undefined identifiers are reported", () => {
-    assert.match(errorsOf("temp x = missing;"), /'missing' is not defined/);
+    assert.match(errorsOf("private x = missing;"), /'missing' is not defined/);
 });
 
 test("declaration type mismatch is reported", () => {
-    assert.match(errorsOf(`temp x: num = "hello";`), /cannot be initialized/);
+    assert.match(errorsOf(`private x: num = "hello";`), /cannot be initialized/);
 });
 
 test("declaration needs a type or an initializer", () => {
     // The parser already requires `:` or `=` after the name.
-    const result = compile("temp x;");
+    const result = compile("private x;");
     assert.equal(result.reporter.hasErrors(), true);
 });
 
 test("assignment type mismatch is reported", () => {
     const errors = errorsOf(`
-        temp x = 1;
+        private x = 1;
         proc f() -> void { x = "str"; }
     `);
     assert.match(errors, /Cannot assign value of type 'str'/);
@@ -88,7 +88,7 @@ test("no matching overload is reported", () => {
 });
 
 test("duplicate declarations conflict, procs may overload", () => {
-    assert.match(errorsOf("temp x = 1;\ntemp x = 2;"), /already declared/);
+    assert.match(errorsOf("private x = 1;\nprivate x = 2;"), /already declared/);
     assert.match(errorsOf("proc f() -> void { }\nproc f(a: num) -> void { }"), /^$/);
 });
 
@@ -111,13 +111,13 @@ test("handlers only at sprite top level", () => {
 });
 
 test("unknown type annotations are reported", () => {
-    assert.match(errorsOf("temp x: banana = 1;"), /Unknown type 'banana'/);
+    assert.match(errorsOf("private x: banana = 1;"), /Unknown type 'banana'/);
 });
 
 test("enum member access checks membership", () => {
     const decl = "enum Color { red, green }\n";
-    assert.match(errorsOf(decl + "temp c: Color = Color.red;"), /^$/);
-    assert.match(errorsOf(decl + "temp c: Color = Color.purple;"), /has no member 'purple'/);
+    assert.match(errorsOf(decl + "private c: Color = Color.red;"), /^$/);
+    assert.match(errorsOf(decl + "private c: Color = Color.purple;"), /has no member 'purple'/);
 });
 
 test("namespaced enum members resolve, and stay out of global scope", () => {
@@ -142,8 +142,8 @@ test("a literal that is a member value coerces to the enum, as an argument", () 
 
 test("a literal that is a member value coerces to the enum, in an assignment", () => {
     const decl = `enum Color { RED = "red", GREEN = "green" }\n`;
-    assert.match(errorsOf(decl + `temp c: Color = "red";`), /^$/);
-    assert.match(errorsOf(decl + `temp c: Color = "red";\nproc f() -> void { c = "green"; }`), /^$/);
+    assert.match(errorsOf(decl + `private c: Color = "red";`), /^$/);
+    assert.match(errorsOf(decl + `private c: Color = "red";\nproc f() -> void { c = "green"; }`), /^$/);
 });
 
 test("a literal that is not a member value is rejected, listing the members", () => {
@@ -169,7 +169,7 @@ test("an enum member reference still works unchanged", () => {
 
 test("a non-literal of the backing type is rejected, pointing at the member form", () => {
     const errors = errorsOf(
-        inScript(`temp attr: str = "color"; pen.setAttr(attr, 10);`),
+        inScript(`private attr: str = "color"; pen.setAttr(attr, 10);`),
         withStdlib,
     );
     assert.match(errors, /Enum 'ColorParam' expects one of its members here, not a computed 'str'/);
@@ -183,10 +183,10 @@ test("a non-literal of the backing type is rejected, pointing at the member form
 
 test("enum coercion matches by value, so numeric-backed enums work too", () => {
     const decl = `enum Speed { SLOW = 1, FAST = 2 }\n`;
-    assert.match(errorsOf(decl + `temp s: Speed = 1;`), /^$/);
-    assert.match(errorsOf(decl + `temp s: Speed = 3;`), /3 is not a value of enum 'Speed'/);
+    assert.match(errorsOf(decl + `private s: Speed = 1;`), /^$/);
+    assert.match(errorsOf(decl + `private s: Speed = 3;`), /3 is not a value of enum 'Speed'/);
     // A str literal is not a num member value, even when it looks like one.
-    assert.match(errorsOf(decl + `temp s: Speed = "1";`), /"1" is not a value of enum 'Speed'/);
+    assert.match(errorsOf(decl + `private s: Speed = "1";`), /"1" is not a value of enum 'Speed'/);
 });
 
 test("case labels check against the switch value's enum", () => {
@@ -209,7 +209,7 @@ test("the open stdlib menus still take an arbitrary string", () => {
 });
 
 test("'self' only valid inside a sprite", () => {
-    assert.match(errorsOf("temp x = self.y;"), /'self' can only be used inside a sprite/);
+    assert.match(errorsOf("private x = self.y;"), /'self' can only be used inside a sprite/);
 });
 
 test("@lower and @ret values are validated", () => {
@@ -252,10 +252,10 @@ test("list and dict returns on user procs are rejected", () => {
 test("stdlib methods and namespaces resolve with types", () => {
     const result = compile(
         `
-        temp xs = [1, 2, 3];
+        private xs = [1, 2, 3];
         proc f() -> void {
-            temp has = xs.contains(2);
-            temp n = xs.length();
+            private has = xs.contains(2);
+            private n = xs.length();
             console.log("hi");
             wait(1);
         }
@@ -271,7 +271,7 @@ test("stdlib misuse: unknown members and non-methods", () => {
         /Namespace 'console' has no member 'bogus'/,
     );
     assert.match(
-        errorsOf(`temp n = 1;\nproc f() -> void { n.bogus(); }`, { stdlib: true }),
+        errorsOf(`private n = 1;\nproc f() -> void { n.bogus(); }`, { stdlib: true }),
         /not a method of type 'num'/,
     );
 });
@@ -294,7 +294,7 @@ test("a public member is visible from other sprites; two sprites cannot claim on
 test("for-loop destructuring width is checked", () => {
     const errors = errorsOf(
         `
-        temp pairs = {"a": 1};
+        private pairs = {"a": 1};
         proc f() -> void {
             for ((k, v, extra), pairs) { }
         }
@@ -334,52 +334,52 @@ test("switch validates default placement and count", () => {
 const POINT = "struct Point { x: num, y: num }\n";
 
 test("struct literal with all fields is clean", () => {
-    assert.match(errorsOf(POINT + "temp p: Point = Point(x = 1, y = 2);"), /^$/);
+    assert.match(errorsOf(POINT + "private p: Point = Point(x = 1, y = 2);"), /^$/);
 });
 
 test("struct literal fills omitted fields from defaults", () => {
     const decl = "struct Cfg { a: num = 1, b: num = 2 }\n";
-    assert.match(errorsOf(decl + "temp c: Cfg = Cfg(a = 5);"), /^$/);
+    assert.match(errorsOf(decl + "private c: Cfg = Cfg(a = 5);"), /^$/);
 });
 
 test("struct literal missing a required field is reported", () => {
-    assert.match(errorsOf(POINT + "temp p: Point = Point(x = 1);"), /missing required field 'y'/);
+    assert.match(errorsOf(POINT + "private p: Point = Point(x = 1);"), /missing required field 'y'/);
 });
 
 test("struct literal with an unknown field is reported", () => {
-    assert.match(errorsOf(POINT + "temp p: Point = Point(x = 1, y = 2, z = 3);"), /has no field 'z'/);
+    assert.match(errorsOf(POINT + "private p: Point = Point(x = 1, y = 2, z = 3);"), /has no field 'z'/);
 });
 
 test("struct literal field type mismatch is reported", () => {
-    assert.match(errorsOf(POINT + `temp p: Point = Point(x = 1, y = "no");`), /expects 'num', got 'str'/);
+    assert.match(errorsOf(POINT + `private p: Point = Point(x = 1, y = "no");`), /expects 'num', got 'str'/);
 });
 
 test("struct literal rejects positional arguments", () => {
-    assert.match(errorsOf(POINT + "temp p: Point = Point(1, 2);"), /takes named fields only/);
+    assert.match(errorsOf(POINT + "private p: Point = Point(1, 2);"), /takes named fields only/);
 });
 
 test("field read yields the field type", () => {
-    const src = POINT + "temp p: Point = Point(x = 1, y = 2);\ntemp bad: str = p.x;";
+    const src = POINT + "private p: Point = Point(x = 1, y = 2);\nprivate bad: str = p.x;";
     assert.match(errorsOf(src), /cannot be initialized/);
 });
 
 test("reading a missing field is reported", () => {
-    const src = POINT + "temp p: Point = Point(x = 1, y = 2);\ntemp z = p.q;";
+    const src = POINT + "private p: Point = Point(x = 1, y = 2);\nprivate z = p.q;";
     assert.match(errorsOf(src), /Struct 'Point' has no field 'q'/);
 });
 
 test("field write is type-checked", () => {
-    const src = POINT + "temp p: Point = Point(x = 1, y = 2);\nproc f() -> void { p.x = \"no\"; }";
+    const src = POINT + "private p: Point = Point(x = 1, y = 2);\nproc f() -> void { p.x = \"no\"; }";
     assert.match(errorsOf(src), /Cannot assign value of type 'str'/);
 });
 
 test("struct list element field access is clean", () => {
-    const src = POINT + "temp ps: list<Point> = [];\ntemp a: num = ps[0].x;";
+    const src = POINT + "private ps: list<Point> = [];\nprivate a: num = ps[0].x;";
     assert.match(errorsOf(src), /^$/);
 });
 
 test("struct list field column is a list of the field type", () => {
-    const src = POINT + "temp ps: list<Point> = [];\ntemp col: list<num> = ps.x;\ntemp bad: list<str> = ps.y;";
+    const src = POINT + "private ps: list<Point> = [];\nprivate col: list<num> = ps.x;\nprivate bad: list<str> = ps.y;";
     const errors = errorsOf(src);
     assert.match(errors, /cannot be initialized/); // only the list<str> line
     assert.equal(errors.split("\n").length, 1);
@@ -407,5 +407,5 @@ test("struct-typed params and returns are clean", () => {
 });
 
 test("an unknown struct name as a type is still an error", () => {
-    assert.match(errorsOf("temp p: Nope = 1;"), /Unknown type 'Nope'/);
+    assert.match(errorsOf("private p: Nope = 1;"), /Unknown type 'Nope'/);
 });

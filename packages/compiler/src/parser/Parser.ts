@@ -6,7 +6,7 @@ import { isValuedTokenType, UnitTokenType } from "../lexer/Token.js";
 import type { Token, TokenInfoFor, TokenPos, TokenType, ValuedToken } from "../lexer/Token.js";
 import { ErrorReporter, KatnipError } from "../utils/ErrorReporter.js";
 import { KatnipLog, KatnipLogType, Logger } from "../utils/Logger.js";
-import { type AST, type DecoratorNode, type ParameterNode, type ProcedureDeclarationNode, type TypeNode, type TupleTypeNode, type NamedArgumentNode, type ExpressionNode, type StatementNode, type EnumDeclarationNode, type EnumMemberNode, type StructDeclarationNode, type StructFieldNode, type VariableDeclarationNode, VariableDeclarationType, type VariableAssignmentNode, type DictEntryNode, type ElifClauseNode, type BlockNode, type CaseDeclarationNode, type DefaultCaseDeclarationNode, type BinaryOperator, type AssignmentOperator, type UnaryOperator, type AccessModifier } from "./AST-nodes.js";
+import { type AST, type DecoratorNode, type ParameterNode, type ProcedureDeclarationNode, type TypeNode, type TupleTypeNode, type NamedArgumentNode, type ExpressionNode, type StatementNode, type EnumDeclarationNode, type EnumMemberNode, type StructDeclarationNode, type StructFieldNode, type VariableDeclarationNode, VariableDeclarationType, type VariableAssignmentNode, type DictEntryNode, type ElifClauseNode, type BlockNode, type CaseDeclarationNode, type DefaultCaseDeclarationNode, type BinaryOperator, type AssignmentOperator, type UnaryOperator } from "./AST-nodes.js";
 import { bindingPowerTable, getBindingPower } from "./BindingPowerTable.js";
 
 export class Parser {
@@ -399,7 +399,7 @@ export class Parser {
             if (this.checkToken("value", ["proc"]) && !(this.peek(1)?.token.type === ".")) return this.parseProcedureDefinition();
             if (this.checkToken("value", ["enum"])) return this.parseEnumDefinition();
             if (this.checkToken("value", ["struct"])) return this.parseStructDefinition();
-            if (this.checkToken("value", ["private", "temp", "public"])) {
+            if (this.checkToken("value", ["private", "public"])) {
                 const next = this.peek(1)?.token;
                 const nextVal = next && isValuedTokenType(next.type) ? (next as ValuedToken).value : undefined;
                 if (nextVal === "proc") return this.parseProcedureDefinition();
@@ -466,27 +466,15 @@ export class Parser {
     }
 
     /**
-     * Parses an optional leading access modifier (`public`/`private`/`temp`).
+     * Parses an optional leading access modifier (`public`/`private`).
      * Defaults to `private`. `start` is the modifier's position (or null) to anchor at loc.
      */
     private parseAccessModifier(): { access: VariableDeclarationType; start: TokenPos | null } {
-        if (this.checkToken("value", ["private", "public", "temp"])) {
+        if (this.checkToken("value", ["private", "public"])) {
             const tok = this.consume({ type: "Identifier", value: Object.values(VariableDeclarationType) }, "Expected access modifier");
             return { access: tok.token.value as VariableDeclarationType, start: tok.start };
         }
         return { access: VariableDeclarationType.private, start: null };
-    }
-
-    /** Access modifier for declarations that have no storage: `temp` is variables-only. */
-    private parseDeclAccessModifier(declKind: string): { access: AccessModifier; start: TokenPos | null } {
-        const { access, start } = this.parseAccessModifier();
-        if (access === VariableDeclarationType.temp) {
-            this.reporter.add(
-                new KatnipError("Parser", `${declKind} cannot be declared 'temp'`, start ?? { line: -1, column: -1 })
-            );
-            return { access: VariableDeclarationType.private, start };
-        }
-        return { access, start };
     }
 
     /**
@@ -494,7 +482,7 @@ export class Parser {
      * @returns The parsed procedure declaration node.
      */
     private parseProcedureDefinition(): ProcedureDeclarationNode {
-        const { access, start: accessStart } = this.parseDeclAccessModifier("Procedures");
+        const { access, start: accessStart } = this.parseAccessModifier();
         this.consume({ type: "Identifier", value: "proc" }, "Expected 'proc' keyword");
         const nameToken = this.consume({ type: "Identifier" }, "Expected procedure name");
         const name = nameToken.token.value;
@@ -625,7 +613,7 @@ export class Parser {
      * @returns The parsed enum declaration node.
      */
     private parseEnumDefinition(): EnumDeclarationNode {
-        const { access, start: accessStart } = this.parseDeclAccessModifier("Enums");
+        const { access, start: accessStart } = this.parseAccessModifier();
         this.consume({ type: "Identifier", value: "enum" }, "Expected 'enum' keyword");
         const nameToken = this.consume({ type: "Identifier" }, "Expected enum name");
         const name = nameToken.token.value;
@@ -676,7 +664,7 @@ export class Parser {
      * @returns The parsed struct declaration node.
      */
     private parseStructDefinition(): StructDeclarationNode {
-        const { access, start: accessStart } = this.parseDeclAccessModifier("Structs");
+        const { access, start: accessStart } = this.parseAccessModifier();
         this.consume({ type: "Identifier", value: "struct" }, "Expected 'struct' keyword");
         const nameToken = this.consume({ type: "Identifier" }, "Expected struct name");
         const name = nameToken.token.value;
@@ -733,7 +721,7 @@ export class Parser {
      */
     private parseVariableDeclaration(): VariableDeclarationNode {
         this.logger.log(new KatnipLog(KatnipLogType.Debug, `parsing variable declaration starting with token: ${this.peek()?.token.type}`));
-        const access = this.consume({ type: "Identifier", value: Object.values(VariableDeclarationType) }, "Expected 'private', 'temp', or 'public' keyword");
+        const access = this.consume({ type: "Identifier", value: Object.values(VariableDeclarationType) }, "Expected 'private' or 'public' keyword");
         const variableName = this.consume({ type: "Identifier" }, "Expected variable name");
 
         // Valid fomations: no type + yes init, yes type + yes init, yes type + no init

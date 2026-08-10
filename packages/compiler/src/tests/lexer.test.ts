@@ -20,10 +20,10 @@ function valueOf(token: Token): string {
 }
 
 test("identifiers and punctuation", () => {
-    const { tokens, reporter } = lex("temp x = y;");
+    const { tokens, reporter } = lex("private x = y;");
     assert.equal(reporter.hasErrors(), false);
     assert.deepEqual(types(tokens), ["Identifier", "Identifier", "=", "Identifier", ";", "<EOF>"]);
-    assert.equal(valueOf(tokens[0]), "temp");
+    assert.equal(valueOf(tokens[0]), "private");
 });
 
 test("number literals: int, decimal, scientific, hex", () => {
@@ -35,7 +35,7 @@ test("number literals: int, decimal, scientific, hex", () => {
 });
 
 test("multiple decimal points is an error", () => {
-    const { reporter } = lex("temp x = 1.2.3;");
+    const { reporter } = lex("private x = 1.2.3;");
     assert.equal(reporter.hasErrors(), true);
 });
 
@@ -47,10 +47,10 @@ test("string literals with both quote styles and escapes", () => {
 });
 
 test("unterminated strings are an error", () => {
-    assert.equal(lex(`temp x = "abc`).reporter.hasErrors(), true);
-    assert.equal(lex(`temp x = 'abc\\`).reporter.hasErrors(), true);
-    assert.equal(lex(`temp x = f"abc{y`).reporter.hasErrors(), true);
-    assert.equal(lex(`temp x = f"abc{y}`).reporter.hasErrors(), true);
+    assert.equal(lex(`private x = "abc`).reporter.hasErrors(), true);
+    assert.equal(lex(`private x = 'abc\\`).reporter.hasErrors(), true);
+    assert.equal(lex(`private x = f"abc{y`).reporter.hasErrors(), true);
+    assert.equal(lex(`private x = f"abc{y}`).reporter.hasErrors(), true);
 });
 
 test("interpolated string tokenizes into parts", () => {
@@ -68,7 +68,7 @@ test("interpolated string tokenizes into parts", () => {
 });
 
 test("interpolation may contain a string using the other quote", () => {
-    const { tokens, reporter } = lex(`f"hi {getName('first')}"; temp b = 1;`);
+    const { tokens, reporter } = lex(`f"hi {getName('first')}"; private b = 1;`);
     assert.equal(reporter.hasErrors(), false);
     assert.deepEqual(types(tokens), [
         "InterpolatedString", // "hi "

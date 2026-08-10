@@ -272,6 +272,8 @@ export class SemanticAnalyzer {
      * only its public symbols. The module sees the stdlib and its own imports, never the importer's symbols.
      */
     private moduleScope(module: ImportedModule): Scope {
+        this.hoistNamespaceConsts(module.ast.body, module.namespace);
+
         const cached = this.moduleScopes.get(module.sourcePath);
         if (cached) return cached;
 
@@ -288,7 +290,6 @@ export class SemanticAnalyzer {
 
         this.loadImports(module.imports);
         this.hoist(module.ast.body);
-        this.hoistNamespaceConsts(module.ast.body, module.namespace);
         for (const stmt of module.ast.body) this.visit(stmt);
 
         this.reporter = savedReporter;
@@ -1421,6 +1422,13 @@ export class SemanticAnalyzer {
                     this.error(`'${head.name}.${propName}' is a procedure — call it with (...)`, expr);
                     return { kind: "unknown" };
                 }
+                // IR folds namespace members straight from `constMembers`; anything missing there
+                // would lower to an empty literal. Say so instead of silently compiling nothing.
+                if (member.kind === "variable" && !this.constMembers.has(`${head.name}.${propName}`))
+                    this.error(
+                        `'${head.name}.${propName}' cannot be read across a namespace boundary: only members with a literal initializer are supported`,
+                        expr,
+                    );
                 return this.typeOf(member);
             }
             case "enum":

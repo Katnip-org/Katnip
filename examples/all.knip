@@ -8,7 +8,7 @@ enum Color { RED, GREEN, BLUE } # enum declaration
 
 # declarations: modifiers, primitives, containers, inference
 private n: num = 6.02e2; # scientific num
-temp    s: str = "hi"; # str
+private s: str = "hi"; # str
 public  b: bool = true; # bool literal
 private u: num | str = 5; # union type
 private li: list<num> = [1, 2, 3]; # list
@@ -40,19 +40,19 @@ sprite Cat {
     self.x = 0; # member assignment
 
     events.onFlag() {
-        temp t: num = 5;
-        temp response: num | void = add(x = 2, y = 3); # named call args (result is num | void, so not assigned)
+        private t: num = 5;
+        private response: num | void = add(x = 2, y = 3); # named call args (result is num | void, so not assigned)
         # TODO: impl typeof
         # if (typeof(response) == "num") { t = Num(response); }
         t += 1; t -= 2; t *= 3; t /= 4; t %= 5; t **= 6; # every compound assign
 
-        temp edge: num = shapes.perimeter(shapes.sides, 4); # imported proc + imported const
+        private edge: num = shapes.perimeter(shapes.sides, 4); # imported proc + imported const
         looks.say(f"{palette.accent}, {shapes.midpoint(0, edge)}"); # aliased namespace
 
         if (b && !b) {
             looks.say(f"n is {n}"); # interpolated string
         } elif (col == Color.GREEN) { # enum equality
-            looks.say(s[0:2]); # slice
+            looks.say(s[2]); # slice
         } else {
             looks.say(s[0] + di["a"]); # index + dict index
         }
