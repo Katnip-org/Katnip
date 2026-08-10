@@ -541,14 +541,14 @@ test("list and dict declarations become lists; scalars stay variables", () => {
          }`,
     );
 
-    assert.deepEqual(program.variables, ["level"]);
+    assert.deepEqual(program.variables, new Map([["level", 1]]), "a constant initializer must be baked in");
     assert.deepEqual(program.lists.get("highScores"), [10, 20, 30]);
     assert(!program.lists.has("settings"), "a dict must not become a single list");
     assert.deepEqual(program.lists.get("settings_keys"), ["volume"]);
     assert.deepEqual(program.lists.get("settings_vals"), [100]);
 
     const cat = program.sprites[0];
-    assert.deepEqual(cat.variables, []);
+    assert.deepEqual(cat.variables, new Map());
     assert.deepEqual(cat.lists.get("inventory"), ["fish"], "the type must be inferred without an annotation");
     assert.deepEqual(cat.lists.get("empty"), []);
 });
@@ -566,9 +566,9 @@ test("the access modifier picks the owner, not the position", () => {
     const cat = program.sprites[0];
 
     // `public` is Scratch's "for all sprites" -- it lands on the stage wherever it is written.
-    assert.deepEqual(program.variables, ["score", "total"]);
+    assert.deepEqual([...program.variables.keys()], ["score", "total"]);
     assert.deepEqual(program.lists.get("roster"), [1, 2]);
-    assert.deepEqual(cat.variables, ["lives", "mine"]);
+    assert.deepEqual([...cat.variables.keys()], ["lives", "mine"]);
     assert.deepEqual(cat.lists.get("paws"), [4]);
 });
 
@@ -578,9 +578,13 @@ test("a public member keeps its name; only a sprite-owned collision is renamed",
          sprite Cat { private greeting: str = "Cat"; }
          sprite Dog { public greeting2: str = "Dog"; }`,
     );
-    assert.deepEqual(program.sprites[0].variables, ["Cat_greeting"], "a sprite-owned name must clear the stage's");
-    assert.deepEqual(program.sprites[1].variables, []);
-    assert.deepEqual(program.variables, ["greeting", "greeting2"]);
+    assert.deepEqual(
+        [...program.sprites[0].variables.keys()],
+        ["Cat_greeting"],
+        "a sprite-owned name must clear the stage's",
+    );
+    assert.deepEqual(program.sprites[1].variables, new Map());
+    assert.deepEqual([...program.variables.keys()], ["greeting", "greeting2"]);
 });
 
 test("a declaration inside a script hoists the storage and initializes it in place", () => {
@@ -590,7 +594,7 @@ test("a declaration inside a script hoists the storage and initializes it in pla
     // Scratch has no scoped storage, so the list exists at sprite level -- but empty, because the
     // declaration is a statement: it must refill on every run, not be baked into the project file.
     assert.deepEqual(cat.lists.get("thing"), []);
-    assert.deepEqual(cat.variables, ["n"]);
+    assert.deepEqual([...cat.variables.keys()], ["n"]);
     assert.equal(cat.scripts.length, 1, "the initializer belongs in the script, not a green-flag prologue");
 
     const thing: IRExpr = { kind: "var", name: "thing" };

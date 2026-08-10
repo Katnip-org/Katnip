@@ -61,7 +61,7 @@ export interface IRScript {
 export interface IRSprite {
     name: string;
     scripts: IRScript[];
-    variables: string[];
+    variables: Map<string, string | number | boolean>;
     lists: Map<string, (string | number | boolean)[]>;
     /** Procs declared inside the sprite. */
     procs: Map<string, IRProc>;
@@ -71,8 +71,7 @@ export interface IRProgram {
     /** Top-level shared procs, keyed by IRProc.name; codegen copies each into the targets that use it. */
     procs: Map<string, IRProc>;
     sprites: IRSprite[];
-    /** Stage-owned globals: top-level user vars, retVars, temps. */
-    variables: string[];
+    variables: Map<string, string | number | boolean>;
     /** Stage-owned lists: user lists, vstack vStackNames. Maps to initial contents. */
     lists: Map<string, (string | number | boolean)[]>;
 }

@@ -169,10 +169,10 @@ export class SB3Generator {
     }
 
     /** Registers each name on the target and remembers its id, so references can resolve to it. */
-    private declare(target: Target, variables: string[], lists: Map<string, Scalar[]>): void {
-        for (const name of variables) {
+    private declare(target: Target, variables: Map<string, Scalar>, lists: Map<string, Scalar[]>): void {
+        for (const [name, value] of variables) {
             const id = this.generateID("var");
-            target.variables[id] = [name, 0];
+            target.variables[id] = [name, value];
             this.varIDs.set(name, id);
         }
         for (const [name, contents] of lists) {

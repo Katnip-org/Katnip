@@ -46,8 +46,8 @@ export class IRGenerator {
     private readonly program: IRProgram = {
         procs: new Map(),
         sprites: [],
-        variables: [],
-        lists: new Map([["_GtempKeys", []], ["_GtempVals", []]]),
+        variables: new Map(),
+        lists: new Map([]),
     };
 
     private sprite: IRSprite | null = null;
@@ -152,7 +152,7 @@ export class IRGenerator {
         this.sprite = {
             name: node.name,
             scripts: [],
-            variables: [],
+            variables: new Map(),
             lists: new Map([["_tempKeys", []], ["_tempVals", []]]),
             procs: new Map(),
         };
@@ -203,7 +203,15 @@ export class IRGenerator {
 
         if (kind !== "list" && kind !== "dict") {
             if (!sink) {
-                target.variables.push(name); // TODO: unmangled; mangle once procs land
+                // TODO: unmangled; mangle once procs land
+                const baked = init ? literals([init]) : [""];
+                if (baked) {
+                    target.variables.set(name, baked[0]);
+                } else {
+                    target.variables.set(name, "");
+                    const out = this.sprite ? this.spriteInit : this.init;
+                    this.emit(out, this.set(name, this.lowerExpr(init!, out)));
+                }
                 return;
             }
             const value = init ? this.lowerExpr(init, sink) : null;
@@ -314,7 +322,7 @@ export class IRGenerator {
         this.lowered.add(stmt);
 
         if (plan.vStackName) (this.sprite ?? this.program).lists.set(plan.vStackName, []);
-        (this.sprite ?? this.program).variables.push(...plan.retVars);
+        for (const name of plan.retVars) (this.sprite ?? this.program).variables.set(name, 0);
 
         const params: IRParam[] = stmt.parameters.map((param) => ({
             name: param.name,
@@ -326,7 +334,7 @@ export class IRGenerator {
         this.temps = new Map();
         const body = this.lowerBlock(stmt.body);
         const temps = [...this.temps.values()];
-        (this.sprite ?? this.program).variables.push(...temps);
+        for (const name of temps) (this.sprite ?? this.program).variables.set(name, 0);
         this.currentPlan = null;
         this.params = new Set();
         this.temps = new Map();
@@ -718,7 +726,7 @@ export class IRGenerator {
     private declare(name: string, target: IRSprite | IRProgram = this.sprite ?? this.program): string {
         if (!this.currentPlan) {
             const scope = target.variables;
-            if (!scope.includes(name)) scope.push(name);
+            if (!scope.has(name)) scope.set(name, 0);
             return name;
         }
         const existing = this.temps.get(name);
