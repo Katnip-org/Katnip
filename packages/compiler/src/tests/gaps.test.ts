@@ -110,7 +110,7 @@ sprite Cat { events.onFlag() { temp a: num = 0; temp b: num = 0; (a, b) = two();
     assert.equal(slots.size, 2, "both return slots must be read");
 });
 
-test("a list declared inside a script lowers", { todo: "only top-level and sprite-level declarations register backing lists" }, () => {
+test("a list declared inside a script lowers", () => {
     const body = script(`sprite Cat { events.onFlag() { temp xs: list<num> = [1, 2]; looks.say(f"{xs[1]}"); } }`);
 
     const say = body.find((s): s is Extract<IRStmt, { kind: "raw" }> => s.kind === "raw" && s.opcode === "looks_say")!;

@@ -5,6 +5,7 @@
  * statement sink; anything needing setup blocks pushes them into the sink and returns an IRExpr naming the result.
  */
 
+import { isPublicVar } from "../parser/AST-nodes.js";
 import type {
     AST,
     BlockNode,
@@ -87,7 +88,13 @@ export class IRGenerator {
         // Collected before any sprite is lowered, because a sprite may be declared ahead of the
         // global it shadows and its members still have to be renamed clear of it.
         this.globalNames = new Set(
-            ast.body.filter((stmt) => stmt.type === "VariableDeclaration").map((stmt) => stmt.name),
+            ast.body.flatMap((stmt) =>
+                stmt.type === "VariableDeclaration"
+                    ? [stmt.name]
+                    : stmt.type === "SpriteDeclaration"
+                      ? stmt.body.body.filter(isPublicVar).map((member) => member.name)
+                      : [],
+            ),
         );
         for (const stmt of ast.body) {
             switch (stmt.type) {
@@ -184,18 +191,23 @@ export class IRGenerator {
         this.sprite = null;
     }
 
-    private declareMember(node: VariableDeclarationNode): void {
-        const target = this.sprite ?? this.program;
+    private declareMember(node: VariableDeclarationNode, sink?: IRStmt[]): void {
+        const target = isPublicVar(node) ? this.program : this.sprite ?? this.program;
         const kind =
             node.varType?.type === "Type"
                 ? node.varType.typeName
                 : node.initializer && this.analyzer.exprTypes.get(node.initializer)?.kind;
         const init = node.initializer;
 
-        const name = this.emittedName(node.name);
+        const name = this.emittedName(node);
 
         if (kind !== "list" && kind !== "dict") {
-            target.variables.push(name); // TODO: unmangled; mangle once procs land
+            if (!sink) {
+                target.variables.push(name); // TODO: unmangled; mangle once procs land
+                return;
+            }
+            const value = init ? this.lowerExpr(init, sink) : null;
+            this.emit(sink, this.set(this.declare(node.name, target), value ?? { kind: "lit", value: "" }));
             return;
         }
 
@@ -210,9 +222,9 @@ export class IRGenerator {
         this.listNames.set(node.name, columns.map(([column]) => column));
 
         const baked = columns.map(([, elements]) => literals(elements));
-        const runtime = baked.some((values) => values === null);
+        const runtime = sink !== undefined || baked.some((values) => values === null);
 
-        const out = this.sprite ? this.spriteInit : this.init;
+        const out = sink ?? (this.sprite ? this.spriteInit : this.init);
         const mark = this.pending.length;
         columns.forEach(([name, elements], i) => {
             target.lists.set(name, runtime ? [] : baked[i]!);
@@ -506,11 +518,9 @@ export class IRGenerator {
                 this.emit(out, this.set(this.local(node.left.name), value));
                 break;
             }
-            case "VariableDeclaration": {
-                const init = node.initializer ? this.lowerExpr(node.initializer, out) : null;
-                this.emit(out, this.set(this.declare(node.name), init ?? { kind: "lit", value: "" }));
+            case "VariableDeclaration":
+                this.declareMember(node, out);
                 break;
-            }
             case "ExpressionStatement": {
                 const expr = node.expression;
                 if (expr.type === "CallExpression") {
@@ -705,9 +715,9 @@ export class IRGenerator {
     }
 
     /** Registers a proc-local, mangled globally. Script-scope temps keep their name and are owned by the sprite. */
-    private declare(name: string): string {
+    private declare(name: string, target: IRSprite | IRProgram = this.sprite ?? this.program): string {
         if (!this.currentPlan) {
-            const scope = (this.sprite ?? this.program).variables;
+            const scope = target.variables;
             if (!scope.includes(name)) scope.push(name);
             return name;
         }
@@ -726,8 +736,9 @@ export class IRGenerator {
      * The sb3 name for a declared member: its own, unless it is a sprite member colliding with a
      * global, which Scratch cannot represent. Prefixing with the sprite keeps both readable.
      */
-    private emittedName(name: string): string {
-        if (!this.sprite || !this.globalNames.has(name)) return name;
+    private emittedName(node: VariableDeclarationNode): string {
+        const { name } = node;
+        if (isPublicVar(node) || !this.sprite || !this.globalNames.has(name)) return name;
         const renamed = `${this.sprite.name}_${name}`;
         this.renamed.set(name, renamed);
         return renamed;

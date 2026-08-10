@@ -553,6 +553,55 @@ test("list and dict declarations become lists; scalars stay variables", () => {
     assert.deepEqual(cat.lists.get("empty"), []);
 });
 
+test("the access modifier picks the owner, not the position", () => {
+    const program = lower(
+        HAT + `sprite Cat {
+                   public score: num = 0;
+                   private lives: num = 9;
+                   public roster: list<num> = [1, 2];
+                   private paws: list<num> = [4];
+                   onflag() { public total: num = 0; private mine: num = 1; }
+               }`,
+    );
+    const cat = program.sprites[0];
+
+    // `public` is Scratch's "for all sprites" -- it lands on the stage wherever it is written.
+    assert.deepEqual(program.variables, ["score", "total"]);
+    assert.deepEqual(program.lists.get("roster"), [1, 2]);
+    assert.deepEqual(cat.variables, ["lives", "mine"]);
+    assert.deepEqual(cat.lists.get("paws"), [4]);
+});
+
+test("a public member keeps its name; only a sprite-owned collision is renamed", () => {
+    const program = lower(
+        `public greeting: str = "Katnip";
+         sprite Cat { private greeting: str = "Cat"; }
+         sprite Dog { public greeting2: str = "Dog"; }`,
+    );
+    assert.deepEqual(program.sprites[0].variables, ["Cat_greeting"], "a sprite-owned name must clear the stage's");
+    assert.deepEqual(program.sprites[1].variables, []);
+    assert.deepEqual(program.variables, ["greeting", "greeting2"]);
+});
+
+test("a declaration inside a script hoists the storage and initializes it in place", () => {
+    const program = lower(HAT + `sprite Cat { onflag() { private thing = [5, 2]; private n = 7; } }`);
+    const cat = program.sprites[0];
+
+    // Scratch has no scoped storage, so the list exists at sprite level -- but empty, because the
+    // declaration is a statement: it must refill on every run, not be baked into the project file.
+    assert.deepEqual(cat.lists.get("thing"), []);
+    assert.deepEqual(cat.variables, ["n"]);
+    assert.equal(cat.scripts.length, 1, "the initializer belongs in the script, not a green-flag prologue");
+
+    const thing: IRExpr = { kind: "var", name: "thing" };
+    assert.deepEqual(cat.scripts[0].body, [
+        { kind: "raw", opcode: "data_deletealloflist", inputs: [thing] },
+        { kind: "raw", opcode: "data_addtolist", inputs: [thing, { kind: "lit", value: 5 }] },
+        { kind: "raw", opcode: "data_addtolist", inputs: [thing, { kind: "lit", value: 2 }] },
+        { kind: "raw", opcode: "data_setvariableto", inputs: [{ kind: "var", name: "n" }, { kind: "lit", value: 7 }] },
+    ]);
+});
+
 test("a non-literal initializer is built by a green-flag script ahead of the user's own", () => {
     const program = lower(
         `private seed: num = 7;

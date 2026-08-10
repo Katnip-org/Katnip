@@ -20,6 +20,7 @@ import type {
     TypeNode,
     CallExpressionNode,
 } from "../parser/AST-nodes.js";
+import { isPublicVar } from "../parser/AST-nodes.js";
 import {
     Scope,
     type LoweringKind,
@@ -397,6 +398,7 @@ export class SemanticAnalyzer {
                     break;
                 case "SpriteDeclaration":
                     this.hoistSprite(stmt);
+                    for (const member of stmt.body.body) if (isPublicVar(member)) this.hoistVariable(member);
                     break;
                 case "VariableDeclaration":
                     this.hoistVariable(stmt);
@@ -589,7 +591,9 @@ export class SemanticAnalyzer {
                     );
                 }
 
-                if (this.current.kind !== "global") {
+                // A `public` member was already hoisted into the file scope above; the sprite does not own it.
+                const hoisted = this.current.kind === "sprite" && isPublicVar(node);
+                if (this.current.kind !== "global" && !hoisted) {
                     this.declare(
                         {
                             kind: "variable",
@@ -602,7 +606,8 @@ export class SemanticAnalyzer {
                     );
                 }
 
-                const sym = this.current.lookupLocal(node.name)?.find(s => s.declNode === node);
+                const owner = hoisted ? this.current.parent! : this.current;
+                const sym = owner.lookupLocal(node.name)?.find(s => s.declNode === node);
                 if (sym) sym.cachedType = varType ?? initType ?? { kind: "unknown" };
                 break;
             }

@@ -181,6 +181,10 @@ export enum VariableDeclarationType {
 
 export type AccessModifier = Exclude<VariableDeclarationType, VariableDeclarationType.temp>;
 
+export function isPublicVar(node: StatementNode): node is VariableDeclarationNode {
+    return node.type === "VariableDeclaration" && node.access === VariableDeclarationType.public;
+}
+
 export interface VariableDeclarationNode extends NodeBase {
     type: "VariableDeclaration";
     access: VariableDeclarationType;

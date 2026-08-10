@@ -276,6 +276,21 @@ test("stdlib misuse: unknown members and non-methods", () => {
     );
 });
 
+test("a public member is visible from other sprites; two sprites cannot claim one name", () => {
+    expectClean(
+        compile(`sprite Cat { public score: num = 0; }\nsprite Dog { private copy: num = score; }`),
+    );
+    assert.match(
+        errorsOf(`sprite Cat { public score: num = 0; }\nsprite Dog { public score: num = 1; }`),
+        /'score' is already declared in this scope/,
+    );
+    // A private member stays the sprite's own business.
+    assert.match(
+        errorsOf(`sprite Cat { private lives: num = 9; }\nsprite Dog { private copy: num = lives; }`),
+        /'lives' is not defined/,
+    );
+});
+
 test("for-loop destructuring width is checked", () => {
     const errors = errorsOf(
         `

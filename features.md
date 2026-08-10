@@ -45,7 +45,7 @@ case passing except the 8 `todo` cases that pin the gaps below — and a clean
 ## Declarations
 
 - 🟢 **Variables**; `public`, `private`, and `temp` access modifiers, with or without a type annotation.
-  - 🟢 Top-level variables become stage-owned globals, visible from every sprite.
+  - 🟢 The modifier picks the owner, wherever the declaration is written: `public` is stage-owned and visible to every sprite, `private` belongs to whatever encloses it. Two sprites claiming one `public` name is an error.
   - 🟢 Sprite members shadowing a global are renamed `Sprite_name` at codegen, since Scratch cannot represent the collision.
   - 🟢 `temp` inside a proc becomes a mangled global; scope-less by design, so recursion still clobbers it.
 - 🟢 **Procedures**; `proc name(params) -> Type { ... }`, with bodies lowered into `procedures_definition` blocks.
