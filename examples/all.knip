@@ -62,6 +62,9 @@ sprite Cat {
 
         for (i, n) { motion.forward(i); } # counter loop
         for ((name, dist), pairs) { motion.forward(dist); } # tuple-destructure loop
+        for (r, range(2, 6, 2)) { motion.forward(r); } # range: 1-based, stop-inclusive -> 2 4 6
+        for ((idx, val), enumerate(li)) { motion.forward(idx + val); } # enumerate: 1-based index + value
+        for ((p, q), zip(li, li)) { motion.forward(p + q); } # zip: two lists, one counter, stops at the shorter
 
         switch (t % 2) { # switch / case / default
             case (0) { looks.say("even"); }
