@@ -34,7 +34,7 @@ npm install -g @katnip-org/compiler
 katnip build hello.knip
 ```
 
-Node.js 20+. See the [documentation](https://katnip.org) to get started, or
+Node.js 20+. See the [documentation](https://docs.katnip.org/) to get started, or
 [`@katnip-org/compiler`](https://www.npmjs.com/package/@katnip-org/compiler) for the CLI
 and library reference.
 

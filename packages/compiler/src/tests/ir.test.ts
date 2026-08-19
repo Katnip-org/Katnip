@@ -243,6 +243,20 @@ test("unary ! and - lower to not / 0 - x", () => {
     });
 });
 
+test("chained left-associative operators fold left: a - b - c is (a - b) - c", () => {
+    // regression: BindingPowerTable previously set rbp = lbp - 1 for left-assoc
+    // ops, which let the right-operand parse swallow the next same-precedence
+    // operator too, lowering `a - b - c` as `a - (b - c)` instead.
+    assert.deepEqual(exprOf("1 - 2 - 3"), {
+        kind: "op",
+        opcode: "operator_subtract",
+        inputs: [
+            { kind: "op", opcode: "operator_subtract", inputs: [{ kind: "lit", value: 1 }, { kind: "lit", value: 2 }] },
+            { kind: "lit", value: 3 },
+        ],
+    });
+});
+
 test("interpolated strings lower to right-nested joins", () => {
     const join = (a: unknown, b: unknown) => ({ kind: "op", opcode: "operator_join", inputs: [a, b] });
     assert.deepEqual(exprOf(`f"a{1}b"`), join({ kind: "lit", value: "a" }, join({ kind: "lit", value: 1 }, { kind: "lit", value: "b" })));
