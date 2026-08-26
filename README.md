@@ -1,4 +1,4 @@
-# Katnip
+# Katnip — https://katnip.org
 
 A typed programming language that compiles to Scratch. You write `.knip` files, run the
 compiler, and get a `.sb3` project that opens in [Scratch](https://scratch.mit.edu) or [MistWarp](https://warp.mistium.com/editor) or [TurboWarp](https://turbowarp.org) and runs like any other project.
