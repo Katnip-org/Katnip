@@ -22,6 +22,8 @@ interface Options {
     path?: string;
     resolve?: ImportResolver;
     readAsset?: AssetReader;
+    /** Zip deflate level 0-9 for the .sb3; default 6. Lower is faster to build and larger on disk. */
+    compression?: number;
 }
 
 /** Lex, parse and analyze. `ast` is null when the source was too broken to parse. */
@@ -91,7 +93,7 @@ export function compileToSb3(
 
     try {
         const ir = new IRGenerator(analyzer).generate(ast);
-        return { errors: reporter.getErrors(), sb3: packSb3(new SB3Generator().generate(ir, assets), assets) };
+        return { errors: reporter.getErrors(), sb3: packSb3(new SB3Generator().generate(ir, assets), assets, options.compression) };
     } catch (err) {
         if (!(err instanceof KatnipError)) throw err;
         reporter.add(err);

@@ -186,6 +186,10 @@ cli
         }).positional('output', {
             describe: 'The path to write the .sb3 to (defaults to the source path with a .sb3 extension)',
             type: 'string',
+        }).option('compression', {
+            describe: 'Zip deflate level 0-9; lower builds faster but makes a larger .sb3',
+            type: 'number',
+            default: 6,
         });
     }, (argv: any) => {
         const source = argv.source as string;
@@ -195,6 +199,7 @@ cli
                     path: path.resolve(source),
                     resolve: fileResolver,
                     readAsset: fileAssetReader,
+                    compression: argv.compression,
                 });
 
                 const reporter = new ErrorReporter(fileContent, true);
