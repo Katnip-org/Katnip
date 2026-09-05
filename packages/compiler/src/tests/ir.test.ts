@@ -341,6 +341,12 @@ test("+ over str operands is operator_join, not operator_add", () => {
     assert.equal(num.kind === "op" && num.opcode, "operator_add");
 });
 
+test("forever lowers to a forever loop", () => {
+    const program = lower(HAT + `sprite Cat { onflag() { private t = 0; forever { t += 1; } } }`);
+    const body = program.sprites[0].scripts[0].body;
+    assert.deepEqual(body.map((s) => (s.kind === "raw" ? s.opcode : s.kind)), ["data_setvariableto", "forever"]);
+});
+
 test("do-while runs its body once before the loop", () => {
     const program = lower(HAT + `sprite Cat { onflag() { private t = 0; do { t += 1; } while (t < 3); } }`);
     const body = program.sprites[0].scripts[0].body;

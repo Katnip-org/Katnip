@@ -121,6 +121,7 @@ export class IRGenerator {
                 case "IfStatement":
                 case "WhileStatement":
                 case "DoWhileStatement":
+                case "ForeverStatement":
                 case "ForStatement":
                 case "ReturnStatement":
                     // TODO: error and say its not allowed
@@ -399,6 +400,9 @@ export class IRGenerator {
                 this.emit(out, { kind: "while", cond, body: this.lowerBlock(node.body) });
                 break;
             }
+            case "ForeverStatement":
+                this.emit(out, { kind: "forever", body: this.lowerBlock(node.body) });
+                break;
             case "DoWhileStatement": {
                 out.push(...this.lowerBlock(node.body));
                 const cond = this.lowerExpr(node.condition, out);

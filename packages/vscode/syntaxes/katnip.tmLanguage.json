@@ -86,7 +86,7 @@
       "patterns": [
         {
           "name": "keyword.control.katnip",
-          "match": "\\b(if|elif|else|for|while|do|return|switch|case|default)\\b"
+          "match": "\\b(if|elif|else|for|while|do|forever|return|switch|case|default)\\b"
         },
         { "name": "storage.type.katnip", "match": "\\b(proc|enum|sprite)\\b" },
         { "name": "storage.modifier.katnip", "match": "\\b(private|public|temp)\\b" },

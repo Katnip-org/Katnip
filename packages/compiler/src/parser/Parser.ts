@@ -416,6 +416,7 @@ export class Parser {
             if (this.checkToken("value", ["for"])) return this.parseForStatement();
             if (this.checkToken("value", ["while"])) return this.parseWhileStatement();
             if (this.checkToken("value", ["do"])) return this.parseDoWhileStatement();
+            if (this.checkToken("value", ["forever"])) return this.parseForeverStatement();
             if (this.checkToken("value", ["return"])) return this.parseReturnStatement();
 
             if (this.checkToken("value", ["switch"])) return this.parseSwitchStatement();
@@ -497,6 +498,12 @@ export class Parser {
             while (!this.isAtEnd() && !this.checkToken("type", [")"])) {
                 this.logger.log(new KatnipLog(KatnipLogType.Debug, `parsing proc param/decorator, next token: ${this.peek()?.token.type}, ${this.peek() && isValuedTokenType(this.peek()!.token.type) ? (this.peek()!.token as ValuedToken).value : "N/A"}`));
                 if (this.checkToken("type", ["@"])) {
+                    if (!parsingDecorators) {
+                        this.reporter.add(
+                            new KatnipError("Parser", "Decorators must come before parameters", this.peek()!.start)
+                        );
+                        parsingDecorators = true;
+                    }
                     this.advance();
                 } else if (this.checkToken("type", ["Identifier"])) {
                     parsingDecorators = false;
@@ -566,7 +573,8 @@ export class Parser {
                 if (!this.checkToken("type", [")"])) {
                     this.consume(
                         { type: "," },
-                        "Expected ',' or ')'"
+                        "Expected ',' or ')'",
+                        { type: [",", ")"] }
                     );
                 }
             }
@@ -958,6 +966,24 @@ export class Parser {
                 end: body.loc.end
             }
         };
+    }
+
+    /**
+     * Parses `forever { ... }`.
+     */
+    private parseForeverStatement(): StatementNode {
+        const keyword = this.consume({ type: "Identifier", value: "forever" }, "Expected 'forever' keyword");
+        const bodyExpression = this.parseBlockExpression();
+        const body = {
+            type: "Block",
+            body: bodyExpression,
+            loc: {
+                start: bodyExpression[0]?.loc.start || keyword.end,
+                end: bodyExpression[bodyExpression.length - 1]?.loc.end || keyword.end
+            }
+        } satisfies BlockNode;
+
+        return { type: "ForeverStatement", body, loc: { start: keyword.start, end: body.loc.end } };
     }
 
     /**

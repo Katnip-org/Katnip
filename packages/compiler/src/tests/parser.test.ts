@@ -75,6 +75,16 @@ test("proc with decorators, defaults, and tuple return type", () => {
     assert.equal(stmt.returnType?.type, "TupleType");
 });
 
+test("decorator after a parameter reports exactly one error and still parses", () => {
+    const { ast, reporter } = parse("proc f(i: num, @warp) -> void { }");
+    assert.equal(reporter.getErrors().length, 1);
+    assert.match(reporter.getErrors()[0]!.message, /before parameters/);
+    const stmt = ast.body[0];
+    if (stmt.type !== "ProcedureDeclaration") assert.fail("expected proc");
+    assert.deepEqual(stmt.parameters.map((p) => p.name), ["i"]);
+    assert.deepEqual(stmt.decorators.map((d) => d.name), ["warp"]);
+});
+
 test("binary precedence: multiplication binds tighter than addition", () => {
     const stmt = parseStmt("x = 1 + 2 * 3;");
     if (stmt.type !== "VariableAssignment" || stmt.right.type !== "BinaryExpression") {

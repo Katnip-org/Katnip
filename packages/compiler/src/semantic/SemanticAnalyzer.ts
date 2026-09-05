@@ -675,6 +675,9 @@ export class SemanticAnalyzer {
                 this.checkCondition(node.condition, "'do-while' loop");
                 this.visitBlock(node.body);
                 break;
+            case "ForeverStatement":
+                this.visitBlock(node.body);
+                break;
             case "ForStatement": {
                 const elementType = this.iterationType(this.inferType(node.iterable));
                 const isTuple = node.pattern.type === "TupleExpression";
