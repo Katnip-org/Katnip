@@ -10,8 +10,11 @@ export type BroadcastId = Uid;
 export type CommentId = Uid;
 
 // --- Assets ---
-export type CostumeDataFormat = "svg" | "png" | "jpg" | "jpeg" | "bmp" | "gif";
-export type SoundDataFormat = "wav" | "mp3";
+export const COSTUME_FORMATS = ["svg", "png", "jpg", "jpeg", "bmp", "gif"] as const;
+export const SOUND_FORMATS = ["wav", "mp3"] as const;
+
+export type CostumeDataFormat = (typeof COSTUME_FORMATS)[number];
+export type SoundDataFormat = (typeof SOUND_FORMATS)[number];
 
 export interface Costume {
     name: string;
@@ -297,8 +300,8 @@ export function minimalStage(): Stage {
             {
                 name: "backdrop1",
                 dataFormat: "svg",
-                assetId: "481420ab7d4493de0cd427cef54484d6",
-                md5ext: "481420ab7d4493de0cd427cef54484d6.svg",
+                assetId: "7cd16c437097f6dc4e4c0c4992d76473",
+                md5ext: "7cd16c437097f6dc4e4c0c4992d76473.svg",
                 rotationCenterX: 240,
                 rotationCenterY: 180,
             },
@@ -328,8 +331,8 @@ export function minimalSprite(name: string, layerOrder: number): Sprite {
                 name: "kartnap",
                 bitmapResolution: 1,
                 dataFormat: "svg",
-                assetId: "481420ab7d4493de0cd427cef54484d6",
-                md5ext: "481420ab7d4493de0cd427cef54484d6.svg",
+                assetId: "7cd16c437097f6dc4e4c0c4992d76473",
+                md5ext: "7cd16c437097f6dc4e4c0c4992d76473.svg",
                 rotationCenterX: 0,
                 rotationCenterY: 0,
             },

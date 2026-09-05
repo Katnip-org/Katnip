@@ -21,6 +21,9 @@ export type ImportResolver = (
     fromPath: string,
 ) => { path: string; source: string } | null;
 
+/** Same contract for costume and sound files: bytes, or null if the file does not exist. */
+export type AssetReader = (specifier: string, fromPath: string) => Uint8Array | null;
+
 /** Single `import` declaration after target file is fully parsed. */
 export interface ImportedModule {
     namespace: string;
@@ -35,7 +38,7 @@ export interface ImportedModule {
 type ParsedModule = Pick<ImportedModule, "ast" | "reporter" | "imports">;
 
 /** Underlines the quoted path (quotes included) rather than the whole statement. */
-function specifierSpan(stmt: ImportDeclarationNode) {
+export function specifierSpan(stmt: Pick<ImportDeclarationNode, "specifierLoc">) {
     const { start, end } = stmt.specifierLoc;
     return { line: start.line, column: start.column, endLine: end.line, endColumn: end.column };
 }

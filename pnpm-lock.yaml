@@ -30,6 +30,9 @@ importers:
       fflate:
         specifier: ^0.8.3
         version: 0.8.3
+      js-md5:
+        specifier: ^0.9.2
+        version: 0.9.2
       yargs:
         specifier: ^18.0.0
         version: 18.0.0
@@ -679,6 +682,9 @@ packages:
   istextorbinary@9.5.0:
     resolution: {integrity: sha512-5mbUj3SiZXCuRf9fT3ibzbSSEWiy63gFfksmGfdOzujPjW3k+z8WvIBxcJHBoQNlaZaiyB25deviif2+osLmLw==}
     engines: {node: '>=4'}
+
+  js-md5@0.9.2:
+    resolution: {integrity: sha512-QK62elp/ozZj7kzyCG5yaeK+uWeqxPlg3w3znYDBvwyqzJs7nh5bgTAAH9KltLni2LT7qx/E1EgSVwfiOSRe0Q==}
 
   js-tokens@4.0.0:
     resolution: {integrity: sha512-RdJUflcE3cUzKiMqQgsCu06FPu9UdIJO0beYbPhHN4k6apgJtifcoCtT9bcxOpYBtpD2kCM6Sbzg4CausW/PKQ==}
@@ -1920,6 +1926,8 @@ snapshots:
       binaryextensions: 6.11.0
       editions: 6.22.0
       textextensions: 6.11.0
+
+  js-md5@0.9.2: {}
 
   js-tokens@4.0.0: {}
 

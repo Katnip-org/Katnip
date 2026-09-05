@@ -5,7 +5,7 @@ import { Lexer } from "./lexer/Lexer.js";
 import { Parser } from "./parser/Parser.js";
 import { SemanticAnalyzer } from "./semantic/SemanticAnalyzer.js";
 import { loadStdlibModules } from "./semantic/StdlibLoader.js";
-import { loadImports, type ImportResolver } from "./semantic/ModuleLoader.js";
+import { loadImports, type AssetReader, type ImportResolver } from "./semantic/ModuleLoader.js";
 import { ErrorReporter, KatnipError } from "./utils/ErrorReporter.js";
 import { Logger } from "./utils/Logger.js";
 import { compileToIR, compileToSb3 } from "./index.js";
@@ -26,6 +26,10 @@ const fileResolver: ImportResolver = (specifier, fromPath) => {
     } catch {
         return null;
     }
+};
+
+const fileAssetReader: AssetReader = (specifier, fromPath) => {
+    try { return readFileSync(path.resolve(path.dirname(fromPath), specifier)); } catch { return null; }
 };
 
 class FileLogger extends Logger {
@@ -190,6 +194,7 @@ cli
                 const { errors, sb3 } = compileToSb3(fileContent, {
                     path: path.resolve(source),
                     resolve: fileResolver,
+                    readAsset: fileAssetReader,
                 });
 
                 const reporter = new ErrorReporter(fileContent, true);

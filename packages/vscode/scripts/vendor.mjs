@@ -28,7 +28,7 @@ await writeFile(join(dest, "package.json"), JSON.stringify({ type: "module" }) +
 
 // `vsce package --no-dependencies` ships no node_modules, so the compiler's runtime deps have to come along by hand.
 const require = createRequire(import.meta.url);
-for (const name of ["fflate"]) {
+for (const name of ["fflate", "js-md5"]) {
     const pkg = dirname(require.resolve(`${name}/package.json`, { paths: [compiler] }));
     await cp(pkg, join(dest, "node_modules", name), noMaps);
 }

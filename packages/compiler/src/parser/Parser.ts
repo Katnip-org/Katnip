@@ -407,8 +407,10 @@ export class Parser {
                 if (nextVal === "struct") return this.parseStructDefinition();
                 return this.parseVariableDeclaration();
             }
-            if (this.checkToken("value", ["sprite"])) return this.parseSpriteDefinition();
-            if (this.checkToken("value", ["import"])) return this.parseImportDeclaration();
+            if (this.checkToken("value", ["sprite", "stage"])) return this.parseSpriteDefinition(this.checkToken("value", ["stage"]));
+            if (this.checkToken("value", ["import"])) return this.parseImportLike("import");
+            if (this.checkToken("value", ["costume"])) return this.parseImportLike("costume");
+            if (this.checkToken("value", ["sound"])) return this.parseImportLike("sound");
 
             if (this.checkToken("value", ["if"])) return this.parseIfStatement();
             if (this.checkToken("value", ["for"])) return this.parseForStatement();
@@ -752,9 +754,9 @@ export class Parser {
     }
 
     /** Parses `import "./thing.knip";` or `import "../sub/thing.knip" as thing;` */
-    private parseImportDeclaration(): StatementNode {
-        const keyword = this.consume({ type: "Identifier", value: "import" }, "Expected 'import' keyword");
-        const specifier = this.consume({ type: "String" }, "Expected a quoted module path after 'import'");
+    private parseImportLike(type: "import" | "costume" | "sound"): StatementNode {
+        const keyword = this.consume({ type: "Identifier", value: type}, `Expected ${type} keyword`);
+        const specifier = this.consume({ type: "String" }, `Expected a quoted path after '${type}'`);
 
         let alias: string | undefined;
         if (this.checkToken("value", ["as"])) {
@@ -762,20 +764,41 @@ export class Parser {
             alias = this.consume({ type: "Identifier" }, "Expected a namespace name after 'as'").token.value;
         }
 
-        this.expectSemicolon("Expected ';' at the end of an import declaration");
-        return {
-            type: "ImportDeclaration",
-            specifier: specifier.token.value,
-            specifierLoc: { start: specifier.start, end: specifier.end },
-            alias,
-            loc: { start: keyword.start, end: this.previous()?.end || keyword.start }
-        };
+        this.expectSemicolon(`Expected ';' at the end of a${type === "import" ? "n" : ""} ${type} declaration`);
+        if (type === "import")
+            return {
+                type: "ImportDeclaration",
+                specifier: specifier.token.value,
+                specifierLoc: { start: specifier.start, end: specifier.end },
+                alias,
+                loc: { start: keyword.start, end: this.previous()?.end || keyword.start },
+            };
+        else
+            return {
+                type: "AssetDeclaration",
+                kind: type,
+                specifier: specifier.token.value,
+                specifierLoc: { start: specifier.start, end: specifier.end },
+                alias,
+                loc: { start: keyword.start, end: this.previous()?.end || keyword.start },
+            };
     }
 
-    private parseSpriteDefinition(): StatementNode {
-        this.consume({ type: "Identifier", value: "sprite" }, "Expected 'sprite' keyword");
-        const nameToken = this.consume({ type: "Identifier" }, "Expected sprite name");
-        const name = nameToken.token.value;
+    private parseSpriteDefinition(isStage: boolean): StatementNode {
+        let name: string;
+        let nameToken: { token: TokenInfoFor<"Identifier">; start: TokenPos; end: TokenPos };
+
+        if (isStage) {
+            nameToken = this.consume({ type: "Identifier" }, "Expected 'stage' keyword");
+            name = "stage";
+        } else {
+            this.consume({ type: "Identifier", value: "sprite" }, "Expected 'sprite' keyword");
+            nameToken = this.consume({ type: "Identifier" }, "Expected sprite name");
+            name = nameToken.token.value;
+            // Codegen maps the name "stage" onto the stage target, so a sprite may not claim it.
+            if (name === "stage")
+                this.reporter.add(new KatnipError("Parser", "'stage' is reserved; use a `stage { }` block to add code to the stage", nameToken.start));
+        }
 
         const stmts = this.parseBlockExpression();
         const body: BlockNode = {

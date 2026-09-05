@@ -4,7 +4,7 @@ import { SemanticAnalyzer } from "../semantic/SemanticAnalyzer.js";
 import { loadStdlibModules } from "../semantic/StdlibLoader.js";
 import { ErrorReporter } from "../utils/ErrorReporter.js";
 import { Logger } from "../utils/Logger.js";
-import { loadImports, type ImportResolver } from "../semantic/ModuleLoader.js";
+import { loadImports, type AssetReader, type ImportResolver } from "../semantic/ModuleLoader.js";
 import { posix } from "node:path";
 import type { AST } from "../parser/AST-nodes.js";
 
@@ -26,6 +26,11 @@ export function virtualResolver(files: Record<string, string>): ImportResolver {
         );
         return resolved in files ? { path: resolved, source: files[resolved] } : null;
     };
+}
+
+/** Asset reader over an in-memory file map, keyed by absolute posix path. */
+export function virtualAssetReader(files: Record<string, Uint8Array>): AssetReader {
+    return (specifier, fromPath) => files[posix.resolve(posix.dirname(fromPath), specifier)] ?? null;
 }
 
 export function compile(

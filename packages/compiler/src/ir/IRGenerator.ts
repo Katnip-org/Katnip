@@ -151,6 +151,8 @@ export class IRGenerator {
     private lowerSprite(node: SpriteDeclarationNode): void {
         this.sprite = {
             name: node.name,
+            costumes: [],
+            sounds: [],
             scripts: [],
             variables: new Map(),
             lists: new Map([["_tempKeys", []], ["_tempVals", []]]),
@@ -181,6 +183,12 @@ export class IRGenerator {
                 case "ProcedureDeclaration": {
                     const proc = this.lowerProc(stmt);
                     if (proc) this.sprite.procs.set(stmt.name, proc);
+                    break;
+                }
+                case "AssetDeclaration": {
+                    // Default name is the file stem, like an import's default namespace.
+                    const name = stmt.alias ?? stmt.specifier.split(/[\\/]/).pop()!.replace(/\.[^.]*$/, "");
+                    (stmt.kind === "costume" ? this.sprite.costumes : this.sprite.sounds).push({ name, path: stmt.specifier });
                     break;
                 }
             }

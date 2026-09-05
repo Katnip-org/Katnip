@@ -114,6 +114,7 @@ export type StatementNode =
     | DefaultCaseDeclarationNode
     | SpriteDeclarationNode
     | ImportDeclarationNode
+    | AssetDeclarationNode
     | ReturnStatementNode
     | ErrorStatementNode;
 
@@ -223,6 +224,14 @@ export interface ImportDeclarationNode extends NodeBase {
     type: "ImportDeclaration";
     specifier: string;
     /** Span of the quoted specifier, so resolution errors underline the path itself. */
+    specifierLoc: SourceLocation;
+    alias?: string;
+}
+
+export interface AssetDeclarationNode extends NodeBase {
+    type: "AssetDeclaration";
+    kind: "costume" | "sound";
+    specifier: string;
     specifierLoc: SourceLocation;
     alias?: string;
 }

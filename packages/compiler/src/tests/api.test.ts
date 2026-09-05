@@ -11,7 +11,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { unzipSync } from "fflate";
 import { checkSource, compileToSb3 } from "../index.js";
-import { ENTRY_PATH, virtualResolver } from "./helpers.js";
+import { ENTRY_PATH, virtualAssetReader, virtualResolver } from "./helpers.js";
 
 const HELLO = `sprite Cat { events.onFlag() { looks.say("hi", 1); } }`;
 
@@ -55,6 +55,39 @@ test("compileToSb3 returns bytes that unzip to a loadable project", () => {
     assert.equal(project.targets[0].isStage, true);
     assert.equal(project.targets[1].name, "Cat");
     assert.equal(project.targets[1].isStage, false);
+});
+
+test("costumes and sounds are packed once per unique file and shared by md5", () => {
+    const svg = new TextEncoder().encode("<svg/>");
+    const wav = new TextEncoder().encode("RIFF");
+    const assets = { "/proj/cat.svg": svg, "/proj/same.svg": svg, "/proj/meow.wav": wav };
+    const source = `
+        stage { costume "./cat.svg" as bg; }
+        sprite Cat { costume "./cat.svg"; costume "./same.svg" as twin; sound "./meow.wav"; }
+        sprite Dog { costume "./cat.svg" as borrowed; }
+    `;
+    const { errors, sb3 } = compileToSb3(source, { path: ENTRY_PATH, readAsset: virtualAssetReader(assets) });
+
+    assert.deepEqual(errors, []);
+    const entries = unzipSync(sb3!);
+    const project = projectOf(sb3!);
+    const [stage, cat, dog] = project.targets;
+
+    assert.equal(stage.costumes[0].name, "bg");
+    assert.deepEqual(cat.costumes.map((c: { name: string }) => c.name), ["cat", "twin"]);
+    assert.equal(cat.sounds[0].name, "meow");
+    assert.equal(cat.costumes[0].assetId, cat.costumes[1].assetId, "identical bytes share an id");
+    assert.equal(cat.costumes[0].assetId, dog.costumes[0].assetId, "sprites share an id");
+    assert.deepEqual(entries[cat.costumes[0].md5ext], svg);
+    assert.deepEqual(entries[cat.sounds[0].md5ext], wav);
+    // project.json, the default costume, one svg, one wav.
+    assert.equal(Object.keys(entries).length, 4);
+});
+
+test("a missing asset is reported against its path, like an unresolvable import", () => {
+    const { errors, sb3 } = compileToSb3(`sprite Cat { costume "./nope.svg"; }`, { path: ENTRY_PATH, readAsset: () => null });
+    assert.equal(sb3, undefined);
+    assert.match(errors[0]!.message, /nope\.svg/);
 });
 
 test("a sprite-less program still builds, but warns that it is empty", () => {

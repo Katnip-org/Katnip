@@ -1,6 +1,7 @@
 // import { zipSync } from 'fflate';
 
-import { paramType, type IRExpr, type IRParam, type IRProc, type IRProgram, type IRScript, type IRStmt } from "../ir/IRNode.js";
+import { paramType, type IRAsset, type IRExpr, type IRParam, type IRProc, type IRProgram, type IRScript, type IRStmt } from "../ir/IRNode.js";
+import type { AssetTable } from "./assets.js";
 import {
     minimalProject,
     minimalSprite,
@@ -8,12 +9,13 @@ import {
     type Block,
     type BlockId,
     type BlockMap,
+    type Costume,
     type Input,
     type KnownExtension,
     type Primitive,
     type Sb3Project,
     type Scalar,
-    type Sprite,
+    type Sound,
     type StopMutation,
     type Target,
     type Uid,
@@ -121,7 +123,7 @@ export class SB3Generator {
 
     constructor() {}
 
-    generate(ir: IRProgram): Sb3Project {
+    generate(ir: IRProgram, assets: AssetTable = new Map()): Sb3Project {
         this.sb3 = minimalProject();
         this.varIDs.clear();
         this.listIDs.clear();
@@ -144,22 +146,36 @@ export class SB3Generator {
 
         let idx = 1;
         for (const ir_sprite of ir.sprites) {
-            const sprite: Sprite = minimalSprite(ir_sprite.name, idx);
-            this.sb3.targets.push(sprite);
+            // A `stage {}` block fills in the stage target every project already has.
+            const isStage = ir_sprite.name === "stage";
+            const target: Target = isStage ? stage : minimalSprite(ir_sprite.name, idx++);
+            if (!isStage) this.sb3.targets.push(target);
+
             this.varIDs = new Map(globalVars);
             this.listIDs = new Map(globalLists);
-            this.declare(sprite, ir_sprite.variables, ir_sprite.lists);
+            this.declare(target, ir_sprite.variables, ir_sprite.lists);
             this.topY = 0;
-            sprite.blocks = this.processBlocks(ir_sprite.scripts);
+            target.blocks = this.processBlocks(ir_sprite.scripts);
 
             for (const proc of [...ir.procs.values(), ...ir_sprite.procs.values()])
-                this.emitProc(proc, sprite.blocks);
+                this.emitProc(proc, target.blocks);
 
-            idx++;
+            // Keep the default costume when none are declared; a costume-less target will not load.
+            if (ir_sprite.costumes.length)
+                target.costumes = ir_sprite.costumes.map((c) => this.asset(c, assets) as Costume);
+            target.sounds = ir_sprite.sounds.map((s) => this.asset(s, assets) as Sound);
         }
 
         this.sb3.extensions = [...this.used];
         return this.sb3;
+    }
+
+    /** Scratch computes rotation centers, bitmap resolution and sample rates on load, so only the identity is written. */
+    private asset(ref: IRAsset, assets: AssetTable): Costume | Sound {
+        const resolved = assets.get(ref.path);
+        if (!resolved) throw new KatnipError("Codegen", `asset '${ref.path}' was never loaded`);
+        const { assetId, md5ext, dataFormat } = resolved;
+        return { name: ref.name, assetId, md5ext, dataFormat } as Costume | Sound;
     }
 
     private generateID(type: keyof typeof this.IDStore): string {

@@ -3,7 +3,7 @@ import * as vscode from "vscode";
 import { readFileSync } from "node:fs";
 import * as path from "node:path";
 
-import type { KatnipError, ImportResolver } from "../compiler/build/index.js" with { "resolution-mode": "import" };
+import type { KatnipError, ImportResolver, AssetReader } from "../compiler/build/index.js" with { "resolution-mode": "import" };
 
 const fileResolver: ImportResolver = (specifier, fromPath) => {
     const resolved = path.resolve(
@@ -14,6 +14,14 @@ const fileResolver: ImportResolver = (specifier, fromPath) => {
     if (open) return { path: resolved, source: open.getText() };
     try {
         return { path: resolved, source: readFileSync(resolved, "utf8") };
+    } catch {
+        return null;
+    }
+};
+
+const fileAssetReader: AssetReader = (specifier, fromPath) => {
+    try {
+        return readFileSync(path.resolve(path.dirname(fromPath), specifier));
     } catch {
         return null;
     }
@@ -58,7 +66,7 @@ async function check(context: vscode.ExtensionContext, doc: vscode.TextDocument)
     if (doc.languageId !== "katnip") return;
     try {
         const { checkSource } = await loadCompiler(context);
-        const errors = await checkSource(doc.getText(), { path: doc.uri.fsPath, resolve: fileResolver });
+        const errors = await checkSource(doc.getText(), { path: doc.uri.fsPath, resolve: fileResolver, readAsset: fileAssetReader });
         diagnostics.set(doc.uri, errors.map(toDiagnostic));
         output.appendLine(`Checked ${doc.uri.fsPath}: ${errors.length} diagnostic(s).`);
     } catch (err) {
@@ -79,6 +87,7 @@ async function build(context: vscode.ExtensionContext): Promise<void> {
         const { errors, sb3 } = await compileToSb3(doc.getText(), {
             path: doc.uri.fsPath,
             resolve: fileResolver,
+            readAsset: fileAssetReader,
         });
         diagnostics.set(doc.uri, errors.map(toDiagnostic));
 

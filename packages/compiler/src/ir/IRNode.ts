@@ -58,8 +58,16 @@ export interface IRScript {
     body: IRStmt[];
 }
 
+/** `path` is the specifier as written; codegen looks the loaded bytes up by it. */
+export interface IRAsset {
+    name: string;
+    path: string;
+}
+
 export interface IRSprite {
     name: string;
+    costumes: IRAsset[];
+    sounds: IRAsset[];
     scripts: IRScript[];
     variables: Map<string, string | number | boolean>;
     lists: Map<string, (string | number | boolean)[]>;

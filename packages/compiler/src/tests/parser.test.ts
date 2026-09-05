@@ -19,6 +19,12 @@ function parseStmt(source: string): StatementNode {
     return ast.body[0];
 }
 
+test("a sprite may not be named 'stage', which the stage block owns", () => {
+    const { reporter } = parse("sprite stage { }");
+    assert.match(reporter.getErrors()[0]!.message, /reserved/);
+    assert.equal(parseStmt("stage { }").type, "SpriteDeclaration");
+});
+
 test("empty list literal parses to ListExpression with no elements", () => {
     const decl = parseStmt("private e = [];");
     assert.equal(decl.type, "VariableDeclaration");
