@@ -20,6 +20,12 @@ proc pow(base: num, exponent: num) -> num {
 }
 <#
 
+# --- Misc ---
+
+proc random(@opcode = "operator_random", low: num, high: num) -> num {}
+proc mod(@opcode = "operator_mod", value1: num, value2: num) -> num {}
+proc round(@opcode = "operator_round", value: num) -> num {}
+
 # --- Math-ops and its wrapped derivatives ---
 
 public enum MathOp { ABS = "abs", FLOOR = "floor", CEIL = "ceiling", SQRT = "sqrt",
