@@ -859,3 +859,142 @@ test("named arguments route by name, not by position", () => {
     assert.equal(goto.opcode, "motion_gotoxy");
     assert.deepEqual(goto.inputs, [{ kind: "lit", value: 1 }, { kind: "lit", value: 5 }]);
 });
+
+// -- regressions --
+
+const F = `proc f(n: num) -> num { if (n < 1) { return 0; } return f(n - 1); }\n`;
+
+test("a while condition that calls a proc reruns the call before every check", () => {
+    const program = lower(F + `sprite Cat { events.onFlag() { private i = 0; while (f(i) < 3) { i += 1; } } }`, { stdlib: true });
+    const body = program.sprites[0].scripts[0].body;
+    const loop = body.find((s) => s.kind === "while");
+    assert(loop?.kind === "while");
+    assert.deepEqual(loop.body.slice(-2).map((s) => (s.kind === "raw" ? s.opcode : s.kind)), ["data_deleteoflist", "call"]);
+    assert.equal(raws(body, "data_deleteoflist").length, 1, "the last check's slot is popped after the loop");
+});
+
+test("a do-while runs its body once, and its condition call reruns inside the loop", () => {
+    const program = lower(F + `sprite Cat { events.onFlag() { private i = 0; do { i += 1; } while (f(i) < 3); } }`, { stdlib: true });
+    const body = program.sprites[0].scripts[0].body;
+    assert.deepEqual(
+        body.map((s) => (s.kind === "raw" ? s.opcode : s.kind)),
+        ["data_setvariableto", "data_setvariableto", "call", "while", "data_deleteoflist"],
+    );
+});
+
+test("an elif condition's slots are popped inside its own branches, not after the whole if", () => {
+    const p = procOf(
+        lower(`sprite Cat { proc f(n: num) -> num { if (n < 1) { return 0; } if (f(1) > 0) { looks.say("a"); } elif (f(2) > 0) { looks.say("b"); } return 1; } }`, { stdlib: true }),
+        "Cat",
+        "f",
+    );
+    const chain = p.body.filter((s) => s.kind === "if")[1];
+    assert(chain?.kind === "if");
+    assert.deepEqual(chain.cond.kind === "op" && chain.cond.inputs[0], { kind: "stackref", list: "f_stack", depth: 0 });
+    const elif = chain.else[1];
+    assert(elif?.kind === "if");
+    assert.equal(raws(elif.then, "data_deleteoflist").length, 1);
+    assert.equal(raws(elif.else, "data_deleteoflist").length, 1);
+    assert.equal(raws(p.body, "data_deleteoflist").length, 1, "only the outer condition's slot is popped after the if");
+});
+
+test("a later switch case that calls a proc pops its slot inside its own branches", () => {
+    const p = procOf(
+        lower(`sprite Cat { proc f(n: num) -> num { if (n < 1) { return 0; } switch (n) { case (1) { looks.say("a"); } case (f(2)) { looks.say("b"); } } return 1; } }`, { stdlib: true }),
+        "Cat",
+        "f",
+    );
+    const chain = p.body.filter((s) => s.kind === "if")[1];
+    assert(chain?.kind === "if");
+    const second = chain.else.find((s) => s.kind === "if");
+    assert(second?.kind === "if");
+    assert.equal(raws(second.then, "data_deleteoflist").length, 1);
+    assert.equal(raws(second.else, "data_deleteoflist").length, 1);
+    assert.equal(raws(p.body, "data_deleteoflist").length, 0);
+});
+
+test("a return pops the slots its enclosing statements pushed, since the script stops", () => {
+    const p = procOf(
+        lower(`sprite Cat { proc f(n: num) -> num { if (f(n - 1) > 0) { return 4; } return 1; } }`),
+        "Cat",
+        "f",
+    );
+    const branch = p.body.find((s) => s.kind === "if");
+    assert(branch?.kind === "if");
+    assert.deepEqual(branch.then.map((s) => (s.kind === "raw" ? s.opcode : s.kind)), [
+        "data_deleteoflist",
+        "data_addtolist",
+        "control_stop",
+    ]);
+});
+
+test("a script local shadowing a global is declared and read under the same name, only in its own block", () => {
+    const program = lower(
+        `public x: num = 1;
+         sprite Cat { events.onFlag() { private x: num = 2; looks.say(f"{x}"); for (i, 1) { } } events.onClick() { looks.say(f"{x}"); } }`,
+        { stdlib: true },
+    );
+    const [flag, click] = program.sprites[0].scripts;
+    assert.deepEqual(raws(flag.body, "data_setvariableto")[0].inputs[0], { kind: "var", name: "Cat_x" });
+    assert.deepEqual(raws(flag.body, "looks_say")[0].inputs[0], { kind: "var", name: "Cat_x" });
+    assert.deepEqual(raws(click.body, "looks_say")[0].inputs[0], { kind: "var", name: "x" });
+});
+
+test("a loop variable shadowing a global is renamed clear of it", () => {
+    const program = lower(`public i: num = 0; sprite Cat { events.onFlag() { for (i, 3) { } } }`, { stdlib: true });
+    const loop = program.sprites[0].scripts[0].body[0];
+    assert(loop?.kind === "for");
+    assert.equal(loop.iter, "Cat_i");
+});
+
+test("a sprite's private list does not leak into the next sprite or a top-level proc", () => {
+    const program = lower(
+        `public xs: list<num> = [1];
+         public x: num = 1;
+         sprite Cat { private xs: list<num> = [2]; private x: num = 2; }
+         sprite Dog { events.onFlag() { looks.say(f"{xs[1]}"); } }
+         proc g() -> void { console.log(f"{x}"); }`,
+        { stdlib: true },
+    );
+    const say = raws(program.sprites[1].scripts[0].body, "looks_say")[0];
+    assert.deepEqual(say.inputs[0], {
+        kind: "op",
+        opcode: "data_itemoflist",
+        inputs: [{ kind: "var", name: "xs" }, { kind: "lit", value: 1 }],
+    });
+    assert.deepEqual(raws(program.procs.get("g")!.body, "katnip_console_log")[0].inputs[0], { kind: "var", name: "x" });
+});
+
+test("a sprite can index a global list declared below it", () => {
+    const program = lower(`sprite Cat { events.onFlag() { looks.say(f"{xs[1]}"); } }\npublic xs: list<num> = [1];`, {
+        stdlib: true,
+    });
+    assert.equal(raws(program.sprites[0].scripts[0].body, "looks_say").length, 1);
+});
+
+test("a global initialized from a vstack call pops its slot", () => {
+    const program = lower(F + `public y: num = f(3); sprite Cat { }`);
+    const init = program.sprites[0].scripts[0].body;
+    assert.equal(raws(init, "data_deleteoflist").length, 1);
+});
+
+test("a hat argument that needs setup blocks is an error, not silently dropped", () => {
+    assert.throws(
+        () => lower(`proc name() -> str { return "a"; } sprite Cat { events.onBroadcast(name()) { } }`, { stdlib: true }),
+        /a hat argument cannot call a procedure/,
+    );
+});
+
+test("a literal range step of 0 is an error, not an infinite count", () => {
+    assert.throws(
+        () => lower(HAT + `sprite Cat { onflag() { for (x, range(1, 5, 0)) { } } }`, { stdlib: true }),
+        /range\(\) step cannot be 0/,
+    );
+});
+
+test("a yields proc reports a KatnipError instead of crashing on the missing plan", () => {
+    assert.throws(
+        () => lower(`private xs: list<num> = [1]; sprite Cat { events.onFlag() { xs.remove(1); } }`, { stdlib: true }),
+        (err: Error) => err.name === "KatnipError" && /"yields" procs are not lowered yet/.test(err.message),
+    );
+});

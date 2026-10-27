@@ -16,6 +16,7 @@ export const bindingPowerTable: Record<string, BindingPower> = {
 
   // comparison operators
   "==": { lbp: 45, rbp: 45 },
+  "!=": { lbp: 45, rbp: 45 },
   "<":  { lbp: 50, rbp: 50 },
   ">":  { lbp: 50, rbp: 50 },
   "<=": { lbp: 50, rbp: 50 },

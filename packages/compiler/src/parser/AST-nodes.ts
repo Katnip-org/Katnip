@@ -281,7 +281,7 @@ export interface InterpolatedStringExpressionNode extends NodeBase {
 
 export type BinaryOperator =
     | "+" | "-" | "*" | "/" | "%" | "**" // arithmetic
-    | "==" | "<" | ">" | "<=" | ">=" // comparison
+    | "==" | "!=" | "<" | ">" | "<=" | ">=" // comparison
     | "&&" | "||" | "!&" | "!|" | "!^" | "^"; // logical
 
 export type AssignmentOperator =

@@ -65,18 +65,16 @@
       "end": "\\}",
       "beginCaptures": { "0": { "name": "punctuation.section.interpolation.begin.katnip" } },
       "endCaptures": { "0": { "name": "punctuation.section.interpolation.end.katnip" } },
-      "patterns": [
-        { "include": "#numbers" },
-        { "include": "#constants" },
-        { "include": "#calls" },
-        { "include": "#types" },
-        { "include": "#operators" },
-        { "include": "#variables" }
-      ]
+      "patterns": [{ "include": "#braces" }, { "include": "$self" }]
+    },
+    "braces": {
+      "begin": "\\{",
+      "end": "\\}",
+      "patterns": [{ "include": "#braces" }, { "include": "$self" }]
     },
     "numbers": {
       "name": "constant.numeric.katnip",
-      "match": "(0[xX][0-9a-fA-F]+|0[bB][01]+|0[oO][0-7]+|(?:\\b[0-9]+\\.?[0-9]*|\\.[0-9]+)(?:[eE][+-]?[0-9]+)?)"
+      "match": "(\\b0x[0-9a-fA-F]+|\\b0b[01]+|\\b0o[0-7]+|(?:\\b[0-9]+\\.?[0-9]*|\\.[0-9]+)(?:[eE][+-]?[0-9]+)?)"
     },
     "decorators": {
       "name": "entity.name.function.decorator.katnip",
@@ -88,8 +86,11 @@
           "name": "keyword.control.katnip",
           "match": "\\b(if|elif|else|for|while|do|forever|return|switch|case|default)\\b"
         },
-        { "name": "storage.type.katnip", "match": "\\b(proc|enum|sprite)\\b" },
-        { "name": "storage.modifier.katnip", "match": "\\b(private|public|temp)\\b" },
+        { "name": "storage.type.katnip", "match": "\\b(proc|enum|struct|sprite)\\b" },
+        { "name": "storage.type.katnip", "match": "\\bstage\\b(?=\\s*\\{)" },
+        { "name": "storage.modifier.katnip", "match": "\\b(private|public)\\b" },
+        { "name": "keyword.control.import.katnip", "match": "\\b(import|costume|sound)\\b(?=\\s*[\"'])" },
+        { "name": "keyword.control.import.katnip", "match": "\\bas\\b" },
         { "name": "variable.language.self.katnip", "match": "\\bself\\b" }
       ]
     },
@@ -111,7 +112,7 @@
     },
     "operators": {
       "name": "keyword.operator.katnip",
-      "match": "(\\*\\*|==|!=|<=|>=|&&|\\|\\||[-+*/%<>=!]=?|[.:,|])"
+      "match": "(\\*\\*=?|->|==|<=|>=|&&|\\|\\||![&|^]|[-+*/%<>=!]=?|[.:,;|&^?])"
     },
     "variables": {
       "name": "variable.other.katnip",

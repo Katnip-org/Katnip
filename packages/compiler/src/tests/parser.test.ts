@@ -265,3 +265,54 @@ test("parser never wedges on garbage input", () => {
     const { reporter } = parse("proc ] ) = = { [ ;");
     assert.equal(reporter.hasErrors(), true);
 });
+
+test("expression statements may start with any expression token, not just identifiers", () => {
+    for (const src of ["-x;", "!x;", "[1, 2];", `"s";`, "1;"]) {
+        assert.equal(parseStmt(src).type, "ExpressionStatement", src);
+    }
+    // a keyword-like string is not a keyword
+    assert.equal(parseStmt(`"if";`).type, "ExpressionStatement");
+});
+
+test("dict keys get their own location, not the '{'", () => {
+    const decl = parseStmt(`private d = {"a": 1, bb: 2};`);
+    if (decl.type !== "VariableDeclaration" || decl.initializer?.type !== "DictExpression") {
+        assert.fail("expected dict initializer");
+    }
+    assert.deepEqual(decl.initializer.entries.map((e) => e.key.loc.start.column), [14, 22]);
+});
+
+test("if/for/while/do-while locs span keyword to closing brace", () => {
+    const cases: [string, number][] = [
+        ["if (a) { } else { }", 20],
+        ["for (i, xs) { }", 16],
+        ["while (x) { }", 14],
+        ["do { } while (x);", 18],
+    ];
+    for (const [src, end] of cases) {
+        const stmt = parseStmt(src);
+        assert.deepEqual(stmt.loc, { start: { line: 1, column: 1 }, end: { line: 1, column: end } }, src);
+    }
+});
+
+test("an empty else block does not reach into the next statement", () => {
+    const stmt = parseStmt("if (a) { } else { }\ny = 2;");
+    if (stmt.type !== "IfStatement") assert.fail("expected if");
+    assert.equal(stmt.elseBlock?.loc.end.line, 1);
+    assert.equal(stmt.loc.end.line, 1);
+});
+
+test("decorator loc covers its name", () => {
+    const stmt = parseStmt(`proc f(@lower = "x") -> void { }`);
+    if (stmt.type !== "ProcedureDeclaration") assert.fail("expected proc");
+    assert.equal(stmt.decorators[0].loc.start.column, 9);
+});
+
+test("list literal without a comma between elements is an error", () => {
+    assert.match(parse("private l = [1 2];").reporter.getErrors()[0]?.message ?? "", /Expected ',' or ']'/);
+});
+
+test("a non-case statement inside a switch is reported, not silently dropped", () => {
+    const { reporter } = parse("switch (x) { y = 1; case (1) { } }");
+    assert.match(reporter.getErrors()[0]?.message ?? "", /Only 'case' and 'default'/);
+});

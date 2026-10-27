@@ -39,6 +39,7 @@ proc nand(@lower = "builds", @operator = "!&", a: bool, b: bool) -> bool { retur
 proc nor(@lower = "builds", @operator = "!|", a: bool, b: bool) -> bool { return !(a || b); }
 proc xnor(@lower = "builds", @operator = "!^", a: bool, b: bool) -> bool { return a == b; }
 proc xor(@lower = "builds", @operator = "^", a: bool, b: bool) -> bool { return !(a == b); }
+proc neq(@lower = "builds", @operator = "!=", a: any, b: any) -> bool { return !(a == b); }
 proc lte(@lower = "builds", @operator = "<=", a: any, b: any) -> bool { return !(a > b); }
 proc gte(@lower = "builds", @operator = ">=", a: any, b: any) -> bool { return !(a < b); }
 

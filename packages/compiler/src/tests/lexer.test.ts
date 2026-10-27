@@ -151,3 +151,47 @@ test("the stream is terminated whatever state the source ends in", () => {
         );
     }
 });
+
+test("a comment keeps its first character and an empty comment ends at the newline", () => {
+    const plain = lex("#hello\nx");
+    assert.equal(valueOf(plain.tokens[0]), "hello");
+
+    const empty = lex("#\nx");
+    assert.deepEqual(types(empty.tokens), ["Comment_SingleExpanded", "Identifier", "<EOF>"]);
+});
+
+test("minus after an operand is subtraction", () => {
+    for (const source of ["x-1", "f()-1", "a[0]-1", "1-2"]) {
+        const ops = types(lex(source).tokens).filter((t) => t === "-");
+        assert.deepEqual(ops, ["-"], source);
+    }
+    assert.equal(valueOf(lex("(-1)").tokens[1]), "-1");
+});
+
+test("source text <EOF> is not the EOF token", () => {
+    const { tokens } = lex("<EOF> x");
+    assert.deepEqual(types(tokens), ["<", "Identifier", ">", "Identifier", "<EOF>"]);
+});
+
+test("a hex number ending in e does not take a following + as an exponent sign", () => {
+    const { tokens } = lex("0xe+1");
+    assert.deepEqual(types(tokens), ["Number", "+", "Number", "<EOF>"]);
+    assert.equal(valueOf(tokens[0]), "0xe");
+});
+
+test("an invalid unicode escape reports once and does not eat the string", () => {
+    const { tokens, reporter } = lex(`"\\u12" x`);
+    assert.equal(reporter.getErrors().length, 1);
+    assert.deepEqual(types(tokens), ["String", "Identifier", "<EOF>"]);
+});
+
+test("malformed numbers are an error", () => {
+    assert.equal(lex("1e").reporter.hasErrors(), true);
+    assert.equal(lex("0b").reporter.hasErrors(), true);
+});
+
+test("a comment at end of file is kept, an unterminated multiline one is an error", () => {
+    const { tokens } = lex("x # tail");
+    assert.deepEqual(types(tokens), ["Identifier", "Comment_SingleExpanded", "<EOF>"]);
+    assert.equal(lex("#< open").reporter.hasErrors(), true);
+});

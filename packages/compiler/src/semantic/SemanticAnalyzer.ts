@@ -106,6 +106,18 @@ function nearestMember(
     return best;
 }
 
+function isBoolOrUnknown(type: InternalType): boolean {
+    return type.kind === "unknown" || (type.kind === "primitive" && type.name === "bool");
+}
+
+/** A written type as text, so two parameter lists can be compared. */
+function typeNodeKey(node: TypeNode): string {
+    if (node.type === "UnionType") return `${typeNodeKey(node.left)}|${typeNodeKey(node.right)}`;
+    if (node.type === "TupleType") return `(${node.elements.map(typeNodeKey).join(",")})`;
+    if (!node.typeParams) return node.typeName;
+    return `${node.typeName}<${node.typeParams.map(typeNodeKey).join(",")}>`;
+}
+
 /** Every overload signature across a name's procedure symbols. */
 function procOverloads(symbols: readonly SymbolEntry[]): Signature[] {
     return symbols.filter((s): s is ProcedureSymbol => s.kind === "procedure").flatMap(s => s.signatures);
@@ -153,6 +165,9 @@ export class SemanticAnalyzer {
      * coerced by `isAssignable` and the equivalent member reference emit identical IR.
      */
     private readonly enumValues = new Map<string, (string | number)[]>();
+
+    /** A reference to each enum's first member as user code writes it ("Fruit.apple", "looks.GraphicEffect.COLOR"), for hints. */
+    private readonly enumExamples = new Map<string, string>();
 
     constructor(
         private reporter: ErrorReporter,
@@ -202,6 +217,11 @@ export class SemanticAnalyzer {
             const target = isPrelude ? this.stdlibScope : new Scope("namespace", this.stdlibScope);
             this.current = target;
             this.hoist(module.ast.body);
+            // Namespaced stdlib enums are only reachable as `ns.Enum.MEMBER`.
+            if (!isPrelude)
+                for (const stmt of module.ast.body)
+                    if (stmt.type === "EnumDeclaration" && stmt.members[0])
+                        this.enumExamples.set(stmt.name, `${module.namespace}.${stmt.name}.${stmt.members[0].name}`);
             this.finalizeStdlibScope(module.ast.body);
             this.hoistNamespaceConsts(module.ast.body, isPrelude ? null : module.namespace);
 
@@ -366,6 +386,10 @@ export class SemanticAnalyzer {
 
     /** Declares a symbol in the current scope, reporting on illegal redeclaration. */
     private declare(sym: SymbolEntry, node: NodeBase): void {
+        if (sym.name === "case" || sym.name === "default") {
+            this.error(`'${sym.name}' is a reserved word`, node);
+            return;
+        }
         const conflict = this.current.declare(sym);
         if (conflict) this.error(`'${sym.name}' is already declared in this scope`, node);
     }
@@ -427,6 +451,13 @@ export class SemanticAnalyzer {
                 `Procedures cannot return '${node.returnType.typeName}' yet (multi-size returns are not supported)`,
                 node.returnType,
             );
+        }
+
+        const key = node.parameters.map((p) => typeNodeKey(p.paramType)).join(",");
+        const existing = procOverloads(this.current.lookupLocal(node.name) ?? []);
+        if (existing.some((sig) => sig.params.map((p) => typeNodeKey(p.paramType)).join(",") === key)) {
+            this.error(`'${node.name}' is already declared in this scope with the same parameter types`, node);
+            return;
         }
 
         const signature: Signature = {
@@ -519,6 +550,7 @@ export class SemanticAnalyzer {
             values.push(value);
         }
         this.enumValues.set(node.name, values);
+        if (node.members[0]) this.enumExamples.set(node.name, `${node.name}.${node.members[0].name}`);
     }
 
     private hoistStruct(node: StructDeclarationNode): void {
@@ -557,6 +589,10 @@ export class SemanticAnalyzer {
                     this.error(`Variable '${node.name}' must have either a type annotation or an initial value`, node);
                 }
 
+                if (initType?.kind === "primitive" && initType.name === "void" && !varType) {
+                    this.error(`Variable '${node.name}' cannot be initialized with a value of type 'void'`, node);
+                }
+
                 if (initType && varType) {
                     this.checkAssign(
                         initType,
@@ -578,6 +614,9 @@ export class SemanticAnalyzer {
                 break;
             }
             case "VariableAssignment": {
+                // Scratch args are read-only reporters
+                if (node.left.type === "Identifier" && this.current.lookup(node.left.name)?.[0]?.kind === "parameter")
+                    this.error(`Cannot assign to parameter '${node.left.name}'`, node.left);
                 const target = this.inferType(node.left);
                 const value = this.inferType(node.right);
                 this.checkAssign(
@@ -623,9 +662,9 @@ export class SemanticAnalyzer {
                 if (this.current.kind !== "global")
                     this.error("Imports are only allowed at the top level of a file", node);
                 break;
-            case "AssetDeclaration":
+            case "AssetDeclaration": {
                 if (this.current.kind !== "sprite")
-                    this.error("Imports are only allowed at the top level of a sprite", node);
+                    this.error("Assets can only be declared at the top level of a sprite", node);
 
                 const ext = node.specifier.split(".").pop()?.toLowerCase();
                 const allowedExts: readonly string[] = node.kind === "costume" ? COSTUME_FORMATS : SOUND_FORMATS;
@@ -635,6 +674,7 @@ export class SemanticAnalyzer {
                         node.specifierLoc,
                     );
                 break;
+            }
             case "HandlerStatement": {
                 if (this.current.kind !== "sprite") {
                     this.error("Event handlers can only appear at the top level of a sprite", node.call);
@@ -670,7 +710,12 @@ export class SemanticAnalyzer {
                 this.visitBlock(node.body);
                 break;
             case "ForStatement": {
-                const elementType = this.iterationType(this.inferType(node.iterable));
+                const iterableType = this.inferType(node.iterable);
+                let elementType = this.iterationType(iterableType);
+                if (!elementType) {
+                    this.error(`Cannot iterate over a value of type '${typeToString(iterableType)}'`, node.iterable);
+                    elementType = { kind: "unknown" };
+                }
                 const isTuple = node.pattern.type === "TupleExpression";
                 const loopVars = node.pattern.type === "TupleExpression" ? node.pattern.elements : [node.pattern];
 
@@ -851,8 +896,8 @@ export class SemanticAnalyzer {
         }
     }
 
-    /** The type produced by one step of iterating over the given iterable type. */
-    private iterationType(iterable: InternalType): InternalType {
+    /** The type produced by one step of iterating over the given iterable type, or null when it is not iterable. */
+    private iterationType(iterable: InternalType): InternalType | null {
         switch (iterable.kind) {
             case "list":
                 return iterable.element;
@@ -870,9 +915,13 @@ export class SemanticAnalyzer {
                     : { kind: "unknown" };
             case "primitive":
                 // str -> characters, num -> counter value
-                return iterable.name === "str" || iterable.name === "num" ? iterable : { kind: "unknown" };
-            default:
+                return iterable.name === "str" || iterable.name === "num" ? iterable : null;
+            case "unknown":
+            case "typevar":
+            case "union":
                 return { kind: "unknown" };
+            default:
+                return null;
         }
     }
 
@@ -925,6 +974,14 @@ export class SemanticAnalyzer {
                 if (symbols?.some(s => s.kind === "struct")) {
                     return { kind: "struct", name: node.typeName };
                 }
+                const [nsName, enumName, ...rest] = node.typeName.split(".");
+                if (enumName && rest.length === 0) {
+                    const namespace = this.current
+                        .lookup(nsName!)
+                        ?.find((s): s is NamespaceSymbol => s.kind === "namespace");
+                    if (namespace?.scope.lookupLocal(enumName)?.some(s => s.kind === "enum"))
+                        return { kind: "enum", name: enumName };
+                }
                 this.error(`Unknown type '${node.typeName}'`, node);
                 return { kind: "unknown" };
             }
@@ -970,6 +1027,14 @@ export class SemanticAnalyzer {
                     this.error(`'${expression.name}' is not defined`, expression);
                     return { kind: "unknown" };
                 }
+                if (sym.kind === "procedure") {
+                    this.error(`'${expression.name}' is a procedure: call it with (...)`, expression);
+                    return { kind: "unknown" };
+                }
+                if (sym.kind === "namespace") {
+                    this.error(`Namespace '${expression.name}' is not a value`, expression);
+                    return { kind: "unknown" };
+                }
                 return this.typeOf(sym);
             }
             case "BinaryExpression": {
@@ -980,6 +1045,7 @@ export class SemanticAnalyzer {
                 const bothEnum = l.kind === "enum" && r.kind === "enum" && isAssignable(l, r);
                 const isComparison =
                     expression.operator === "==" ||
+                    expression.operator === "!=" ||
                     expression.operator === "<" ||
                     expression.operator === ">" ||
                     expression.operator === "<=" ||
@@ -1013,16 +1079,20 @@ export class SemanticAnalyzer {
                     case "**":
                         return { kind: "primitive", name: "num" };
                     case "==":
+                    case "!=":
                     case "<":
                     case ">":
                     case "<=":
                     case ">=":
+                        return { kind: "primitive", name: "bool" };
                     case "&&":
                     case "||":
                     case "!&":
                     case "!|":
                     case "!^":
                     case "^":
+                        if (!isBoolOrUnknown(l) || !isBoolOrUnknown(r))
+                            this.error(`Must use '${expression.operator}' binop with boolean expression types`, expression);
                         return { kind: "primitive", name: "bool" };
                 }
             }
@@ -1035,27 +1105,29 @@ export class SemanticAnalyzer {
                 const firstKeyType = this.inferType(expression.entries[0].key);
                 const firstValueType = this.inferType(expression.entries[0].value);
 
-                for (const entry of expression.entries) {
+                // Keep inferring after a mismatch so every entry is typed and later errors still surface.
+                let mismatched = false;
+                for (const entry of expression.entries.slice(1)) {
                     const keyType = this.inferType(entry.key);
                     const valueType = this.inferType(entry.value);
+                    if (mismatched) continue;
 
                     if (!isAssignable(keyType, firstKeyType)) {
                         this.error(
                             `Expected key of type ${typeToString(firstKeyType)}, got ${typeToString(keyType)}`,
                             entry.key,
                         );
-                        return unknownDict;
-                    }
-
-                    if (!isAssignable(valueType, firstValueType)) {
+                        mismatched = true;
+                    } else if (!isAssignable(valueType, firstValueType)) {
                         this.error(
                             `Expected value of type ${typeToString(firstValueType)}, got ${typeToString(valueType)}`,
                             entry.value,
                         );
-                        return unknownDict;
+                        mismatched = true;
                     }
                 }
 
+                if (mismatched) return unknownDict;
                 return { kind: "dict", key: firstKeyType, value: firstValueType };
             }
             case "IndexerAccess": {
@@ -1185,8 +1257,12 @@ export class SemanticAnalyzer {
 
         for (const arg of call.arguments) {
             if (arg.type === "NamedArgument") {
-                // TODO: a repeated name (same named arg supplied twice) could be reported here before overwriting the map entry.
-                named.set(arg.name, { type: this.inferType(arg.value), node: arg.value });
+                const type = this.inferType(arg.value);
+                if (named.has(arg.name)) {
+                    this.error(`Named argument '${arg.name}' is supplied more than once`, arg);
+                    continue;
+                }
+                named.set(arg.name, { type, node: arg.value });
             } else {
                 if (named.size > 0) {
                     this.error(`Positional argument cannot follow a named argument`, arg);
@@ -1338,7 +1414,7 @@ export class SemanticAnalyzer {
                 }
                 const member = members[0];
                 if (member.kind === "procedure") {
-                    this.error(`'${head.name}.${propName}' is a procedure — call it with (...)`, expr);
+                    this.error(`'${head.name}.${propName}' is a procedure: call it with (...)`, expr);
                     return { kind: "unknown" };
                 }
                 // IR folds namespace members straight from `constMembers`; anything missing there
@@ -1385,7 +1461,7 @@ export class SemanticAnalyzer {
         const nsName = this.typeHeadNamespace(receiver);
         const members = nsName ? this.stdlibNamespace(nsName)?.scope.lookupLocal(propName) : null;
         if (members?.some(s => s.kind === "procedure")) {
-            this.error(`'${propName}' is a method — call it with (...)`, expr.property);
+            this.error(`'${propName}' is a method: call it with (...)`, expr.property);
         } else {
             this.error(`Type '${typeToString(receiver)}' has no member '${propName}'`, expr.property);
         }
@@ -1614,7 +1690,7 @@ export class SemanticAnalyzer {
         const literal = literalValue(value ?? undefined);
         if (literal === undefined) {
             // No cast to an enum exists yet, so point at the member form instead.
-            return `Enum '${to.name}' expects one of its members here, not a computed '${typeToString(from)}'; use a member (e.g. ${to.name}.${this.enumFirstMember(to.name)}) or a literal: ${allowed}`;
+            return `Enum '${to.name}' expects one of its members here, not a computed '${typeToString(from)}'; use a member (e.g. ${this.enumExamples.get(to.name) ?? `${to.name}.MEMBER`}) or a literal: ${allowed}`;
         }
 
         const near = nearestMember(literal, members);
@@ -1622,12 +1698,6 @@ export class SemanticAnalyzer {
             `${JSON.stringify(literal)} is not a value of enum '${to.name}'; must be one of: ${allowed}` +
             (near !== null ? `. Did you mean ${JSON.stringify(near)}?` : "")
         );
-    }
-
-    /** A member name of `enumName`, for the "use a member" hint. */
-    private enumFirstMember(enumName: string): string {
-        const sym = [...this.constMembers.keys()].find(k => k.startsWith(`${enumName}.`));
-        return sym?.slice(enumName.length + 1) ?? "MEMBER";
     }
 
     // -- Helpers --

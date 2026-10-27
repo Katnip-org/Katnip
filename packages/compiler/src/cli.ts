@@ -63,10 +63,17 @@ cli
 
                 const lexer = new Lexer(reporter, logger);
                 const tokens = lexer.tokenize(fileContent);
-                fs.writeFile(argv.output, JSON.stringify(tokens, null, 2));
+                if (reporter.hasErrors()) {
+                    reporter.print();
+                    process.exitCode = 1;
+                    return;
+                }
+
+                return fs.writeFile(argv.output, JSON.stringify(tokens, null, 2));
             })
             .catch((err: any) => {
-                console.error('Error reading file:', err);
+                console.error('Error tokenizing file:', err);
+                process.exitCode = 1;
             });
     })
     .command('parse <source> <output> [logger]', 'Tokenize and parse a file', (yargs: any) => {
@@ -93,6 +100,7 @@ cli
                 const tokens = lexer.tokenize(fileContent);
                 if (reporter.hasErrors()) {
                     reporter.print();
+                    process.exitCode = 1;
                     return;
                 }
 
@@ -101,13 +109,15 @@ cli
 
                 if (reporter.hasErrors()) {
                     reporter.print();
+                    process.exitCode = 1;
                     return;
                 }
 
-                fs.writeFile(argv.output as PathLike, JSON.stringify(ast, null, 2));
+                return fs.writeFile(argv.output as PathLike, JSON.stringify(ast, null, 2));
             })
             .catch((err: any) => {
-                console.error('Error reading file:', err);
+                console.error('Error parsing file:', err);
+                process.exitCode = 1;
             });
     })
     .command('check <source> [logger]', 'Lex, parse, and run semantic analysis on a file', (yargs: any) => {
@@ -130,6 +140,7 @@ cli
                 const tokens = lexer.tokenize(fileContent);
                 if (reporter.hasErrors()) {
                     reporter.print();
+                    process.exitCode = 1;
                     return;
                 }
 
@@ -137,6 +148,7 @@ cli
                 const ast = parser.parse(tokens);
                 if (!ast) {
                     reporter.print();
+                    process.exitCode = 1;
                     return;
                 }
 
@@ -147,6 +159,7 @@ cli
                     if (!(err instanceof KatnipError)) throw err;
                     reporter.add(err); // the loader already printed the stdlib's own located errors
                     reporter.print();
+                    process.exitCode = 1;
                     return;
                 }
 
@@ -159,10 +172,12 @@ cli
                 analyzer.analyze(ast);
 
                 reporter.print(); // warnings too, which do not stop a build
-                if (!reporter.hasErrors()) console.log('No semantic errors found.');
+                if (reporter.hasErrors()) process.exitCode = 1;
+                else console.log('No semantic errors found.');
             })
             .catch((err: any) => {
-                console.error('Error reading file:', err);
+                console.error('Error checking file:', err);
+                process.exitCode = 1;
             });
     })
     .command('build <source> [output]', 'Compile a file to a Scratch .sb3', (yargs: any) => {

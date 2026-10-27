@@ -67,6 +67,7 @@ export const UnitTokenType = {
     // Double-character operators
     Power: "**",
     EqualsTo: "==",
+    NotEqualsTo: "!=",
     LessThanOrEqualsTo: "<=",
     GreaterThanOrEqualsTo: ">=",
     AND: "&&",
@@ -125,7 +126,10 @@ export class OperatorTrie {
     step(node: OperatorTrieNode, char: string): OperatorTrieNode | null { return node.children.get(char) ?? null; }
 }
 
-export const operatorTrie = new OperatorTrie(Object.values(UnitTokenType));
+// <EOF> is emitted from the sentinel, so source text "<EOF>" must not lex as it
+export const operatorTrie = new OperatorTrie(
+    Object.values(UnitTokenType).filter(t => t !== UnitTokenType.EOF)
+);
 
 
 // Token structure

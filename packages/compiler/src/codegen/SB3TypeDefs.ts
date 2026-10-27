@@ -1,3 +1,5 @@
+import { defaultCostumeId, defaultCostumeMd5ext } from "../assets.generated.js";
+
 // --- Primitives ---
 export type Scalar = string | number | boolean;
 
@@ -297,8 +299,8 @@ export function minimalStage(): Stage {
             {
                 name: "backdrop1",
                 dataFormat: "svg",
-                assetId: "7cd16c437097f6dc4e4c0c4992d76473",
-                md5ext: "7cd16c437097f6dc4e4c0c4992d76473.svg",
+                assetId: defaultCostumeId,
+                md5ext: defaultCostumeMd5ext,
                 rotationCenterX: 240,
                 rotationCenterY: 180,
             },
@@ -328,8 +330,8 @@ export function minimalSprite(name: string, layerOrder: number): Sprite {
                 name: "kartnap",
                 bitmapResolution: 1,
                 dataFormat: "svg",
-                assetId: "7cd16c437097f6dc4e4c0c4992d76473",
-                md5ext: "7cd16c437097f6dc4e4c0c4992d76473.svg",
+                assetId: defaultCostumeId,
+                md5ext: defaultCostumeMd5ext,
                 rotationCenterX: 0,
                 rotationCenterY: 0,
             },

@@ -173,7 +173,7 @@ test("a non-literal of the backing type is rejected, pointing at the member form
         withStdlib,
     );
     assert.match(errors, /Enum 'ColorParam' expects one of its members here, not a computed 'str'/);
-    assert.match(errors, /use a member \(e\.g\. ColorParam\.COLOR\)/);
+    assert.match(errors, /use a member \(e\.g\. pen\.ColorParam\.COLOR\)/);
     // A concatenation is just as much a reporter as a variable is.
     assert.match(
         errorsOf(inScript(`pen.setAttr("col" + "or", 10);`), withStdlib),
@@ -408,4 +408,103 @@ test("struct-typed params and returns are clean", () => {
 
 test("an unknown struct name as a type is still an error", () => {
     assert.match(errorsOf("private p: Nope = 1;"), /Unknown type 'Nope'/);
+});
+
+// -- bug-fix regressions --
+
+test("an asset outside a sprite gets an asset error, not an import one", () => {
+    assert.match(errorsOf(`costume "a.png";`), /Assets can only be declared at the top level of a sprite/);
+});
+
+test("a dict's first entry is checked once, and entries after a mismatch are still typed", () => {
+    const errors = errorsOf(`private d = {1: missing, 2: "a", 3: other};`);
+    assert.equal(errors.match(/'missing' is not defined/g)?.length, 1);
+    assert.match(errors, /'other' is not defined/);
+});
+
+test("a named argument supplied twice is reported", () => {
+    const errors = errorsOf(`proc f(a: num) -> void {} proc g() -> void { f(a = 1, a = 2); }`);
+    assert.match(errors, /Named argument 'a' is supplied more than once/);
+});
+
+test("the enum member hint names the enum's own member, not a same-prefixed namespace const", () => {
+    const errors = errorsOf(
+        `enum math { A, B } proc f(c: math) -> void {} proc g() -> void { f("x" + "y"); }`,
+        withStdlib,
+    );
+    assert.match(errors, /e\.g\. math\.A\)/);
+});
+
+test("procedure misuse messages use a colon", () => {
+    const errors = errorsOf(inScript(`private a = motion.forward; private b = [1].length;`), withStdlib);
+    assert.match(errors, /'motion\.forward' is a procedure: call it with/);
+    assert.match(errors, /'length' is a method: call it with/);
+});
+
+test("a procedure or namespace used as a bare value is reported", () => {
+    const errors = errorsOf(
+        `proc f() -> num { return 1; } proc g() -> void { private n = f; private m = looks; }`,
+        withStdlib,
+    );
+    assert.match(errors, /'f' is a procedure: call it with/);
+    assert.match(errors, /Namespace 'looks' is not a value/);
+});
+
+test("a variable cannot be initialized from a void call", () => {
+    assert.match(
+        errorsOf(inScript(`private x = looks.say("hi");`), withStdlib),
+        /Variable 'x' cannot be initialized with a value of type 'void'/,
+    );
+});
+
+test("iterating a non-iterable is reported", () => {
+    assert.match(errorsOf(`proc g() -> void { for (x, true) { } }`), /Cannot iterate over a value of type 'bool'/);
+    assert.match(errorsOf(`proc g(l: list<num>) -> void { for (x, l) { } }`), /^$/);
+});
+
+test("a module importing the entry file back is a direct cycle", () => {
+    const main = `import "./a"; private q = a.v;`;
+    const errors = formatErrors(
+        compile(main, {
+            files: { "/proj/main.knip": main, "/proj/a.knip": `import "./main"; public v = 1;` },
+        }).reporter,
+    );
+    assert.match(errors, /Imported file '\/proj\/a\.knip' has errors: Circular import cycle through '\.\/main'/);
+});
+
+test("!= is a comparison", () => {
+    expectClean(compile(`private a = 1 != 2; private b: bool = "x" != "y";`, withStdlib));
+});
+
+test("dicts and calls accept a trailing comma", () => {
+    expectClean(compile(`private d = {"a": 1, "b": 2,}; proc f(a: num, b: num) -> void {} proc g() -> void { f(1, 2,); }`));
+});
+
+test("assigning to a parameter is reported", () => {
+    assert.match(errorsOf(`proc g(x: num) -> void { x += 1; }`), /Cannot assign to parameter 'x'/);
+});
+
+test("logical operators require bool operands", () => {
+    assert.match(errorsOf(`private b = 1 && true;`), /Must use '&&' binop with boolean expression types/);
+    assert.match(errorsOf(`private b = true || "x";`), /Must use '\|\|' binop with boolean expression types/);
+    expectClean(compile(`private b = true && (1 < 2) || false;`));
+});
+
+test("an overload with the same parameter types is a redeclaration", () => {
+    assert.match(
+        errorsOf(`proc f(a: num) -> void {} proc f(b: num) -> void {}`),
+        /'f' is already declared in this scope with the same parameter types/,
+    );
+    expectClean(compile(`proc f(a: num) -> void {} proc f(a: str) -> void {}`));
+});
+
+test("case and default are reserved", () => {
+    assert.match(errorsOf(`private default = 1;`), /'default' is a reserved word/);
+    assert.match(errorsOf(inScript(`case (1) { }`)), /'case' is reserved for switch blocks/);
+    expectClean(compile(inScript(`switch (1) { case (1) { } default { } }`), withStdlib));
+});
+
+test("a type annotation can name a namespaced enum", () => {
+    expectClean(compile(`private e: looks.GraphicEffect = looks.GraphicEffect.GHOST;`, withStdlib));
+    assert.match(errorsOf(`private e: looks.Nope = 1;`, withStdlib), /Unknown type 'looks\.Nope'/);
 });

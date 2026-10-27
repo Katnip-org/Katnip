@@ -142,6 +142,11 @@ export class Lexer {
             if (type !== "String" && type !== "InterpolatedString" && type !== "InterpolatedStringEnd") {
                 this.buffer = this.buffer.trim();
             }
+            if (type === "Number" && Number.isNaN(Number(this.buffer))) {
+                this.reporter.add(
+                    new KatnipError("Lexer", `Invalid number format '${this.buffer}'`, { line: this.lineStart, column: this.colStart })
+                );
+            }
             this.tokens.push({
                 token: { type, value: this.buffer },
                 start: { line: this.lineStart, column: this.colStart },
@@ -225,7 +230,8 @@ export class Lexer {
             this.currentState = LexerState.Identifier;
             this.buffer += this.advance();
         } else if (/[-0-9]/.test(char) || (/[.]/.test(char) && /[0-9]/.test(this.peek(1)!))) {
-            if (/[.0-9]/.test(this.peek(1)!) || /[0-9]/.test(char)) {
+            // After an operand a minus is subtraction (x-1), not a negative literal
+            if (/[.0-9]/.test(char) || (/[.0-9]/.test(this.peek(1)!) && !this.previousTokenEndsOperand())) {
                 this.currentState = LexerState.Number;
                 this.buffer += this.advance();
             } else {
@@ -240,6 +246,13 @@ export class Lexer {
         } else if (char === '#') {
             this.currentState = LexerState.Comment;
             this.advance();
+            const marker = this.peek();
+            if (marker !== null && "*!<>[".includes(marker)) {
+                this.commentType = marker;
+                this.advance();
+            } else {
+                this.commentType = "none";
+            }
         } else if (singleCharUnitTokens.has(char as UnitTokenType)) {
             this.currentState = LexerState.Operator;
             this.operatorNode = operatorTrie.start();
@@ -252,6 +265,11 @@ export class Lexer {
             );
             this.advance();
         }
+    }
+
+    private previousTokenEndsOperand(): boolean {
+        const type = this.tokens.at(-1)?.token.type;
+        return type === "Identifier" || type === "Number" || type === "String" || type === ")" || type === "]";
     }
 
     /**
@@ -342,15 +360,18 @@ export class Lexer {
                 if (escaped === "u") {
                     let unicodeBuffer = "";
                     for (let i = 0; i < 4; i++) {
-                        const nextChar = this.advance();
+                        const nextChar = this.peek();
                         if (nextChar === null || !/[0-9a-fA-F]/.test(nextChar)) {
                             this.reporter.add(
                                 new KatnipError("Lexer", `Invalid Unicode escape sequence`, { line: this.line, column: this.col })
                             );
+                            break;
                         }
-                        unicodeBuffer += nextChar;
+                        unicodeBuffer += this.advance();
                     }
-                    this.buffer += String.fromCharCode(parseInt(unicodeBuffer, 16));
+                    if (unicodeBuffer.length === 4) {
+                        this.buffer += String.fromCharCode(parseInt(unicodeBuffer, 16));
+                    }
                 } else {
                     const escapeSequenceMap: Record<string, string> = {
                         "n": "\n",
@@ -385,7 +406,7 @@ export class Lexer {
                         this.buffer += this.advance();
                     }
                 } else if (/[+\-]/.test(char)) {
-                    if (this.buffer.slice(-1) === 'e' || this.buffer.slice(-1) === 'E') {
+                    if ((this.buffer.slice(-1) === 'e' || this.buffer.slice(-1) === 'E') && !this.buffer.startsWith("0x")) {
                         this.buffer += this.advance();
                     } else {
                         this.emit("Number");
@@ -463,33 +484,33 @@ export class Lexer {
                     "[": ["Comment_MultilineIgnored", "]#"]
                 };
 
-                if (this.commentType === "") {
-                    const nextChar = this.advance();
-                    if (nextChar && commentMap[nextChar]) {
-                        this.commentType = nextChar;
-                    } else {
-                        this.commentType = "none";
-                    }
-                } else {
-                    const [tokenType, commentEnd] = commentMap[this.commentType];
+                const [tokenType, commentEnd] = commentMap[this.commentType];
 
-                    if (commentEnd.length === 2 && char + this.peek(1) === commentEnd) {
-                        this.advance(2);
-                        if (tokenType !== "Comment_MultilineIgnored") this.emit(tokenType);
-                        this.buffer = ""; // ignored comments skip emit(), so clear here
-                        this.currentState = this.inInterpolatedExpression ? LexerState.InterpolatedExpression : LexerState.Start;
-                        this.commentType = "";
-                    }
-                    else if (commentEnd.length === 1 && char === commentEnd) {
-                        this.advance();
-                        if (tokenType !== "Comment_SingleIgnored") this.emit(tokenType);
-                        this.buffer = ""; // ignored comments skip emit(), so clear here
-                        this.currentState = this.inInterpolatedExpression ? LexerState.InterpolatedExpression : LexerState.Start;
-                        this.commentType = "";
-                    }
-                    else {
-                        this.buffer += this.advance() ?? "";
-                    }
+                if (commentEnd.length === 2 && char + this.peek(1) === commentEnd) {
+                    this.advance(2);
+                    if (tokenType !== "Comment_MultilineIgnored") this.emit(tokenType);
+                    this.buffer = ""; // ignored comments skip emit(), so clear here
+                    this.currentState = this.inInterpolatedExpression ? LexerState.InterpolatedExpression : LexerState.Start;
+                    this.commentType = "";
+                }
+                else if (commentEnd.length === 1 && (char === commentEnd || char === '')) {
+                    // Leave the EOF sentinel for the Start state
+                    if (char !== '') this.advance();
+                    if (tokenType !== "Comment_SingleIgnored") this.emit(tokenType);
+                    this.buffer = ""; // ignored comments skip emit(), so clear here
+                    this.currentState = this.inInterpolatedExpression ? LexerState.InterpolatedExpression : LexerState.Start;
+                    this.commentType = "";
+                }
+                else if (char === '') {
+                    this.reporter.add(
+                        new KatnipError("Lexer", `Unterminated multiline comment`, { line: this.lineStart, column: this.colStart })
+                    );
+                    this.buffer = "";
+                    this.currentState = this.inInterpolatedExpression ? LexerState.InterpolatedExpression : LexerState.Start;
+                    this.commentType = "";
+                }
+                else {
+                    this.buffer += this.advance() ?? "";
                 }
                 break;
 

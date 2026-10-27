@@ -316,7 +316,14 @@ export class Parser {
         }
 
         const typeNameToken = this.consume({ type: "Identifier" }, "Expected type name");
-        const typeName = typeNameToken.token.value;
+        let typeName = typeNameToken.token.value;
+        let typeNameEnd = typeNameToken.end;
+        // `ns.Enum`
+        while (this.tryConsume("type", ["."])) {
+            const part = this.consume({ type: "Identifier" }, "Expected type name after '.'");
+            typeName += `.${part.token.value}`;
+            typeNameEnd = part.end;
+        }
 
         if (this.tryConsume("type", ["<"])) {
             const typeParams: TypeNode[] = [];
@@ -348,7 +355,7 @@ export class Parser {
         return {
             type: "Type",
             typeName,
-            loc: { start: typeNameToken.start, end: typeNameToken.end }
+            loc: { start: typeNameToken.start, end: typeNameEnd }
         };
     }
 
@@ -385,7 +392,7 @@ export class Parser {
             this.advance();
             return null;
         }
-        if (this.checkToken("type", ["Identifier", "("])) {
+        if (this.checkToken("type", ["Identifier"])) {
             if (this.checkToken("value", ["proc"]) && !(this.peek(1)?.token.type === ".")) return this.parseProcedureDefinition();
             if (this.checkToken("value", ["enum"])) return this.parseEnumDefinition();
             if (this.checkToken("value", ["struct"])) return this.parseStructDefinition();
@@ -410,9 +417,15 @@ export class Parser {
             if (this.checkToken("value", ["return"])) return this.parseReturnStatement();
 
             if (this.checkToken("value", ["switch"])) return this.parseSwitchStatement();
-            if (this.checkToken("value", ["case"])) return this.parseCaseStatement();
-            if (this.checkToken("value", ["default"])) return this.parseDefaultCaseStatement();
+            if (this.checkToken("value", ["case", "default"])) {
+                const word = (this.peek()!.token as ValuedToken).value;
+                this.reporter.add(new KatnipError("Parser", `'${word}' is reserved for switch blocks`, this.peek()!.start));
+                return this.parseCaseLike();
+            }
+        }
 
+        // '{' is left out: a stray block is better reported here than parsed as a dict
+        if (this.canStartExpression(this.peek()) && !this.checkToken("type", ["{"])) {
             const expression: ExpressionNode = this.parseExpression();
             const assignmentOrHandler = this.parseAssignmentExpression(expression) ?? this.parseHandlerDeclaration(expression);
             if (assignmentOrHandler) return assignmentOrHandler;
@@ -523,7 +536,7 @@ export class Parser {
                             name: decoratorName,
                             value: decoratorValue,
                             loc: {
-                                start: decoratorValue.loc.start,
+                                start: decoratorNameToken.start,
                                 end: decoratorValue.loc.end
                             }
                         });
@@ -859,7 +872,7 @@ export class Parser {
      * @returns The parsed for statement node.
      */
     private parseForStatement(): StatementNode {
-        this.consume({ type: "Identifier", value: "for" }, "Expected 'for' keyword");
+        const keyword = this.consume({ type: "Identifier", value: "for" }, "Expected 'for' keyword");
         this.consume({ type: "(" }, "Expected '(' after 'for'");
 
         const rawPattern = this.parseExpression();
@@ -901,8 +914,8 @@ export class Parser {
             iterable,
             body,
             loc: {
-                start: pattern.loc.start,
-                end: body.loc.end
+                start: keyword.start,
+                end: this.previous()?.end || body.loc.end
             }
         };
     }
@@ -912,7 +925,7 @@ export class Parser {
      * @returns The parsed while statement node.
      */
     private parseWhileStatement(): StatementNode {
-        this.consume({ type: "Identifier", value: "while" }, "Expected 'while' keyword");
+        const keyword = this.consume({ type: "Identifier", value: "while" }, "Expected 'while' keyword");
         this.consume({ type: "(" }, "Expected '(' after 'while'");
         const condition = this.parseExpression();
         this.consume({ type: ")" }, "Expected ')' after while condition");
@@ -932,8 +945,8 @@ export class Parser {
             condition,
             body,
             loc: {
-                start: condition.loc.start,
-                end: body.loc.end
+                start: keyword.start,
+                end: this.previous()?.end || body.loc.end
             }
         };
     }
@@ -961,7 +974,7 @@ export class Parser {
      * @returns The parsed do-while statement node.
      */
     private parseDoWhileStatement(): StatementNode {
-        this.consume({ type: "Identifier", value: "do" }, "Expected 'do' keyword");
+        const keyword = this.consume({ type: "Identifier", value: "do" }, "Expected 'do' keyword");
 
         const bodyExpression = this.parseBlockExpression();
         const body = {
@@ -984,7 +997,7 @@ export class Parser {
             condition,
             body,
             loc: {
-                start: body.loc.start,
+                start: keyword.start,
                 end: this.previous()?.end || condition.loc.end
             }
         };
@@ -1001,9 +1014,14 @@ export class Parser {
         const body: (CaseDeclarationNode | DefaultCaseDeclarationNode)[] = [];
 
         while (!this.isAtEnd() && !this.checkToken("type", ["}"])) {
-            const stmt = this.parseStatement();
+            const isCase = this.checkToken("type", ["Identifier"]) && this.checkToken("value", ["case", "default"]);
+            const stmt = isCase ? this.parseCaseLike() : this.parseStatement();
             if (stmt?.type === "CaseDeclaration" || stmt?.type === "DefaultCaseDeclaration") {
                 body.push(stmt as CaseDeclarationNode | DefaultCaseDeclarationNode);
+            } else if (stmt && stmt.type !== "ErrorStatement") {
+                this.reporter.add(
+                    new KatnipError("Parser", "Only 'case' and 'default' blocks are allowed inside a switch", stmt.loc.start)
+                );
             }
         }
 
@@ -1015,6 +1033,11 @@ export class Parser {
             body,
             loc: { start, end: this.previous()?.end || value.loc.end }
         };
+    }
+
+    private parseCaseLike(): StatementNode {
+        if (this.checkToken("value", ["case"])) return this.parseCaseStatement();
+        return this.parseDefaultCaseStatement();
     }
 
     private parseCaseStatement(): StatementNode {
@@ -1054,7 +1077,7 @@ export class Parser {
      * @returns The parsed if statement node.
      */
     private parseIfStatement(): StatementNode {
-        this.consume({ type: "Identifier", value: "if" }, "Expected 'if' keyword");
+        const keyword = this.consume({ type: "Identifier", value: "if" }, "Expected 'if' keyword");
         this.consume({ type: "(" }, "Expected '(' after 'if'");
         const condition = this.parseExpression();
         this.consume({ type: ")" }, "Expected ')' after the 'if'-condition");
@@ -1099,8 +1122,8 @@ export class Parser {
                 type: "Block",
                 body: elseBlockExpression,
                 loc: {
-                    start: elseBlockExpression[0]?.loc.start || this.peek()?.start || condition.loc.end,
-                    end: elseBlockExpression[elseBlockExpression.length - 1]?.loc.end || this.peek()?.end || condition.loc.end
+                    start: elseBlockExpression[0]?.loc.start || this.previous()?.start || condition.loc.end,
+                    end: elseBlockExpression[elseBlockExpression.length - 1]?.loc.end || this.previous()?.end || condition.loc.end
                 }
             } satisfies BlockNode;
         }
@@ -1112,8 +1135,8 @@ export class Parser {
             elifs,
             elseBlock,
             loc: {
-                start: condition.loc.start,
-                end: elseBlock ? elseBlock.loc.end : thenBlock.loc.end
+                start: keyword.start,
+                end: this.previous()?.end || condition.loc.end
             }
         };
     }
@@ -1265,7 +1288,11 @@ export class Parser {
             if (!this.checkToken("type", ["]"])) {
                 do {
                     listContents.push(this.parseExpression());
-                    this.tryConsume("type", [","]);
+                    if (!this.tryConsume("type", [","]) && !this.checkToken("type", ["]"])) {
+                        this.reporter.add(
+                            new KatnipError("Parser", "Expected ',' or ']'", this.peek()?.start || { line: -1, column: -1 })
+                        );
+                    }
                 } while (!this.isAtEnd() && !this.checkToken("type", ["]"]));
             }
 
@@ -1282,7 +1309,8 @@ export class Parser {
             const curlyArgs: DictEntryNode[] = [];
             if (!this.checkToken("type", ["}"])) {
                 do {
-                    const keyToken = this.consume({ type: ["String", "Number", "Identifier"] }, "Expected string or number literal or identifier as dictionary key").token;
+                    const key = this.consume({ type: ["String", "Number", "Identifier"] }, "Expected string or number literal or identifier as dictionary key");
+                    const keyToken = key.token;
                     this.consume({ type: ":" }, "Expected ':' after dictionary key" );
                     const value = this.parseExpression();
 
@@ -1296,8 +1324,8 @@ export class Parser {
                         type = "Number";
                     }
 
-                    curlyArgs.push({ key: { type: "Literal", value: keyToken.value, valueType: type, loc: { start: token.start, end: token.end } }, value });
-                } while (this.tryConsume("type", [","]));
+                    curlyArgs.push({ key: { type: "Literal", value: keyToken.value, valueType: type, loc: { start: key.start, end: key.end } }, value });
+                } while (this.tryConsume("type", [","]) && !this.checkToken("type", ["}"]));
             }
             this.consume({ type: "}" }, "Expected '}' after parameters");
 
@@ -1416,7 +1444,7 @@ export class Parser {
             if (!this.checkToken("type", [")"])) {
                 do {
                     parenArgs.push(this.parseArgument());
-                } while (this.tryConsume("type", [","]));
+                } while (this.tryConsume("type", [","]) && !this.checkToken("type", [")"]));
             }
             this.consume({ type: ")" }, "Expected ')' after arguments");
 

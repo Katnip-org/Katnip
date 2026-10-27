@@ -40,7 +40,7 @@ export class ErrorReporter {
         source: string,
         private showStackTrace: boolean = false
     ) {
-        this.sourceLines = source.split("\n");
+        this.sourceLines = source.split(/\r?\n/);
     }
 
     add(error: KatnipError) {
@@ -96,8 +96,9 @@ export class ErrorReporter {
         }
         caretLen = Math.min(Math.max(1, caretLen), available);
 
-        const underline =
-            " ".repeat(column - 1) + tint("^".repeat(caretLen));
+        // Keep the line's tabs so the carets line up however wide the terminal draws them.
+        const indent = sourceLine.slice(0, column - 1).replace(/[^\t]/g, " ").padEnd(column - 1);
+        const underline = indent + tint("^".repeat(caretLen));
 
         return (
           `  at ${pc.cyan(`line ${line}, column ${column}`)}\n` +

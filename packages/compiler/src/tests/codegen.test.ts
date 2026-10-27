@@ -409,3 +409,18 @@ test("a for loop matches the shape the editor serializes control_for_each with",
     assert.deepEqual(loop.inputs.SUBSTACK, [2, sayId]);
     assert.equal(say.parent, loopId);
 });
+
+test("the default costume's id is the md5 of the bytes packed, whatever line endings git checked out", async () => {
+    const { defaultCostumeId, defaultCostumeMd5ext, defaultCostumeSvg } = await import("../assets.generated.js");
+    const md5 = createHash("md5").update(defaultCostumeSvg).digest("hex");
+    assert.equal(defaultCostumeId, md5);
+    assert.equal(defaultCostumeMd5ext, `${md5}.svg`);
+    assert.equal(build(`sprite Cat { events.onFlag() { looks.say("hi"); } }`).targets[1]!.costumes[0]!.assetId, md5);
+});
+
+test("!= lowers to not(equals)", () => {
+    const blocks = blocksOf(build(`sprite Cat { events.onFlag() { if (1 != 2) { looks.say("x"); } } }`));
+    const [, not] = find(blocks, "operator_not")!;
+    const operand = blocks[not.inputs.OPERAND![1] as string]!;
+    assert.equal(operand.opcode, "operator_equals");
+});

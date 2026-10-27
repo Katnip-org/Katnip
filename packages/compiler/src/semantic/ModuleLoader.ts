@@ -62,7 +62,7 @@ export function loadImports(
     logger: Logger = new Logger(),
 ): ImportedModule[] {
     const parsed = new Map<string, ParsedModule>();
-    const inFlight = new Set<string>();
+    const inFlight = new Set<string>([fromPath]); // the entry file counts, so `a` importing it back is a cycle
 
     const walk = (ast: AST, fromPath: string, reporter: ErrorReporter): ImportedModule[] => {
         const modules: ImportedModule[] = [];

@@ -66,8 +66,10 @@ async function check(context: vscode.ExtensionContext, doc: vscode.TextDocument)
     if (doc.languageId !== "katnip") return;
     try {
         const { checkSource } = await loadCompiler(context);
+        // A debounced or first-load check can land after the document closed; don't resurrect its diagnostics.
+        if (doc.isClosed) return;
         const errors = await checkSource(doc.getText(), { path: doc.uri.fsPath, resolve: fileResolver, readAsset: fileAssetReader });
-        diagnostics.set(doc.uri, errors.map(toDiagnostic));
+        diagnostics.set(doc.uri, errors.map((err) => toDiagnostic(doc, err)));
         output.appendLine(`Checked ${doc.uri.fsPath}: ${errors.length} diagnostic(s).`);
     } catch (err) {
         const detail = err instanceof Error ? (err.stack ?? err.message) : String(err);
@@ -89,7 +91,7 @@ async function build(context: vscode.ExtensionContext): Promise<void> {
             resolve: fileResolver,
             readAsset: fileAssetReader,
         });
-        diagnostics.set(doc.uri, errors.map(toDiagnostic));
+        diagnostics.set(doc.uri, errors.map((err) => toDiagnostic(doc, err)));
 
         if (!sb3) {
             vscode.window.showErrorMessage(`Katnip: build failed, ${errors.length} error(s).`);
@@ -119,12 +121,13 @@ function scheduleCheck(context: vscode.ExtensionContext, doc: vscode.TextDocumen
 
 const KEYWORDS = [
     "if", "elif", "else", "for", "while", "do", "forever", "return", "switch", "case", "default",
-    "proc", "enum", "sprite", "private", "public", "temp", "true", "false",
+    "proc", "enum", "struct", "sprite", "stage", "private", "public", "import", "costume", "sound", "as",
+    "true", "false",
     "num", "str", "bool", "list", "dict", "void",
 ];
 
 // TODO: regex scan of the open file; swap for compiler symbol table when cross-file completion matters
-const DECL = /\b(?:proc|enum|sprite)\s+(\w+)|\b(?:private|public|temp)\s+(\w+)/g;
+const DECL = /\b(?:proc|enum|struct|sprite)\s+(\w+)|\b(?:private|public)\s+(\w+)/g;
 
 function complete(doc: vscode.TextDocument): vscode.CompletionItem[] {
     const items = KEYWORDS.map((k) => new vscode.CompletionItem(k, vscode.CompletionItemKind.Keyword));
@@ -142,18 +145,33 @@ function complete(doc: vscode.TextDocument): vscode.CompletionItem[] {
     return items;
 }
 
-function toDiagnostic(err: KatnipError): vscode.Diagnostic {
+// Katnip columns are 1-based code points; VS Code wants 0-based UTF-16 offsets, so astral chars (emoji) count twice.
+function toPosition(doc: vscode.TextDocument, line: number, column: number): vscode.Position {
+    if (line < 1 || line > doc.lineCount) return new vscode.Position(Math.max(line - 1, 0), Math.max(column - 1, 0));
+    const text = doc.lineAt(line - 1).text;
+    let offset = 0;
+    for (let i = 1; i < column; i++) {
+        if (offset < text.length && text.codePointAt(offset)! > 0xffff) {
+            offset += 2;
+        } else {
+            offset += 1;
+        }
+    }
+    return new vscode.Position(line - 1, offset);
+}
+
+function toDiagnostic(doc: vscode.TextDocument, err: KatnipError): vscode.Diagnostic {
     // IR/codegen errors carry no span; anchor them at the top of the file.
     const loc: NonNullable<KatnipError["location"]> = err.location ?? { line: 1, column: 1 };
     const { line, column, length, endLine, endColumn } = loc;
-    const start = new vscode.Position(line - 1, column - 1);
+    const start = toPosition(doc, line, column);
     let end: vscode.Position;
     if (length != null) {
-        end = new vscode.Position(line - 1, column - 1 + length);
+        end = toPosition(doc, line, column + length);
     } else if (endLine != null && endColumn != null) {
-        end = new vscode.Position(endLine - 1, endColumn - 1);
+        end = toPosition(doc, endLine, endColumn);
     } else {
-        end = new vscode.Position(line - 1, column);
+        end = toPosition(doc, line, column + 1);
     }
 
     const diag = new vscode.Diagnostic(

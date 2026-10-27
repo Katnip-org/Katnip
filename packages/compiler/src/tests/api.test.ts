@@ -6,7 +6,9 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { spawnSync } from "node:child_process";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { unzipSync } from "fflate";
@@ -128,4 +130,41 @@ test("examples/codegen.knip compiles end to end", () => {
     const project = projectOf(sb3!);
     assert.deepEqual(project.targets.map((t: { name: string }) => t.name), ["Stage", "Cat", "Dog"]);
     assert.deepEqual(project.extensions, ["pen"]);
+});
+
+test("the cli reports lexer errors, failed writes and semantic errors with a nonzero exit", () => {
+    const dir = mkdtempSync(resolve(tmpdir(), "katnip-cli-"));
+    const cli = resolve(dirname(fileURLToPath(import.meta.url)), "../cli.js");
+    const run = (...args: string[]) => spawnSync(process.execPath, [cli, ...args], { cwd: dir, encoding: "utf8" });
+    const file = (name: string, source: string) => {
+        writeFileSync(resolve(dir, name), source);
+        return resolve(dir, name);
+    };
+
+    const unterminated = run("tokenize", file("bad.knip", `looks.say("hi);`), resolve(dir, "tokens.json"));
+    assert.equal(unterminated.status, 1);
+    assert.match(unterminated.stdout + unterminated.stderr, /nterminated/);
+    assert(!existsSync(resolve(dir, "tokens.json")), "tokens from a broken file should not be written");
+
+    // The write used to float free of the promise chain, so this crashed as an unhandled rejection.
+    const unwritable = run("tokenize", file("ok.knip", HELLO), resolve(dir, "missing", "tokens.json"));
+    assert.equal(unwritable.status, 1);
+    assert.match(unwritable.stderr, /Error tokenizing file/);
+
+    assert.equal(run("check", file("sem.knip", `sprite Cat { events.onFlag() { looks.say(nope); } }`)).status, 1);
+});
+
+test("error carets line up under tab-indented and CRLF source", async () => {
+    const { ErrorReporter, KatnipError } = await import("../utils/ErrorReporter.js");
+    const reporter = new ErrorReporter("sprite Cat {\r\n\t\tlooks.say(nope);\r\n}");
+    reporter.add(new KatnipError("Semantic", "'nope' is not defined", { line: 2, column: 13, length: 4 }));
+
+    const printed: string[] = [];
+    const original = console.error;
+    console.error = (msg: string) => printed.push(msg);
+    try { reporter.print(); } finally { console.error = original; }
+
+    const lines = printed.join("\n").split("\n");
+    assert(lines.some((l) => l.endsWith("| \t\tlooks.say(nope);")), "the source line keeps its tabs and loses the \r");
+    assert(lines.some((l) => l.endsWith("| \t\t          ^^^^")), "the carets sit under 'nope'");
 });

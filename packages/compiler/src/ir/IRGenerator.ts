@@ -13,6 +13,7 @@ import type {
     ExpressionNode,
     ForStatementNode,
     ProcedureDeclarationNode,
+    SourceLocation,
     SpriteDeclarationNode,
     StatementNode,
     TypeNode,
@@ -71,7 +72,7 @@ export class IRGenerator {
     private readonly pending: string[] = [];
 
     /** Declared list/dict name => the sb3 list(s) backing it: [list], or [keys, vals] for a dict. */
-    private readonly listNames = new Map<string, string[]>();
+    private listNames = new Map<string, string[]>();
 
     /** Top-level variable names, so a sprite member that shadows one can be renamed. */
     private globalNames = new Set<string>();
@@ -96,13 +97,15 @@ export class IRGenerator {
                       : [],
             ),
         );
+        // Same reason: a sprite can index a global list declared below it
+        for (const stmt of ast.body) if (stmt.type === "VariableDeclaration") this.declareMember(stmt);
+
         for (const stmt of ast.body) {
             switch (stmt.type) {
                 case "SpriteDeclaration":
                     this.lowerSprite(stmt);
                     break;
                 case "VariableDeclaration":
-                    this.declareMember(stmt);
                     break;
                 case "ProcedureDeclaration": {
                     const proc = this.lowerProc(stmt);
@@ -160,6 +163,7 @@ export class IRGenerator {
         this.program.sprites.push(this.sprite);
         this.spriteInit = [];
         this.renamed = new Map();
+        const listNames = new Map(this.listNames);
 
         // Members first: a handler may be written above the member it reads, and lowering one needs
         // the member's sb3 name and backing lists to be known already.
@@ -171,10 +175,14 @@ export class IRGenerator {
                 case "HandlerStatement": {
                     const out: IRStmt[] = [];
                     const sig = this.analyzer.callResolutions.get(stmt.call);
+                    // TODO: hat args must be literals
+                    const args = sig ? this.callArgs(stmt.call, sig).map((arg) => this.lowerExpr(arg, out)) : [];
+                    // A hat has nowhere to run setup blocks before it fires
+                    if (out.length)
+                        throw new KatnipError("IR", "a hat argument cannot call a procedure", spanOf(stmt.call));
                     this.sprite.scripts.push({
                         hatOpcode: sig?.meta?.opcode ?? "",
-                        // TODO: hat args must be literals
-                        args: sig ? this.callArgs(stmt.call, sig).map((arg) => this.lowerExpr(arg, out)) : [],
+                        args,
                         body: this.lowerBlock(stmt.body),
                     });
                     break;
@@ -196,6 +204,8 @@ export class IRGenerator {
         if (this.spriteInit.length)
             this.sprite.scripts.unshift({ hatOpcode: "event_whenflagclicked", args: [], body: this.spriteInit });
         this.sprite = null;
+        this.renamed = new Map();
+        this.listNames = listNames;
     }
 
     private declareMember(node: VariableDeclarationNode, sink?: IRStmt[]): void {
@@ -216,7 +226,9 @@ export class IRGenerator {
                 } else {
                     target.variables.set(name, "");
                     const out = this.sprite ? this.spriteInit : this.init;
+                    const mark = this.pending.length;
                     this.emit(out, this.set(name, this.lowerExpr(init!, out)));
+                    this.popTo(out, mark);
                 }
                 return;
             }
@@ -261,12 +273,7 @@ export class IRGenerator {
             throw new KatnipError(
                 "IR",
                 `only a declared list or dict can be indexed, got ${node.type === "Identifier" ? `'${node.name}'` : node.type}`,
-                {
-                    line: node.loc.start.line,
-                    column: node.loc.start.column,
-                    endLine: node.loc.end.line,
-                    endColumn: node.loc.end.column,
-                },
+                spanOf(node),
             );
         return names;
     }
@@ -356,7 +363,12 @@ export class IRGenerator {
 
     private lowerBlock(block: BlockNode): IRStmt[] {
         const out: IRStmt[] = [];
+        // A local renamed clear of a global stops shadowing it once its block ends
+        const renamed = new Map(this.renamed);
+        const listNames = new Map(this.listNames);
         for (const stmt of block.body) this.lowerStmt(stmt, out);
+        this.renamed = renamed;
+        this.listNames = listNames;
         return out;
     }
 
@@ -372,11 +384,10 @@ export class IRGenerator {
                 for (let idx = (node.elifs?.length ?? 0) - 1; idx >= 0; idx--) {
                     const elif = node.elifs![idx];
                     const pre: IRStmt[] = [];
+                    const elifMark = this.pending.length;
                     const elifCond = this.lowerExpr(elif.condition, pre);
-                    elseStmt = [
-                        ...pre,
-                        { kind: "if", cond: elifCond, then: this.lowerBlock(elif.block), else: elseStmt },
-                    ];
+                    this.branch(pre, elifMark, elifCond, elif.block, elseStmt);
+                    elseStmt = pre;
                 }
 
                 this.emit(out, {
@@ -387,20 +398,23 @@ export class IRGenerator {
                 });
                 break;
             }
-            case "WhileStatement": {
+            case "WhileStatement":
+            case "DoWhileStatement": {
+                if (node.type === "DoWhileStatement") out.push(...this.lowerBlock(node.body));
+                const setup = out.length;
                 const cond = this.lowerExpr(node.condition, out);
-                this.emit(out, { kind: "while", cond, body: this.lowerBlock(node.body) });
+                const body = this.lowerBlock(node.body);
+                // The condition's setup has to rerun before every check, not only the first
+                if (out.length > setup) {
+                    this.popTo(body, mark);
+                    this.lowerExpr(node.condition, body);
+                }
+                this.emit(out, { kind: "while", cond, body });
                 break;
             }
             case "ForeverStatement":
                 this.emit(out, { kind: "forever", body: this.lowerBlock(node.body) });
                 break;
-            case "DoWhileStatement": {
-                out.push(...this.lowerBlock(node.body));
-                const cond = this.lowerExpr(node.condition, out);
-                this.emit(out, { kind: "while", cond, body: this.lowerBlock(node.body) });
-                break;
-            }
             case "ForStatement":
                 this.lowerFor(node, out);
                 break;
@@ -414,6 +428,7 @@ export class IRGenerator {
                         continue;
                     }
                     const pre: IRStmt[] = [];
+                    const clauseMark = this.pending.length;
                     const cond = clause.values
                         .map(
                             (test): IRExpr => ({
@@ -423,7 +438,8 @@ export class IRGenerator {
                             }),
                         )
                         .reduce((left, right) => ({ kind: "op", opcode: "operator_or", inputs: [left, right] }));
-                    chain = [...pre, { kind: "if", cond, then: this.lowerBlock(clause.body), else: chain }];
+                    this.branch(pre, clauseMark, cond, clause.body, chain);
+                    chain = pre;
                 }
                 for (const stmt of chain) this.emit(out, stmt);
                 break;
@@ -440,25 +456,26 @@ export class IRGenerator {
 
                 if (plan.strategy === "var")
                     lowered.forEach((value, i) => this.emit(out, this.set(plan.retVars[i], value)));
-                else if (plan.strategy === "vstack") {
-                    let staged = lowered;
-                    if (this.pending.length > mark) {
-                        staged = lowered.map((value, i): IRExpr => {
-                            const name = this.declare(`staged${i}`);
-                            this.emit(out, this.set(name, value));
-                            return { kind: "var", name };
-                        });
-                    }
-                    this.popTo(out, mark);
+                let staged = lowered;
+                if (plan.strategy === "vstack" && this.pending.length > mark) {
+                    staged = lowered.map((value, i): IRExpr => {
+                        const name = this.declare(`staged${i}`);
+                        this.emit(out, this.set(name, value));
+                        return { kind: "var", name };
+                    });
+                }
+
+                // The script stops here, so slots the enclosing statements pushed would never be popped
+                const outer = this.pending.slice(0, mark);
+                this.popTo(out, 0);
+                this.pending.push(...outer);
+                if (plan.strategy === "vstack")
                     for (const value of staged)
                         this.emit(out, {
                             kind: "raw",
                             opcode: "data_addtolist",
                             inputs: [{ kind: "var", name: plan.vStackName! }, value],
                         });
-                }
-
-                this.popTo(out, mark);
                 out.push({ kind: "raw", opcode: "control_stop", inputs: [{ kind: "lit", value: "this script" }] });
                 break;
             }
@@ -671,6 +688,7 @@ export class IRGenerator {
             return Number.isFinite(n) ? n : null;
         };
         const [a, b, c] = [num(start), num(stop), num(step)];
+        if (c === 0) throw new KatnipError("IR", "range() step cannot be 0", spanOf(call));
 
         let times: IRExpr;
         if (a !== null && b !== null && c !== null) {
@@ -710,9 +728,10 @@ export class IRGenerator {
         return true;
     }
 
-    /** Registers a proc-local, mangled globally. Script-scope temps keep their name and are owned by the sprite. */
+    /** Registers a proc-local, mangled globally. Script-scope temps keep their name (renamed only to clear a global) and are owned by the sprite. */
     private declare(name: string, target: IRSprite | IRProgram = this.sprite ?? this.program): string {
         if (!this.currentPlan) {
+            if (target === this.sprite) name = this.spriteName(name);
             const scope = target.variables;
             if (!scope.has(name)) scope.set(name, 0);
             return name;
@@ -734,7 +753,12 @@ export class IRGenerator {
      */
     private emittedName(node: VariableDeclarationNode): string {
         const { name } = node;
-        if (isPublicVar(node) || !this.sprite || !this.globalNames.has(name)) return name;
+        if (isPublicVar(node)) return name;
+        return this.spriteName(name);
+    }
+
+    private spriteName(name: string): string {
+        if (!this.sprite || !this.globalNames.has(name)) return name;
         const renamed = `${this.sprite.name}_${name}`;
         this.renamed.set(name, renamed);
         return renamed;
@@ -764,6 +788,22 @@ export class IRGenerator {
                 opcode: "data_deleteoflist",
                 inputs: [{ kind: "var", name: this.pending.pop()! }, { kind: "lit", value: "last" }],
             });
+    }
+
+    /**
+     * Appends an if whose condition setup was lowered into `out` since `mark`. Only one branch runs,
+     * so each pops that setup's slots itself instead of leaving them for the statement after.
+     */
+    private branch(out: IRStmt[], mark: number, cond: IRExpr, then: BlockNode, otherwise: IRStmt[]): void {
+        this.freeze(cond);
+        const pops: IRStmt[] = [];
+        this.popTo(pops, mark);
+        out.push({
+            kind: "if",
+            cond,
+            then: [...pops, ...this.lowerBlock(then)],
+            else: [...structuredClone(pops), ...otherwise],
+        });
     }
 
     private emit(out: IRStmt[], stmt: IRStmt): void {
@@ -826,7 +866,9 @@ export class IRGenerator {
                 if (sig.meta?.lower === "reporter") return { kind: "op", opcode: sig.meta.opcode!, inputs: args };
                 if (sig.meta?.lower === "builds") return this.inlineBuilds(sig, args, out);
 
-                const plan = this.plans.get(sig)!;
+                const plan = this.plans.get(sig);
+                if (!plan)
+                    throw new KatnipError("IR", `@lower = "${sig.meta?.lower}" procs are not lowered yet`, spanOf(node));
                 this.emit(out, { kind: "call", proc: plan.mangled, args });
                 if (!plan.strategy) break;
 
@@ -913,6 +955,15 @@ function literals(nodes: ExpressionNode[]): (string | number | boolean)[] | null
     return values;
 }
 
+function spanOf(node: { loc: SourceLocation }) {
+    return {
+        line: node.loc.start.line,
+        column: node.loc.start.column,
+        endLine: node.loc.end.line,
+        endColumn: node.loc.end.column,
+    };
+}
+
 /** Scratch inputs are only %n, %s, %b; num -> NUMBER, bool -> BOOLEAN, everything else -> STRING. */
 function paramTypeOf(type: TypeNode): paramType {
     if (type.type !== "Type") return paramType.STRING;
@@ -932,6 +983,6 @@ const binaryOpcodes: Record<string, string> = {
     ">": "operator_gt",
     "&&": "operator_and",
     "||": "operator_or",
-    // <=, >=, !&, !|, !^ and ^ have no opcode: they come from the @lower = "builds" procs
+    // !=, <=, >=, !&, !|, !^ and ^ have no opcode: they come from the @lower = "builds" procs
     // TODO: impl **
 }
