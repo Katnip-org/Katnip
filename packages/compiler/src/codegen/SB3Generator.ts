@@ -1,6 +1,7 @@
 import { paramType, type IRAsset, type IRExpr, type IRParam, type IRProc, type IRProgram, type IRScript, type IRStmt } from "../ir/IRNode.js";
 import type { AssetTable } from "./assets.js";
 import {
+    isBlock,
     minimalProject,
     minimalSprite,
     minimalStage,
@@ -74,7 +75,27 @@ const stackItem = (ref: Extract<IRExpr, { kind: "stackref" }>): IRExpr => {
 };
 
 const defaultBroadcast = "message1";
-const topLevelGap = 400;
+
+// Editor heights in px, measured in https://scratch.mit.edu/discuss/topic/793888/
+const blockHeight = 48;
+const extensionBlockHeight = 56;
+const cBottomHeight = 32;
+const cMiddleHeight = 32;
+const reporterLayerHeight = 8;
+// Measured off a screenshot of the editor; the thread's 48 is too short for the define hat
+const defineHatHeight = 80;
+const emptyMouthHeight = 24;
+const scriptGap = 64;
+
+const cBlocks = new Set([
+    "control_if",
+    "control_if_else",
+    "control_repeat",
+    "control_repeat_until",
+    "control_while",
+    "control_forever",
+    "control_for_each",
+]);
 
 /** Opcode prefixes Scratch will not load unless the project declares them. */
 const extensionIDs = new Set<KnownExtension>([
@@ -100,6 +121,47 @@ const stopMutation = (option: IRExpr): StopMutation => {
 
 const reporterOpcode = (type: paramType) =>
     type === paramType.BOOLEAN ? "argument_reporter_boolean" : "argument_reporter_string_number";
+
+const isExtension = (opcode: string) => extensionIDs.has(opcode.split("_")[0] as KnownExtension);
+
+/** How many reporters deep a block's inputs nest; shadows (menus, typed-in values) don't count. */
+function reporterDepth(block: Block, blocks: BlockMap): number {
+    let depth = 0;
+    for (const [name, input] of Object.entries(block.inputs)) {
+        if (name.startsWith("SUBSTACK")) continue;
+        // A variable or list is stored inline as [12|13, name, id], but it draws as a reporter
+        const inline = input[1];
+        if (Array.isArray(inline) && (inline[0] === 12 || inline[0] === 13)) depth = Math.max(depth, 1);
+        const child = typeof inline === "string" ? blocks[inline] : undefined;
+        if (!child || !isBlock(child) || child.shadow) continue;
+        depth = Math.max(depth, 1 + reporterDepth(child, blocks));
+    }
+    return depth;
+}
+
+/** Editor height of a stack, so the next script can be placed below it without overlapping. */
+function stackHeight(id: BlockId | null, blocks: BlockMap): number {
+    let height = 0;
+    for (; id; id = (blocks[id] as Block).next) {
+        const block = blocks[id] as Block;
+        const extension = isExtension(block.opcode);
+        // The first reporter layer fits in the block (the first two on an extension block)
+        const freeLayers = extension ? 2 : 1;
+        if (block.opcode === "procedures_definition") height += defineHatHeight;
+        else if (extension) height += extensionBlockHeight;
+        else height += blockHeight;
+        height += reporterLayerHeight * Math.max(0, reporterDepth(block, blocks) - freeLayers);
+        if (!cBlocks.has(block.opcode)) continue;
+        height += mouthHeight(block.inputs.SUBSTACK, blocks) + cBottomHeight;
+        if (block.opcode === "control_if_else") height += cMiddleHeight + mouthHeight(block.inputs.SUBSTACK2, blocks);
+    }
+    return height;
+}
+
+function mouthHeight(input: Input | undefined, blocks: BlockMap): number {
+    if (!input || typeof input[1] !== "string") return emptyMouthHeight;
+    return stackHeight(input[1], blocks);
+}
 
 export class SB3Generator {
     private sb3: Sb3Project = minimalProject();
@@ -214,7 +276,6 @@ export class SB3Generator {
         this.params = new Map(proc.params.map((p) => [p.name, p.type]));
 
         const [defID, def] = this.newBlock("procedures_definition", blocks, null, { topLevel: true, x: 0, y: this.topY });
-        this.topY += topLevelGap;
         const [protoID, proto] = this.newBlock("procedures_prototype", blocks, defID, { shadow: true });
         def.inputs.custom_block = [1, protoID];
 
@@ -235,6 +296,7 @@ export class SB3Generator {
         };
 
         def.next = this.emitStack(proc.body, blocks, defID);
+        this.topY += stackHeight(defID, blocks) + scriptGap;
     }
 
     private signature(proc: IRProc): ProcSignature {
@@ -259,9 +321,9 @@ export class SB3Generator {
 
         for (const script of scripts) {
             const [id, hat] = this.newBlock(script.hatOpcode, blocks, null, { topLevel: true, x: 0, y: this.topY });
-            this.topY += topLevelGap;
             this.applySlots(hat, id, blocks, script.hatOpcode, script.args);
             hat.next = this.emitStack(script.body, blocks, id);
+            this.topY += stackHeight(id, blocks) + scriptGap;
         }
         return blocks;
     }

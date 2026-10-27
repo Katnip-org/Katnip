@@ -439,3 +439,36 @@ sprite Cat {
     assert.ok(find(blocksOf(project), "procedures_definition"));
     assert.ok(Object.values(project.targets[0]!.lists).some(([name]) => name === "ps_x"));
 });
+
+test("scripts are stacked by their measured height, not a fixed gap", () => {
+    const project = build(`sprite Cat {
+        events.onFlag() { looks.say("a"); }
+        events.onFlag() { if (1 < 2) { looks.say("b"); looks.say("c"); } else { looks.say("e"); } }
+        events.onFlag() { looks.say("d"); }
+    }`);
+    const tops = Object.values(blocksOf(project))
+        .filter((b) => b.topLevel)
+        .map((b) => b.y!)
+        .sort((a, b) => a - b);
+    // hat + say, then gap
+    assert.equal(tops[1]! - tops[0]!, 48 * 2 + 64);
+    // hat + if-else (top, two-block mouth, middle, one-block mouth, bottom), then gap
+    assert.equal(tops[2]! - tops[1]!, 48 + 48 + 96 + 32 + 48 + 32 + 64);
+});
+
+test("a variable in an input counts as a reporter layer, and a define hat is taller than an event hat", () => {
+    const project = build(`public n: num = 1;
+    sprite Cat {
+        proc f(a: num) -> void { looks.say(f"{a}"); }
+        events.onFlag() { looks.say(f"{n + 1}"); }
+        events.onFlag() { }
+    }`);
+    const tops = Object.values(blocksOf(project))
+        .filter((b) => b.topLevel)
+        .map((b) => b.y!)
+        .sort((a, b) => a - b);
+    // hat + say (add -> var n is two layers, one of them free), then gap
+    assert.equal(tops[1]! - tops[0]!, 48 + 48 + 8 + 64);
+    // the empty flag script, then the define hat + say(arg)
+    assert.equal(tops[2]! - tops[1]!, 48 + 64);
+});
