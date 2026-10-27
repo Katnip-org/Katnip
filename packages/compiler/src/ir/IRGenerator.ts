@@ -16,6 +16,7 @@ import type {
     SourceLocation,
     SpriteDeclarationNode,
     StatementNode,
+    StructFieldNode,
     TypeNode,
     VariableDeclarationNode,
 } from "../parser/AST-nodes.js";
@@ -74,6 +75,13 @@ export class IRGenerator {
     /** Declared list/dict name => the sb3 list(s) backing it: [list], or [keys, vals] for a dict. */
     private listNames = new Map<string, string[]>();
 
+    /** Struct name => its fields, in declaration order. */
+    private readonly structs = new Map<string, StructFieldNode[]>();
+    /** Struct-typed name => one sb3 variable (or param) per field, in field order. */
+    private structVars = new Map<string, string[]>();
+    /** list<Struct> name => one parallel sb3 list per field, kept in lockstep. */
+    private structLists = new Map<string, string[]>();
+
     /** Top-level variable names, so a sprite member that shadows one can be renamed. */
     private globalNames = new Set<string>();
     /** Source name => sb3 name, for sprite members renamed to clear a global. Cleared per sprite. */
@@ -85,6 +93,7 @@ export class IRGenerator {
     constructor(private analyzer: SemanticAnalyzer) {}
 
     generate(ast: AST): IRProgram {
+        for (const stmt of ast.body) if (stmt.type === "StructDeclaration") this.structs.set(stmt.name, stmt.fields);
         this.planReturns();
         // Collected before any sprite is lowered, because a sprite may be declared ahead of the
         // global it shadows and its members still have to be renamed clear of it.
@@ -164,6 +173,8 @@ export class IRGenerator {
         this.spriteInit = [];
         this.renamed = new Map();
         const listNames = new Map(this.listNames);
+        const structVars = new Map(this.structVars);
+        const structLists = new Map(this.structLists);
 
         // Members first: a handler may be written above the member it reads, and lowering one needs
         // the member's sb3 name and backing lists to be known already.
@@ -206,11 +217,18 @@ export class IRGenerator {
         this.sprite = null;
         this.renamed = new Map();
         this.listNames = listNames;
+        this.structVars = structVars;
+        this.structLists = structLists;
     }
 
     private declareMember(node: VariableDeclarationNode, sink?: IRStmt[]): void {
         const target = isPublicVar(node) ? this.program : this.sprite ?? this.program;
         const init = node.initializer;
+        const struct = this.declaredStruct(node);
+        if (struct) {
+            this.declareStruct(node, struct.name, struct.list, target, sink);
+            return;
+        }
         const kind =
             node.varType?.type === "Type"
                 ? node.varType.typeName
@@ -267,7 +285,192 @@ export class IRGenerator {
         this.popTo(out, mark);
     }
 
+    /** The struct a declaration holds, alone or as a list's element. */
+    private declaredStruct(node: VariableDeclarationNode): { name: string; list: boolean } | null {
+        const type = node.varType;
+        if (type?.type === "Type") {
+            const element = type.typeName === "list" ? type.typeParams?.[0] : type;
+            if (element?.type === "Type" && this.structs.has(element.typeName))
+                return { name: element.typeName, list: element !== type };
+            return null;
+        }
+        if (type || !node.initializer) return null;
+        const inferred = this.analyzer.exprTypes.get(node.initializer);
+        if (inferred?.kind === "struct") return { name: inferred.name, list: false };
+        if (inferred?.kind === "list" && inferred.element.kind === "struct")
+            return { name: inferred.element.name, list: true };
+        return null;
+    }
+
+    /** One column per field: plain variables for a lone struct, parallel lists for a list of them. */
+    private declareStruct(
+        node: VariableDeclarationNode,
+        struct: string,
+        list: boolean,
+        target: IRSprite | IRProgram,
+        sink?: IRStmt[],
+    ): void {
+        const fields = this.structs.get(struct)!;
+        const base = this.emittedName(node);
+        const init = node.initializer;
+        const out = sink ?? (this.sprite ? this.spriteInit : this.init);
+        const mark = this.pending.length;
+
+        if (list) {
+            const columns = fields.map((field) => `${base}_${field.name}`);
+            this.structLists.set(node.name, columns);
+            const elements = init?.type === "ListExpression" ? init.elements : [];
+            const baked = elements.map((element) => {
+                const row = this.literalFields(element);
+                return row ? literals(row) : null;
+            });
+            if (!sink && baked.every((row) => row !== null)) {
+                columns.forEach((column, i) => target.lists.set(column, baked.map((row) => row![i]!)));
+                return;
+            }
+            for (const column of columns) {
+                target.lists.set(column, []);
+                this.emit(out, { kind: "raw", opcode: "data_deletealloflist", inputs: [{ kind: "var", name: column }] });
+            }
+            for (const element of elements) {
+                const values = this.lowerStruct(element, out);
+                columns.forEach((column, i) =>
+                    this.emit(out, {
+                        kind: "raw",
+                        opcode: "data_addtolist",
+                        inputs: [{ kind: "var", name: column }, values[i]!],
+                    }),
+                );
+            }
+            this.popTo(out, mark);
+            return;
+        }
+
+        let columns = fields.map((field) => `${base}_${field.name}`);
+        if (sink) columns = columns.map((column) => this.declare(column, target));
+        this.structVars.set(node.name, columns);
+
+        const nodes = init ? this.literalFields(init) : fields.map((field) => field.default ?? undefined);
+        const baked = nodes ? literals(nodes) : null;
+        if (!sink && baked) {
+            columns.forEach((column, i) => target.variables.set(column, baked[i]!));
+            return;
+        }
+        if (!sink) for (const column of columns) target.variables.set(column, "");
+        let values: IRExpr[];
+        if (init)
+            values = this.lowerStruct(init, out);
+        else
+            values = nodes!.map((node): IRExpr => (node ? this.lowerExpr(node, out) : { kind: "lit", value: "" }));
+        this.assignStruct(columns, values, out);
+        this.popTo(out, mark);
+    }
+
+    /** A struct literal's field values in field order, defaults filled in; null if `expr` isn't a struct literal. */
+    private literalFields(expr: ExpressionNode): (ExpressionNode | undefined)[] | null {
+        if (expr.type !== "CallExpression" || expr.object.type !== "Identifier") return null;
+        if (this.analyzer.callResolutions.has(expr)) return null;
+        const fields = this.structs.get(expr.object.name);
+        if (!fields) return null;
+        const named = new Map<string, ExpressionNode>();
+        for (const arg of expr.arguments) if (arg.type === "NamedArgument") named.set(arg.name, arg.value);
+        return fields.map((field) => named.get(field.name) ?? field.default ?? undefined);
+    }
+
+    /** Lowers a struct-typed expression to one value per field, in field order. */
+    private lowerStruct(expr: ExpressionNode, out: IRStmt[]): IRExpr[] {
+        const fields = this.literalFields(expr);
+        if (fields) return fields.map((node): IRExpr => (node ? this.lowerExpr(node, out) : { kind: "lit", value: "" }));
+
+        if (expr.type === "Identifier") {
+            const columns = this.structVars.get(expr.name);
+            if (columns) return columns.map((column) => this.column(column));
+        }
+        if (expr.type === "IndexerAccess") {
+            const columns = this.structListOf(expr.object);
+            const index = this.lowerExpr(expr.index, out);
+            return columns.map((name) => ({
+                kind: "op",
+                opcode: "data_itemoflist",
+                inputs: [{ kind: "var", name }, structuredClone(index)],
+            }));
+        }
+        if (expr.type === "CallExpression") {
+            const sig = this.analyzer.callResolutions.get(expr);
+            if (sig) return this.lowerUserproc(expr, sig, this.lowerArgs(expr, sig, out), out);
+        }
+        throw new KatnipError("IR", "this struct value can't be lowered yet", spanOf(expr));
+    }
+
+    /** Writes one value per column; stages first when a value reads a column written before it. */
+    private assignStruct(columns: string[], values: IRExpr[], out: IRStmt[]): void {
+        const written = new Set(columns);
+        // `p = Point(x = p.y, y = p.x)` would otherwise read p_x after overwriting it
+        if (values.length > 1 && values.some((value) => mentions(value, written))) {
+            values = values.map((value, i): IRExpr => {
+                const name = this.declare(`staged${i}`);
+                this.emit(out, this.set(name, value));
+                return { kind: "var", name };
+            });
+        }
+        columns.forEach((column, i) => this.emit(out, this.set(column, values[i]!)));
+    }
+
+    private structListOf(node: ExpressionNode): string[] {
+        const columns = node.type === "Identifier" ? this.structLists.get(node.name) : undefined;
+        if (!columns) throw new KatnipError("IR", "only a declared list of structs can be indexed here", spanOf(node));
+        return columns;
+    }
+
+    private fieldIndex(struct: string, field: string): number {
+        return this.structs.get(struct)!.findIndex((f) => f.name === field);
+    }
+
+    /** The fields of a struct-typed param, or null for any other type. */
+    private structFieldsOf(type: TypeNode): StructFieldNode[] | null {
+        if (type.type !== "Type") return null;
+        return this.structs.get(type.typeName) ?? null;
+    }
+
+    private column(name: string): IRExpr {
+        if (this.params.has(name)) return { kind: "param", name };
+        return { kind: "var", name };
+    }
+
+    /** `ps.add(p)`, `ps.length()` and `ps.clear()` on a list of structs act on every column at once. */
+    private lowerStructListCall(node: CallExpressionNode, sig: Signature, columns: string[], out: IRStmt[]): IRExpr {
+        const opcode = sig.meta?.opcode;
+        const list = (name: string): IRExpr => ({ kind: "var", name });
+        switch (opcode) {
+            case "data_lengthoflist":
+                return { kind: "op", opcode, inputs: [list(columns[0]!)] };
+            case "data_deletealloflist":
+            case "data_showlist":
+            case "data_hidelist":
+                for (const column of columns) this.emit(out, { kind: "raw", opcode, inputs: [list(column)] });
+                return { kind: "lit", value: "" };
+            case "data_addtolist": {
+                const values = this.lowerStruct(this.callArgs(node, sig)[1]!, out);
+                columns.forEach((column, i) => this.emit(out, { kind: "raw", opcode, inputs: [list(column), values[i]!] }));
+                return { kind: "lit", value: "" };
+            }
+        }
+        throw new KatnipError("IR", "this list method isn't supported on a list of structs yet", spanOf(node));
+    }
+
+    private structListSelf(node: CallExpressionNode, sig: Signature): string[] | null {
+        if (sig.params[0]?.name !== "self" || node.object.type !== "MemberExpression") return null;
+        const self = node.object.object;
+        if (self.type !== "Identifier") return null;
+        return this.structLists.get(self.name) ?? null;
+    }
+
     private listsOf(node: ExpressionNode): string[] {
+        if (node.type === "MemberExpression") {
+            const type = this.analyzer.exprTypes.get(node.object);
+            if (type?.kind === "list" && type.element.kind === "struct")
+                return [this.structListOf(node.object)[this.fieldIndex(type.element.name, node.property.name)]!];
+        }
         const names = node.type === "Identifier" ? this.listNames.get(node.name) : undefined;
         if (!names)
             throw new KatnipError(
@@ -332,10 +535,18 @@ export class IRGenerator {
         if (plan.vStackName) (this.sprite ?? this.program).lists.set(plan.vStackName, []);
         for (const name of plan.retVars) (this.sprite ?? this.program).variables.set(name, 0);
 
-        const params: IRParam[] = stmt.parameters.map((param) => ({
-            name: param.name,
-            type: paramTypeOf(param.paramType),
-        }));
+        const structVars = new Map(this.structVars);
+        // A struct param travels as one Scratch arg per field
+        const params: IRParam[] = stmt.parameters.flatMap((param) => {
+            const fields = this.structFieldsOf(param.paramType);
+            if (!fields) return [{ name: param.name, type: paramTypeOf(param.paramType) }];
+            const columns = fields.map((field) => `${param.name}_${field.name}`);
+            this.structVars.set(param.name, columns);
+            return fields.map((field, i) => ({
+                name: columns[i]!,
+                type: field.fieldType ? paramTypeOf(field.fieldType) : paramType.STRING,
+            }));
+        });
 
         this.currentPlan = plan;
         this.params = new Set(params.map((param) => param.name));
@@ -346,6 +557,7 @@ export class IRGenerator {
         this.currentPlan = null;
         this.params = new Set();
         this.temps = new Map();
+        this.structVars = structVars;
 
         return {
             name: plan.mangled,
@@ -366,9 +578,13 @@ export class IRGenerator {
         // A local renamed clear of a global stops shadowing it once its block ends
         const renamed = new Map(this.renamed);
         const listNames = new Map(this.listNames);
+        const structVars = new Map(this.structVars);
+        const structLists = new Map(this.structLists);
         for (const stmt of block.body) this.lowerStmt(stmt, out);
         this.renamed = renamed;
         this.listNames = listNames;
+        this.structVars = structVars;
+        this.structLists = structLists;
         return out;
     }
 
@@ -452,7 +668,11 @@ export class IRGenerator {
                         : node.argument.type === "TupleExpression"
                           ? node.argument.elements
                           : [node.argument];
-                const lowered = values.map((expr) => this.lowerExpr(expr, out));
+                let lowered: IRExpr[];
+                if (node.argument && this.analyzer.exprTypes.get(node.argument)?.kind === "struct")
+                    lowered = this.lowerStruct(node.argument, out);
+                else
+                    lowered = values.map((expr) => this.lowerExpr(expr, out));
 
                 if (plan.strategy === "var")
                     lowered.forEach((value, i) => this.emit(out, this.set(plan.retVars[i], value)));
@@ -480,6 +700,7 @@ export class IRGenerator {
                 break;
             }
             case "VariableAssignment": {
+                if (this.lowerStructAssignment(node.left, node.operator, node.right, out)) break;
                 if (node.left.type === "IndexerAccess") {
                     const lists = this.listsOf(node.left.object);
                     const index = this.lowerExpr(node.left.index, out);
@@ -550,7 +771,7 @@ export class IRGenerator {
                 const expr = node.expression;
                 if (expr.type === "CallExpression") {
                     const sig = this.analyzer.callResolutions.get(expr);
-                    if (sig?.meta?.lower === "command") {
+                    if (sig?.meta?.lower === "command" && !this.structListSelf(expr, sig)) {
                         const args = this.callArgs(expr, sig).map((arg) => this.lowerExpr(arg, out));
                         this.emit(out, { kind: "raw", opcode: sig.meta.opcode!, inputs: args });
                         break;
@@ -593,6 +814,27 @@ export class IRGenerator {
             return;
         }
 
+        if (type?.kind === "list" && type.element.kind === "struct" && node.pattern.type === "Identifier") {
+            const name = node.pattern.name;
+            const lists = this.structListOf(node.iterable);
+            const iter = this.declare(`${name}_i`);
+            const columns = this.structs.get(type.element.name)!.map((field) => this.declare(`${name}_${field.name}`));
+            this.structVars.set(name, columns);
+            const step = columns.map((column, i) =>
+                this.set(column, {
+                    kind: "op",
+                    opcode: "data_itemoflist",
+                    inputs: [{ kind: "var", name: lists[i]! }, { kind: "var", name: iter }],
+                }),
+            );
+            this.emit(out, {
+                kind: "for",
+                iter,
+                times: { kind: "op", opcode: "data_lengthoflist", inputs: [{ kind: "var", name: lists[0]! }] },
+                body: [...step, ...this.lowerBlock(node.body)],
+            });
+            return;
+        }
         if (this.lowerForPairs(node, out)) return;
         if (node.pattern.type !== "Identifier") return; // TODO: destructuring a non-dict
         if (this.lowerForRange(node, out)) return;
@@ -840,6 +1082,8 @@ export class IRGenerator {
                 const operand = this.substitutions?.get(node.name);
                 if (operand) return operand;
                 if (this.params.has(node.name)) return { kind: "param", name: node.name };
+                if (this.structVars.has(node.name) || this.structLists.has(node.name))
+                    throw new KatnipError("IR", `struct '${node.name}' can only be used through its fields here`, spanOf(node));
                 return { kind: "var", name: this.local(node.name) };
             }
 
@@ -860,22 +1104,18 @@ export class IRGenerator {
             }
             case "CallExpression": {
                 const sig = this.analyzer.callResolutions.get(node);
-                if (!sig) break; // TODO: struct literal, the one call the analyzer resolves to no signature
-                const args = this.callArgs(node, sig).map((arg) => this.lowerExpr(arg, out));
+                // A struct literal has no signature; lowerStruct reads it wherever a struct is expected
+                if (!sig)
+                    throw new KatnipError("IR", "a struct literal can only be used where a struct is expected", spanOf(node));
+                const columns = this.structListSelf(node, sig);
+                if (columns) return this.lowerStructListCall(node, sig, columns, out);
+                const args = this.lowerArgs(node, sig, out);
 
                 if (sig.meta?.lower === "reporter") return { kind: "op", opcode: sig.meta.opcode!, inputs: args };
                 if (sig.meta?.lower === "builds") return this.inlineBuilds(sig, args, out);
 
-                const plan = this.plans.get(sig);
-                if (!plan)
-                    throw new KatnipError("IR", `@lower = "${sig.meta?.lower}" procs are not lowered yet`, spanOf(node));
-                this.emit(out, { kind: "call", proc: plan.mangled, args });
-                if (!plan.strategy) break;
-
                 // expression slot => first element
-                if (plan.strategy === "var") return { kind: "var", name: plan.retVars[0] };
-                const width = plan.returns.kind === "tuple" ? plan.returns.width : 1;
-                return this.pushVstack(plan.vStackName!, width)[0];
+                return this.lowerUserproc(node, sig, args, out)[0] ?? { kind: "lit", value: "" };
             }
             case "InterpolatedString": {
                 // lexer pads holes with ""
@@ -925,11 +1165,90 @@ export class IRGenerator {
                     const value = this.analyzer.constMembers.get(`${owner}.${node.property.name}`);
                     if (value !== undefined) return { kind: "lit", value };
                 }
-                break; // TODO: struct field read
+                const type = this.analyzer.exprTypes.get(node.object);
+                if (type?.kind === "struct")
+                    return this.lowerStruct(node.object, out)[this.fieldIndex(type.name, node.property.name)]!;
+                if (type?.kind === "list" && type.element.kind === "struct")
+                    return { kind: "var", name: this.listsOf(node)[0]! };
+                break;
             }
             // TODO: SliceAccess
         }
         return { kind: "lit", value: "" };
+    }
+
+    /** Call arguments in signature order; a struct argument spreads into one value per field. */
+    private lowerArgs(node: CallExpressionNode, sig: Signature, out: IRStmt[]): IRExpr[] {
+        return this.callArgs(node, sig).flatMap((arg, i) => {
+            if (this.structFieldsOf(sig.params[i]!.paramType)) return this.lowerStruct(arg, out);
+            return [this.lowerExpr(arg, out)];
+        });
+    }
+
+    /** Emits a userproc call and returns its return slots, one per returned value. */
+    private lowerUserproc(node: CallExpressionNode, sig: Signature, args: IRExpr[], out: IRStmt[]): IRExpr[] {
+        const plan = this.plans.get(sig);
+        if (!plan)
+            throw new KatnipError("IR", `@lower = "${sig.meta?.lower}" procs are not lowered yet`, spanOf(node));
+        this.emit(out, { kind: "call", proc: plan.mangled, args });
+        if (!plan.strategy) return [];
+        if (plan.strategy === "var") return plan.retVars.map((name) => ({ kind: "var", name }));
+        const width = plan.returns.kind === "tuple" ? plan.returns.width : 1;
+        return this.pushVstack(plan.vStackName!, width);
+    }
+
+    /**
+     * Struct writes: `p = q`, `p.x = v`, `ps[i] = q` and `ps[i].x = v`, each onto the backing columns.
+     * Returns false when the target isn't struct-shaped.
+     */
+    private lowerStructAssignment(left: ExpressionNode, operator: string, right: ExpressionNode, out: IRStmt[]): boolean {
+        if (left.type === "Identifier" && this.structVars.has(left.name)) {
+            this.assignStruct(this.structVars.get(left.name)!, this.lowerStruct(right, out), out);
+            return true;
+        }
+        if (left.type === "IndexerAccess" && left.object.type === "Identifier" && this.structLists.has(left.object.name)) {
+            const index = this.lowerExpr(left.index, out);
+            const values = this.lowerStruct(right, out);
+            this.structLists.get(left.object.name)!.forEach((name, i) =>
+                this.emit(out, {
+                    kind: "raw",
+                    opcode: "data_replaceitemoflist",
+                    inputs: [{ kind: "var", name }, structuredClone(index), values[i]!],
+                }),
+            );
+            return true;
+        }
+        if (left.type !== "MemberExpression") return false;
+        const type = this.analyzer.exprTypes.get(left.object);
+        if (type?.kind !== "struct") return false;
+
+        const field = this.fieldIndex(type.name, left.property.name);
+        const value = (current: IRExpr): IRExpr => {
+            if (operator === "=") return this.lowerExpr(right, out);
+            return this.binop(operator.slice(0, -1), current, this.lowerExpr(right, out), out);
+        };
+        const owner = left.object;
+        if (owner.type === "Identifier") {
+            const column = this.structVars.get(owner.name)![field]!;
+            this.emit(out, this.set(column, value(this.column(column))));
+            return true;
+        }
+        if (owner.type === "IndexerAccess") {
+            const list: IRExpr = { kind: "var", name: this.structListOf(owner.object)[field]! };
+            const index = this.lowerExpr(owner.index, out);
+            const current: IRExpr = {
+                kind: "op",
+                opcode: "data_itemoflist",
+                inputs: [structuredClone(list), structuredClone(index)],
+            };
+            this.emit(out, {
+                kind: "raw",
+                opcode: "data_replaceitemoflist",
+                inputs: [list, structuredClone(index), value(current)],
+            });
+            return true;
+        }
+        throw new KatnipError("IR", "this struct field can't be assigned to yet", spanOf(left));
     }
 
     /**
@@ -946,13 +1265,25 @@ export class IRGenerator {
 }
 
 /** Initial list contents, or null when an element needs blocks to build and the column must be filled at runtime. */
-function literals(nodes: ExpressionNode[]): (string | number | boolean)[] | null {
+function literals(nodes: (ExpressionNode | undefined)[]): (string | number | boolean)[] | null {
     const values: (string | number | boolean)[] = [];
     for (const node of nodes) {
+        if (!node) {
+            values.push("");
+            continue;
+        }
         if (node.type !== "Literal") return null;
         values.push(node.value ?? "");
     }
     return values;
+}
+
+/** Whether an IR tree reads any of `names` as a variable. */
+function mentions(node: unknown, names: Set<string>): boolean {
+    if (node === null || typeof node !== "object") return false;
+    const expr = node as { kind?: string; name?: string };
+    if (expr.kind === "var" && names.has(expr.name!)) return true;
+    return Object.values(node).some((value) => mentions(value, names));
 }
 
 function spanOf(node: { loc: SourceLocation }) {

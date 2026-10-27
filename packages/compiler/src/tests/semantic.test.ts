@@ -508,3 +508,10 @@ test("a type annotation can name a namespaced enum", () => {
     expectClean(compile(`private e: looks.GraphicEffect = looks.GraphicEffect.GHOST;`, withStdlib));
     assert.match(errorsOf(`private e: looks.Nope = 1;`, withStdlib), /Unknown type 'looks\.Nope'/);
 });
+
+test("writing a struct param's field is assigning to a parameter", () => {
+    assert.match(
+        errorsOf(`struct Point { x: num, y: num } proc f(a: Point) -> void { a.x = 1; }`),
+        /Cannot assign to parameter 'a'/,
+    );
+});

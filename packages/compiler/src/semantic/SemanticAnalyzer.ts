@@ -614,9 +614,11 @@ export class SemanticAnalyzer {
                 break;
             }
             case "VariableAssignment": {
-                // Scratch args are read-only reporters
-                if (node.left.type === "Identifier" && this.current.lookup(node.left.name)?.[0]?.kind === "parameter")
-                    this.error(`Cannot assign to parameter '${node.left.name}'`, node.left);
+                // Scratch args are read-only reporters, and a struct param's fields are args too
+                let root = node.left;
+                while (root.type === "MemberExpression") root = root.object;
+                if (root.type === "Identifier" && this.current.lookup(root.name)?.[0]?.kind === "parameter")
+                    this.error(`Cannot assign to parameter '${root.name}'`, node.left);
                 const target = this.inferType(node.left);
                 const value = this.inferType(node.right);
                 this.checkAssign(

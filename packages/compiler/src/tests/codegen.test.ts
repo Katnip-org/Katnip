@@ -424,3 +424,18 @@ test("!= lowers to not(equals)", () => {
     const operand = blocks[not.inputs.OPERAND![1] as string]!;
     assert.equal(operand.opcode, "operator_equals");
 });
+
+test("a program using structs builds", () => {
+    const project = build(`struct Point { x: num, y: num = 0 }
+public ps: list<Point> = [Point(x = 1)];
+sprite Cat {
+    proc shift(p: Point, by: num) -> Point { return Point(x = p.x + by, y = p.y); }
+    events.onFlag() {
+        private q: Point = shift(ps[1], 2);
+        ps.add(q);
+        for (p, ps) { looks.say(f"{p.x}"); }
+    }
+}`);
+    assert.ok(find(blocksOf(project), "procedures_definition"));
+    assert.ok(Object.values(project.targets[0]!.lists).some(([name]) => name === "ps_x"));
+});

@@ -998,3 +998,86 @@ test("a yields proc reports a KatnipError instead of crashing on the missing pla
         (err: Error) => err.name === "KatnipError" && /"yields" procs are not lowered yet/.test(err.message),
     );
 });
+
+// -- structs --
+
+const POINT = "struct Point { x: num, y: num = 7 }\n";
+
+/** The last script of the first sprite, with Point declared. */
+function structScript(decls: string, body: string): IRStmt[] {
+    const program = lower(`${POINT}${decls} sprite Cat { events.onFlag() { ${body} } }`, { stdlib: true });
+    return program.sprites[0]!.scripts.at(-1)!.body;
+}
+
+const setOf = (body: IRStmt[], name: string) =>
+    raws(body, "data_setvariableto").findLast((s) => (s.inputs[0] as { name: string }).name === name);
+
+test("a struct variable becomes one variable per field, baked when its literal is constant", () => {
+    const program = lower(`${POINT}public p: Point = Point(x = 1);`);
+    assert.equal(program.variables.get("p_x"), 1);
+    assert.equal(program.variables.get("p_y"), 7, "an omitted field takes its default");
+    assert.equal(program.variables.has("p"), false);
+});
+
+test("field reads and writes go to the field's own variable", () => {
+    const body = structScript("public p: Point = Point(x = 1, y = 2);", "p.x += 3; looks.say(f\"{p.y}\");");
+    assert.deepEqual(setOf(body, "p_x")!.inputs[1], {
+        kind: "op",
+        opcode: "operator_add",
+        inputs: [{ kind: "var", name: "p_x" }, { kind: "lit", value: 3 }],
+    });
+    assert.deepEqual(raws(body, "looks_say")[0]!.inputs[0], { kind: "var", name: "p_y" });
+});
+
+test("assigning a struct that reads its own fields stages them first", () => {
+    const body = structScript("public p: Point = Point(x = 1, y = 2);", "p = Point(x = p.y, y = p.x);");
+    const sets = raws(body, "data_setvariableto").map((s) => (s.inputs[0] as { name: string }).name);
+    assert.deepEqual(sets, ["staged0", "staged1", "p_x", "p_y"]);
+});
+
+test("a struct list is one parallel list per field", () => {
+    const program = lower(`${POINT}public ps: list<Point> = [Point(x = 1, y = 2), Point(x = 3)];`);
+    assert.deepEqual(program.lists.get("ps_x"), [1, 3]);
+    assert.deepEqual(program.lists.get("ps_y"), [2, 7]);
+});
+
+test("struct list methods, element reads and element writes touch every column in lockstep", () => {
+    const body = structScript(
+        "public ps: list<Point> = [];",
+        "ps.add(Point(x = 1, y = 2)); ps[1].x = 5; ps[1] = Point(x = 8, y = 9); looks.say(f\"{ps[1].y}\"); looks.say(f\"{ps.length()}\");",
+    );
+    const lists = (opcode: string) => raws(body, opcode).map((s) => (s.inputs[0] as { name: string }).name);
+    assert.deepEqual(lists("data_addtolist"), ["ps_x", "ps_y"]);
+    assert.deepEqual(lists("data_replaceitemoflist"), ["ps_x", "ps_x", "ps_y"]);
+    const [element, length] = raws(body, "looks_say").map((s) => s.inputs[0] as Extract<IRExpr, { kind: "op" }>);
+    assert.deepEqual(element!.inputs[0], { kind: "var", name: "ps_y" });
+    assert.deepEqual(length, { kind: "op", opcode: "data_lengthoflist", inputs: [{ kind: "var", name: "ps_x" }] });
+});
+
+test("a for over a struct list binds each element's fields", () => {
+    const body = structScript("public ps: list<Point> = [Point(x = 1)];", "for (p, ps) { looks.say(f\"{p.x}\"); }");
+    const loop = body.find((s): s is Extract<IRStmt, { kind: "for" }> => s.kind === "for")!;
+    assert.deepEqual(loop.times, { kind: "op", opcode: "data_lengthoflist", inputs: [{ kind: "var", name: "ps_x" }] });
+    assert.deepEqual(
+        raws(loop.body, "data_setvariableto").map((s) => (s.inputs[0] as { name: string }).name),
+        ["p_x", "p_y"],
+    );
+    assert.deepEqual(raws(loop.body, "looks_say")[0]!.inputs[0], { kind: "var", name: "p_x" });
+});
+
+test("struct params spread into one arg per field, and a struct return fills one slot per field", () => {
+    const program = lower(
+        `${POINT}sprite Cat {
+            proc mid(a: Point, b: Point) -> Point { return Point(x = a.x, y = b.y); }
+            events.onFlag() { private p: Point = Point(x = 1, y = 2); p = mid(p, p); }
+        }`,
+        { stdlib: true },
+    );
+    const mid = procOf(program, "Cat", "mid");
+    assert.deepEqual(mid.params.map((p) => p.name), ["a_x", "a_y", "b_x", "b_y"]);
+    assert.equal(mid.retVars.length, 2);
+    const body = program.sprites[0]!.scripts.at(-1)!.body;
+    const call = body.find((s): s is Extract<IRStmt, { kind: "call" }> => s.kind === "call")!;
+    assert.equal(call.args.length, 4);
+    assert.deepEqual(setOf(body, "p_y")!.inputs[1], { kind: "var", name: mid.retVars[1] });
+});

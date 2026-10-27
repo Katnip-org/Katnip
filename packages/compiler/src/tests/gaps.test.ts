@@ -68,7 +68,7 @@ test("imported procs reach codegen", { todo: "the IR walks only the entry file, 
     assert.equal(protos.length > 0, true, "the imported proc needs a definition in every target that calls it");
 });
 
-test("struct literals and field reads lower", { todo: "the IR no-ops every struct path; the analyzer is already complete" }, () => {
+test("struct literals and field reads lower", () => {
     const body = script(`struct Point { x: num, y: num }
 sprite Cat { events.onFlag() { private p: Point = Point(x = 1, y = 2); looks.say(f"{p.x}"); } }`);
 

@@ -22,7 +22,7 @@ case passing except the 8 `todo` cases that pin the gaps below — and a clean
   - 🟢 Unterminated string literals are reported instead of running off the end of the file.
 - 🟢 **Parser**; Pratt parser with a binding-power table, recovers from syntax errors into error nodes so analysis still runs.
 - 🟢 **Semantic analyzer**; two-pass (hoist, then walk), scoped symbol table, structured `InternalType` with unions, tuples, generics.
-- 🟡 **IR generator**; lowers everything Scratch-shaped, with named gaps below (structs, slices, `**`, imports, `katnip_*` builtins).
+- 🟡 **IR generator**; lowers everything Scratch-shaped, with named gaps below (slices, `**`, imports, `katnip_*` builtins).
 - 🟡 **SB3 codegen**; emits blocks, variables, lists, procs, extensions, packs to `.sb3`; throws on any opcode missing slot metadata.
 
 ---
@@ -38,7 +38,7 @@ case passing except the 8 `todo` cases that pin the gaps below — and a clean
   - 🔴 Explicit cast to an enum; there is no `Enum(x)` escape hatch for the non-literal case yet, so the diagnostic points at the member form instead.
 - 🟢 **Type inference**; every expression gets a type; annotations are optional on declarations with an initializer.
 - 🟢 **Generic stdlib typevars**; `T`, `K`, `V` bind from receivers and arguments, so `zip`/`enumerate`/`list.contains` return concrete types.
-- 🟡 **Structs**; nominal record types; fully analyzed, not lowered (see [Structs](#structs)).
+- 🟢 **Structs**; nominal record types, lowered to one column per field (see [Structs](#structs)).
 
 ---
 
@@ -49,7 +49,8 @@ case passing except the 8 `todo` cases that pin the gaps below — and a clean
   - 🟢 Sprite members shadowing a global are renamed `Sprite_name` at codegen, since Scratch cannot represent the collision.
   - 🟢 A variable declared inside a proc becomes a mangled global; scope-less by design, so recursion still clobbers it.
 - 🟢 **Procedures**; `proc name(params) -> Type { ... }`, with bodies lowered into `procedures_definition` blocks.
-  - 🟢 Overloading by parameter list; dispatch resolved by argument types.
+  - 🟢 Overloading by parameter list; dispatch resolved by argument types. Identical parameter types are a redeclaration error.
+  - 🟢 Parameters are read-only; assigning to one is an error.
   - 🟢 Default parameter values.
   - 🟢 Named arguments; `motion.goTo(y = 0, x = 0)` routes by name, not position.
   - 🟢 Methods; a first parameter named `self` makes the proc callable as `receiver.method()`.
@@ -87,9 +88,9 @@ case passing except the 8 `todo` cases that pin the gaps below — and a clean
 ## Expressions and operators
 
 - 🟢 **Arithmetic**; `+`, `-`, `*`, `/`, `%`, and unary `-`.
-- 🟢 **Comparison**; `==`, `<`, `>`.
-- 🟢 **Logic**; `&&`, `||`, and unary `!`.
-- 🟢 **Composed operators**; `<=`, `>=`, `^`, `!&`, `!|`, `!^` have no Scratch block, so they come from `@lower = "builds"` stdlib procs inlined as nested reporters at each use site.
+- 🟢 **Comparison**; `==`, `!=`, `<`, `>`.
+- 🟢 **Logic**; `&&`, `||`, and unary `!`, all requiring `bool` operands.
+- 🟢 **Composed operators**; `!=`, `<=`, `>=`, `^`, `!&`, `!|`, `!^` have no Scratch block, so they come from `@lower = "builds"` stdlib procs inlined as nested reporters at each use site.
 - 🟢 **Boolean shape coercion**; round reporters entering a hexagonal slot are wrapped automatically, and literals become a comparison.
 - 🟢 **Compound assignment**; `+=`, `-=`, `*=`, `/=`, `%=`, including through a list or dict index.
 - 🟢 **String concatenation**; `+` on strings lowers to `operator_join`.
@@ -153,7 +154,8 @@ case passing except the 8 `todo` cases that pin the gaps below — and a clean
 
 - 🟢 Parsed; fields with type annotations and/or defaults, `public` and `private`.
 - 🟢 Analyzed; literal construction with defaults filled, missing and unknown fields reported, field reads and writes type-checked, struct-typed params and returns, struct lists with per-field column access, non-scalar fields and duplicate fields rejected.
-- 🔴 Lowered; struct literals, field reads, and field writes all no-op in the IR. Nothing struct-shaped survives to sb3.
+- 🟢 Lowered; one variable per field for a lone struct, one parallel list per field for a `list<Struct>`. Literals, field reads and writes, whole-struct assignment, element reads and writes, `add`/`length`/`clear`/`show`/`hide`, `for` over a struct list, struct params (one input per field) and struct returns (one slot per field).
+- 🔴 A whole struct in an interpolated string, `contains`/`indexOf`/`remove`/`merge` on a struct list, and constructing a struct from an imported module are not supported.
 
 ---
 
@@ -221,10 +223,9 @@ also list sprite, costume or backdrop names, which the compiler cannot enumerate
 
 1. Lower imported procs and variables, so `import` stops failing at codegen.
 2. Give the `katnip_*` builtins real lowerings; casts, `console`, `typeof`, and the dict methods are the widest hole.
-3. Lower structs; the analyzer is already complete for them.
-4. Implement `**`, which today lowers silently to an empty literal.
-5. Lower `@lower = "yields"` procs, unblocking `list.remove` and `console.input`.
-6. Read tuple returns at a call site; the ABI already carries the extra slots.
-7. Attach comments to the AST and emit them into the sb3 comment map.
+3. Implement `**`, which today lowers silently to an empty literal.
+4. Lower `@lower = "yields"` procs, unblocking `list.remove` and `console.input`.
+5. Read tuple returns at a call site; the ABI already carries the extra slots.
+6. Attach comments to the AST and emit them into the sb3 comment map.
 </content>
 </invoke>
