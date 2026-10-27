@@ -88,6 +88,11 @@ export class Parser {
         return this.peek()?.token.type === "<EOF>";
     }
 
+    private toArray<T>(value?: T | T[]): T[] {
+        if (!value) return [];
+        return Array.isArray(value) ? value : [value];
+    }
+
     /**
      * Checks if the current token matches the specified type or value.
      * @param kind - The kind of check ("type" or "value").
@@ -102,12 +107,9 @@ export class Parser {
         const token = this.peek();
         if (!token) return false;
 
-        if (kind === "type") {
-            return patterns.includes(token.token.type);
-        } else {
-            if (!isValuedTokenType(token.token.type)) return false;
-            return patterns.includes((token.token as ValuedToken).value);
-        }
+        if (kind === "type") return patterns.includes(token.token.type);
+        if (!isValuedTokenType(token.token.type)) return false;
+        return patterns.includes((token.token as ValuedToken).value);
     }
 
     /**
@@ -139,8 +141,8 @@ export class Parser {
         message: string,
         sync?: { type: TokenType | TokenType[]; value?: string | string[] }
     ): { token: TokenInfoFor<T>; start: TokenPos; end: TokenPos } {
-        const types = options.type ? (Array.isArray(options.type) ? options.type : [options.type]) : [];
-        const values = options.value ? (Array.isArray(options.value) ? options.value : [options.value]) : [];
+        const types = this.toArray(options.type);
+        const values = this.toArray(options.value);
 
         if (types.length && this.tryConsume("type", types)) {
             return this.previous() as { token: TokenInfoFor<T>; start: TokenPos; end: TokenPos };
@@ -171,10 +173,7 @@ export class Parser {
         }
 
         const before = this.position;
-
-        if (sync) {
-            this.synchronize(sync, "Failed to synchronize after consume error");
-        }
+        if (sync) this.synchronize(sync, "Failed to synchronize after consume error");
 
         if (this.position === before && !this.isAtEnd()) {
             this.advance();
@@ -198,12 +197,8 @@ export class Parser {
         options: { type: T | T[]; value?: string | string[] },
         message: string
     ): boolean {
-        const types = options.type
-            ? (Array.isArray(options.type) ? options.type : [options.type])
-            : [];
-        const values = options.value
-            ? (Array.isArray(options.value) ? options.value : [options.value])
-            : [];
+        const types = this.toArray(options.type);
+        const values = this.toArray(options.value);
 
         if (
             (types.length && this.checkToken("type", types)) ||
@@ -244,12 +239,8 @@ export class Parser {
         message: string
     ): void {
         const beginning = this.peek()!.start;
-        const types = options.type
-            ? (Array.isArray(options.type) ? options.type : [options.type])
-            : [];
-        const values = options.value
-            ? (Array.isArray(options.value) ? options.value : [options.value])
-            : [];
+        const types = this.toArray(options.type);
+        const values = this.toArray(options.value);
 
         const before = this.position;
 
@@ -269,9 +260,8 @@ export class Parser {
     }
 
     /**
-     * Consumes a statement-terminating ';'. 
-     * If it is missing, reports the errorbut does NOT advance.
-     * The current token starts the next statement.
+     * Consumes a statement-terminating ';'.
+     * If it is missing, reports the error but does NOT advance, since the current token starts the next statement.
      */
     private expectSemicolon(message: string): void {
         if (this.tryConsume("type", [";"])) return;
@@ -423,17 +413,9 @@ export class Parser {
             if (this.checkToken("value", ["case"])) return this.parseCaseStatement();
             if (this.checkToken("value", ["default"])) return this.parseDefaultCaseStatement();
 
-            // Parse an expression statement
             const expression: ExpressionNode = this.parseExpression();
-            const assignmentExpression = this.parseAssignmentExpression(expression);
-            if (assignmentExpression) {
-                return assignmentExpression;
-            }
-
-            const handlerDeclaration = this.parseHandlerDeclaration(expression);
-            if (handlerDeclaration) {
-                return handlerDeclaration;
-            }
+            const assignmentOrHandler = this.parseAssignmentExpression(expression) ?? this.parseHandlerDeclaration(expression);
+            if (assignmentOrHandler) return assignmentOrHandler;
 
             this.expectSemicolon("Expected semicolon at the end of an expression statement");
             return {
@@ -734,8 +716,7 @@ export class Parser {
         const access = this.consume({ type: "Identifier", value: Object.values(VariableDeclarationType) }, "Expected 'private' or 'public' keyword");
         const variableName = this.consume({ type: "Identifier" }, "Expected variable name");
 
-        // Valid fomations: no type + yes init, yes type + yes init, yes type + no init
-        // INvalid formations: no type + no init
+        // Needs a type annotation, an initializer, or both
         let typeAnnotation = null;
         let initializer = null;
         if (this.tryConsume("type", [":"])) {
@@ -773,23 +754,14 @@ export class Parser {
         }
 
         this.expectSemicolon(`Expected ';' at the end of a${type === "import" ? "n" : ""} ${type} declaration`);
-        if (type === "import")
-            return {
-                type: "ImportDeclaration",
-                specifier: specifier.token.value,
-                specifierLoc: { start: specifier.start, end: specifier.end },
-                alias,
-                loc: { start: keyword.start, end: this.previous()?.end || keyword.start },
-            };
-        else
-            return {
-                type: "AssetDeclaration",
-                kind: type,
-                specifier: specifier.token.value,
-                specifierLoc: { start: specifier.start, end: specifier.end },
-                alias,
-                loc: { start: keyword.start, end: this.previous()?.end || keyword.start },
-            };
+        const decl = {
+            specifier: specifier.token.value,
+            specifierLoc: { start: specifier.start, end: specifier.end },
+            alias,
+            loc: { start: keyword.start, end: this.previous()?.end || keyword.start },
+        };
+        if (type === "import") return { type: "ImportDeclaration", ...decl };
+        return { type: "AssetDeclaration", kind: type, ...decl };
     }
 
     private parseSpriteDefinition(isStage: boolean): StatementNode {
@@ -861,27 +833,25 @@ export class Parser {
      * @returns The handler declaration node or null if not applicable.
      */
     private parseHandlerDeclaration(left: ExpressionNode): StatementNode | null {
-        if (left.type == "CallExpression" && this.checkToken("type", ["{"])) {
-            const body = this.parseBlockExpression();
-            
-            return {
-                type: "HandlerStatement",
-                call: left,
-                body: {
-                    type: "Block",
-                    body: body,
-                    loc: {
-                        start: body[0]?.loc.start || left.loc.start,
-                        end: body[body.length - 1]?.loc.end || left.loc.end,
-                    },
-                },
+        if (left.type != "CallExpression" || !this.checkToken("type", ["{"])) return null;
+
+        const body = this.parseBlockExpression();
+        return {
+            type: "HandlerStatement",
+            call: left,
+            body: {
+                type: "Block",
+                body: body,
                 loc: {
-                    start: left.loc.start,
+                    start: body[0]?.loc.start || left.loc.start,
                     end: body[body.length - 1]?.loc.end || left.loc.end,
                 },
-            };
-        }
-        return null;
+            },
+            loc: {
+                start: left.loc.start,
+                end: body[body.length - 1]?.loc.end || left.loc.end,
+            },
+        };
     }
 
     /**
@@ -1163,7 +1133,6 @@ export class Parser {
             const bp = getBindingPower(token);
             if (!bp || bp.lbp <= minBP) break;
 
-            //this.advance();
             this.logger.log(new KatnipLog(KatnipLogType.Debug, `Infix operator: ${this.peek()?.token.type}`));
             left = this.parseInfix(left, bp);
         }
@@ -1274,7 +1243,7 @@ export class Parser {
             const expr = this.parseExpression();
 
             if (this.checkToken("type", [","])) {
-                let tupleElements: ExpressionNode[] = [expr];
+                const tupleElements: ExpressionNode[] = [expr];
                 while (this.tryConsume("type", [","])) {
                     tupleElements.push(this.parseExpression());
                 }
@@ -1491,16 +1460,14 @@ export class Parser {
             }
 
             // Slice: consume the first ':', then an optional end and optional ':' + step.
-            this.advance(); // consume ':'
+            this.advance();
             let sliceEnd: ExpressionNode | null = null;
             if (!this.checkToken("type", [":", "]"])) {
                 sliceEnd = this.parseExpression();
             }
             let sliceStep: ExpressionNode | null = null;
-            if (this.tryConsume("type", [":"])) {
-                if (!this.checkToken("type", ["]"])) {
-                    sliceStep = this.parseExpression();
-                }
+            if (this.tryConsume("type", [":"]) && !this.checkToken("type", ["]"])) {
+                sliceStep = this.parseExpression();
             }
             this.consume({ type: "]" }, "Expected ']' after slice");
 
@@ -1518,24 +1485,18 @@ export class Parser {
         }
 
         if (this.checkToken("type", ["."])) {
-            // Member access
-            if (this.checkToken("type", ["."])) {
-              this.advance();
-              const id = this.consume(
-                { type: "Identifier" },
-                "Expected property name after '.'",
-              );
-              return {
+            this.advance();
+            const id = this.consume({ type: "Identifier" }, "Expected property name after '.'");
+            return {
                 type: "MemberExpression",
                 object: left,
                 property: {
-                  type: "Identifier",
-                  name: id.token.value,
-                  loc: { start: id.start, end: id.end },
+                    type: "Identifier",
+                    name: id.token.value,
+                    loc: { start: id.start, end: id.end },
                 },
                 loc: { start: left.loc.start, end: id.end },
-              } as ExpressionNode;
-            }
+            } as ExpressionNode;
         }
 
         // Binary operator (fallback). Use binding power to parse right-hand side.
@@ -1556,10 +1517,9 @@ export class Parser {
 
     /**
      * Parses a block expression following a method call.
-     * @param allowedStatements - A list of allowed statement types inside this body.
      * @returns The parsed block expression node.
      */
-    private parseBlockExpression(allowedStatements?: StatementNode[]): StatementNode[] {
+    private parseBlockExpression(): StatementNode[] {
         if (!this.checkToken("type", ["{"])) {
             this.reporter.add(new KatnipError(
                 "Parser",
@@ -1573,9 +1533,7 @@ export class Parser {
 
         while (!this.isAtEnd() && !this.checkToken("type", ["}"])) {
             const stmt = this.parseStatement();
-            if (stmt && (!allowedStatements || allowedStatements.includes(stmt))) {
-                body.push(stmt);
-            }
+            if (stmt) body.push(stmt);
         }
 
         this.consume({ type: "}" }, "Expected '}' to close block");

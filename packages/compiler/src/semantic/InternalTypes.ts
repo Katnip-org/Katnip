@@ -70,7 +70,7 @@ export function isAssignable(from: InternalType, to: InternalType, ctx?: AssignC
             );
         }
         case "tuple": return (from.elements.length === toAny.elements.length && from.elements.every((t, i) => isAssignable(t, toAny.elements[i])));
-        case "enum": return from.name === toAny.name;
+        case "enum":
         case "struct": return from.name === toAny.name;
     }
 
@@ -112,8 +112,8 @@ export function bindReceiver(
     if (param.kind !== receiver.kind) return false;
 
     switch (param.kind) {
-        case "primitive": return param.name === (receiver as typeof param).name;
-        case "enum": return param.name === (receiver as typeof param).name;
+        case "primitive":
+        case "enum":
         case "struct": return param.name === (receiver as typeof param).name;
         case "list": return bindReceiver(param.element, (receiver as typeof param).element, bindings);
         case "dict": {
@@ -132,9 +132,7 @@ export function bindReceiver(
 }
 
 export function isStr(type: InternalType): boolean {
-    if (type.kind !== "primitive") return false;
-    if (type.name === "str") return true;
-    return false;
+    return type.kind === "primitive" && type.name === "str";
 }
 
 export function typeToString(type: InternalType): string {
@@ -144,8 +142,8 @@ export function typeToString(type: InternalType): string {
         case "dict": return `dict<${typeToString(type.key)}: ${typeToString(type.value)}>`;
         case "tuple": return `(${type.elements.map(typeToString).join(", ")})`;
         case "union": return `${typeToString(type.left)} | ${typeToString(type.right)}`;
-        case "enum": return type.name;
-        case "struct": return type.name;
+        case "enum":
+        case "struct":
         case "typevar": return type.name;
         case "unknown": return "unknown";
         default: {

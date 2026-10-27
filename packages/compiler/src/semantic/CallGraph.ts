@@ -82,7 +82,7 @@ function findCyclicSignatures(
 export function resolveReturnStrategies(
     procs: Map<ProcedureDeclarationNode, Signature>,
     resolutions: Map<CallExpressionNode, Signature>,
-    error: (message: string, node: NodeBase) => void, // Pass in error reporter to keep error reporting consistent
+    error: (message: string, node: NodeBase) => void,
 ): void {
     const userSigs = new Set(procs.values());
     const edges = new Map<Signature, Signature[]>();

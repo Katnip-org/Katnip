@@ -33,7 +33,7 @@ export const bindingPowerTable: Record<string, BindingPower> = {
 
   // unary operators
   "!":  { lbp: 0, rbp: 79 },
-  "UnaryMinus": { lbp: 0, rbp: 79 }, // unary minus
+  "UnaryMinus": { lbp: 0, rbp: 79 },
 
   // access/call
   ".":  { lbp: 100, rbp: 100 }, // member access, non-associative

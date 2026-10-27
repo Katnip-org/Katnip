@@ -13,7 +13,7 @@ export class KatnipError extends Error {
 
     constructor(
         public source: string,      // e.g. "Lexer", "Parser"
-        message: string,            // error message
+        message: string,
         // Absent for IR/codegen: those run on lowered nodes with no source span.
         public location?: KatnipErrorData,
         // "warning" is reported but never blocks a build; only `severity: "error"` does.
@@ -22,7 +22,7 @@ export class KatnipError extends Error {
     ) {
         super(message);
         this.name = "KatnipError";
-        // captureStackTrace is V8-only (Node/Chromium); cast avoids erors in other runtimes
+        // captureStackTrace is V8-only (Node/Chromium); cast avoids errors in other runtimes
         const captureStackTrace = (Error as { captureStackTrace?: (o: object, c?: unknown) => void }).captureStackTrace;
         if (captureStack && captureStackTrace) {
             const err = {} as Error & { stack?: string };
@@ -66,17 +66,17 @@ export class ErrorReporter {
         const tint = warn ? pc.yellow : pc.red;
         const header = `${tint(pc.bold(`${err.source} ${warn ? "Warning" : "Error"}:`))} ${pc.yellow(err.message)}\n`;
 
-        if (!err.location) {
-            let output = header;
-            if (this.showStackTrace && err.stackTrace) {
-                output +=
-                    `\n${pc.gray("Internal stack trace:")}\n` +
-                    pc.gray(this.formatStack(err.stackTrace));
-            }
-            return output;
+        let output = header + (err.location ? this.formatLocation(err.location, tint) : "");
+        if (this.showStackTrace && err.stackTrace) {
+            output +=
+                `\n${pc.gray("Internal stack trace:")}\n` +
+                pc.gray(this.formatStack(err.stackTrace));
         }
+        return output;
+    }
 
-        const { line, column, length, endLine, endColumn } = err.location;
+    private formatLocation(location: KatnipErrorData, tint: (s: string) => string): string {
+        const { line, column, length, endLine, endColumn } = location;
         const sourceLine = this.sourceLines[line - 1] || "";
         const gutterWidth = String(this.sourceLines.length).length;
 
@@ -99,20 +99,12 @@ export class ErrorReporter {
         const underline =
             " ".repeat(column - 1) + tint("^".repeat(caretLen));
 
-        let output =
-          header +
+        return (
           `  at ${pc.cyan(`line ${line}, column ${column}`)}\n` +
           `  ${" ".repeat(gutterWidth)} ${pc.gray("|")}\n` +
           `  ${gutter} ${pc.white(sourceLine)}\n` +
-          `  ${" ".repeat(gutterWidth)} ${pc.gray("|")} ${underline}\n`;
-
-        if (this.showStackTrace && err.stackTrace) {
-            output +=
-                `\n${pc.gray("Internal stack trace:")}\n` +
-                pc.gray(this.formatStack(err.stackTrace));
-        }
-
-        return output;
+          `  ${" ".repeat(gutterWidth)} ${pc.gray("|")} ${underline}\n`
+        );
     }
 
     private formatStack(stack: string): string {

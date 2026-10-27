@@ -106,6 +106,11 @@ function nearestMember(
     return best;
 }
 
+/** Every overload signature across a name's procedure symbols. */
+function procOverloads(symbols: readonly SymbolEntry[]): Signature[] {
+    return symbols.filter((s): s is ProcedureSymbol => s.kind === "procedure").flatMap(s => s.signatures);
+}
+
 /** A placeholder declNode for symbols with no real source location (stdlib namespaces). */
 function syntheticNode(type: string): NodeBase {
     return { type, loc: { start: { line: 1, column: 1 }, end: { line: 1, column: 1 } } };
@@ -144,7 +149,7 @@ export class SemanticAnalyzer {
     /**
      * Member values of each enum, in declaration order, keyed by enum name (as `constMembers` is:
      * a name shared across namespaces collides, last declaration wins).
-     * These are the *lowered* values — exactly what a member reference folds to — so a literal
+     * These are the *lowered* values (exactly what a member reference folds to), so a literal
      * coerced by `isAssignable` and the equivalent member reference emit identical IR.
      */
     private readonly enumValues = new Map<string, (string | number)[]>();
@@ -299,7 +304,7 @@ export class SemanticAnalyzer {
             for (const sym of symbols)
                 if ((sym.declNode as { access?: string }).access === "public") facade.declare(sym);
 
-        // The imported file's own errors carry its line numbers, so they cannot be shown agaist this file. Surface first.
+        // The imported file's own errors carry its line numbers, so they cannot be shown against this file. Surface first.
         const [first] = module.reporter.getErrors();
         if (first)
             this.error(
@@ -310,14 +315,13 @@ export class SemanticAnalyzer {
         return facade;
     }
 
-    /** Resolve hoisted stdlib so they can be earglerly loaded. */
+    /** Resolve hoisted stdlib so they can be eagerly loaded. */
     private finalizeStdlibScope(body: StatementNode[]): void {
         for (const stmt of body) {
             if (stmt.type === "ProcedureDeclaration") {
-                const procs = this.current
-                    .lookupLocal(stmt.name)
-                    ?.filter((s): s is ProcedureSymbol => s.kind === "procedure");
-                const sig = procs?.flatMap(p => p.signatures).find(s => s.params === stmt.parameters);
+                const sig = procOverloads(this.current.lookupLocal(stmt.name) ?? []).find(
+                    s => s.params === stmt.parameters,
+                );
                 if (!sig) continue; // hoist already reported a redeclaration error
                 sig.resolvedParamTypes = stmt.parameters.map(p => this.typeFromNode(p.paramType));
                 sig.resolvedReturn = stmt.returnType
@@ -336,12 +340,10 @@ export class SemanticAnalyzer {
 
     // -- Scope stack --
 
-    /** Pushes a fresh child scope and makes it current. */
     private enter(kind: ScopeKind): void {
         this.current = new Scope(kind, this.current);
     }
 
-    /** Pops back to the parent scope. */
     private exit(): void {
         if (this.current.parent) this.current = this.current.parent;
     }
@@ -568,18 +570,7 @@ export class SemanticAnalyzer {
 
                 // A `public` member was already hoisted into the file scope above; the sprite does not own it.
                 const hoisted = this.current.kind === "sprite" && isPublicVar(node);
-                if (this.current.kind !== "global" && !hoisted) {
-                    this.declare(
-                        {
-                            kind: "variable",
-                            name: node.name,
-                            declNode: node,
-                            type: node.varType,
-                            access: node.access,
-                        },
-                        node,
-                    );
-                }
+                if (this.current.kind !== "global" && !hoisted) this.hoistVariable(node);
 
                 const owner = hoisted ? this.current.parent! : this.current;
                 const sym = owner.lookupLocal(node.name)?.find(s => s.declNode === node);
@@ -796,7 +787,6 @@ export class SemanticAnalyzer {
                 this.checkStructDeclaration(node);
                 break;
             case "ErrorStatement":
-                // Error statements come from the parser.
                 break;
         }
     }
@@ -838,12 +828,10 @@ export class SemanticAnalyzer {
 
     /** A struct field maps to one Scratch scalar slot, so its type must be a single value. */
     private isScalarFieldType(type: InternalType): boolean {
-        if (type.kind === "unknown") return true; // don't double-report an already-broken type
-        if (type.kind === "enum") return true;
+        if (type.kind === "unknown" || type.kind === "enum") return true; // unknown: don't double-report
         return type.kind === "primitive" && type.name !== "void";
     }
 
-    /** Three-step reusable block visitor. */
     private visitBlock(block: BlockNode, kind: ScopeKind = "block"): void {
         this.enter(kind);
         for (const statement of block.body) this.visit(statement);
@@ -1013,7 +1001,6 @@ export class SemanticAnalyzer {
                 }
 
                 switch (expression.operator) {
-                    // arithmetic
                     case "+":
                         if (l.kind === "list" && matchedPair) return l; // concatenation
                         return isStr(l) || isStr(r)
@@ -1025,16 +1012,11 @@ export class SemanticAnalyzer {
                     case "%":
                     case "**":
                         return { kind: "primitive", name: "num" };
-
-                    // comparison
                     case "==":
                     case "<":
                     case ">":
                     case "<=":
                     case ">=":
-                        return { kind: "primitive", name: "bool" };
-
-                    // logical
                     case "&&":
                     case "||":
                     case "!&":
@@ -1047,8 +1029,8 @@ export class SemanticAnalyzer {
             case "CallExpression":
                 return this.resolveCall(expression).type;
             case "DictExpression": {
-                if (expression.entries.length == 0)
-                    return { kind: "dict", key: { kind: "unknown" }, value: { kind: "unknown" } };
+                const unknownDict: InternalType = { kind: "dict", key: { kind: "unknown" }, value: { kind: "unknown" } };
+                if (expression.entries.length == 0) return unknownDict;
 
                 const firstKeyType = this.inferType(expression.entries[0].key);
                 const firstValueType = this.inferType(expression.entries[0].value);
@@ -1062,11 +1044,7 @@ export class SemanticAnalyzer {
                             `Expected key of type ${typeToString(firstKeyType)}, got ${typeToString(keyType)}`,
                             entry.key,
                         );
-                        return {
-                            kind: "dict",
-                            key: { kind: "unknown" },
-                            value: { kind: "unknown" },
-                        };
+                        return unknownDict;
                     }
 
                     if (!isAssignable(valueType, firstValueType)) {
@@ -1074,19 +1052,11 @@ export class SemanticAnalyzer {
                             `Expected value of type ${typeToString(firstValueType)}, got ${typeToString(valueType)}`,
                             entry.value,
                         );
-                        return {
-                            kind: "dict",
-                            key: { kind: "unknown" },
-                            value: { kind: "unknown" },
-                        };
+                        return unknownDict;
                     }
                 }
 
-                return {
-                    kind: "dict",
-                    key: firstKeyType,
-                    value: firstValueType,
-                };
+                return { kind: "dict", key: firstKeyType, value: firstValueType };
             }
             case "IndexerAccess": {
                 const objectType = this.inferType(expression.object);
@@ -1108,11 +1078,7 @@ export class SemanticAnalyzer {
                 return { kind: "unknown" };
             }
             case "InterpolatedString":
-                for (const entry of expression.parts) {
-                    if (!(typeof entry === "string")) {
-                        this.inferType(entry);
-                    }
-                }
+                for (const entry of expression.parts) if (typeof entry !== "string") this.inferType(entry);
                 return { kind: "primitive", name: "str" };
             case "ListExpression": {
                 if (expression.elements.length == 0) {
@@ -1153,10 +1119,8 @@ export class SemanticAnalyzer {
                 if (expression.step) this.inferType(expression.step);
                 return objectType;
             }
-            case "TupleExpression": {
-                const elements = expression.elements.map(item => this.inferType(item));
-                return { kind: "tuple", elements };
-            }
+            case "TupleExpression":
+                return { kind: "tuple", elements: expression.elements.map(item => this.inferType(item)) };
             case "UnaryExpression":
                 const right = this.inferType(expression.argument);
                 switch (expression.operator) {
@@ -1173,7 +1137,6 @@ export class SemanticAnalyzer {
                         return { kind: "primitive", name: "num" };
                 }
             case "EmptyExpression":
-                return { kind: "unknown" };
             case "ErrorToken":
                 return { kind: "unknown" };
         }
@@ -1247,10 +1210,7 @@ export class SemanticAnalyzer {
         const struct = candidates.find((s): s is StructSymbol => s.kind === "struct");
         if (struct) return this.resolveStructLiteral(call, struct, args);
 
-        // A name can carry several procedure overloads; anything else isn't callable.
-        const overloads = candidates
-            .filter((s): s is ProcedureSymbol => s.kind === "procedure")
-            .flatMap(s => s.signatures);
+        const overloads = procOverloads(candidates);
         if (overloads.length === 0) {
             this.error(`'${name}' is not a procedure and cannot be called`, call.object);
             return { type: { kind: "unknown" } };
@@ -1321,9 +1281,7 @@ export class SemanticAnalyzer {
                     this.error(`Namespace '${head.name}' has no member '${propName}'`, callee.property);
                     return { type: { kind: "unknown" } };
                 }
-                const overloads = members
-                    .filter((s): s is ProcedureSymbol => s.kind === "procedure")
-                    .flatMap(s => s.signatures);
+                const overloads = procOverloads(members);
                 if (overloads.length === 0) {
                     this.error(`'${head.name}.${propName}' is not a procedure and cannot be called`, callee);
                     return { type: { kind: "unknown" } };
@@ -1347,10 +1305,9 @@ export class SemanticAnalyzer {
         }
 
         // Stdlib self calls get special case resolving.
-        const overloads = (this.stdlibNamespace(nsName)?.scope.lookupLocal(propName) ?? [])
-            .filter((s): s is ProcedureSymbol => s.kind === "procedure")
-            .flatMap(s => s.signatures)
-            .filter(sig => sig.params[0]?.name === "self");
+        const overloads = procOverloads(this.stdlibNamespace(nsName)?.scope.lookupLocal(propName) ?? []).filter(
+            sig => sig.params[0]?.name === "self",
+        );
         if (overloads.length === 0) {
             this.error(`'${propName}' is not a method of type '${typeToString(receiver)}'`, callee.property);
             return { type: { kind: "unknown" } };
@@ -1530,7 +1487,7 @@ export class SemanticAnalyzer {
         return { type, signature: match };
     }
 
-    /** Choose the first overload that matches the signiture of the function call */
+    /** Choose the first overload that matches the signature of the function call */
     private selectOverload(
         overloads: Signature[],
         args: CallArguments,
@@ -1538,12 +1495,8 @@ export class SemanticAnalyzer {
         name: string,
     ): Signature | null {
         const single = overloads.length === 1;
-        for (const sig of overloads) {
-            if (this.bindArguments(sig, args, call, name, single)) return sig;
-        }
-        if (!single) {
-            this.error(`No overload of '${name}' matches these arguments`, call);
-        }
+        for (const sig of overloads) if (this.bindArguments(sig, args, call, name, single)) return sig;
+        if (!single) this.error(`No overload of '${name}' matches these arguments`, call);
         return null;
     }
 
@@ -1685,8 +1638,7 @@ export class SemanticAnalyzer {
      * the first N columns (e.g. just an offending keyword).
      */
     private error(message: string, ref: NodeBase | SourceLocation, length?: number): void {
-        let loc = "loc" in ref ? ref.loc : ref;
-        
+        const loc = "loc" in ref ? ref.loc : ref;
         this.reporter.add(
             new KatnipError("Semantic", message, {
                 line: loc.start.line,

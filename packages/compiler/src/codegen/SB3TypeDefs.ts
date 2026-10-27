@@ -1,5 +1,3 @@
-
-
 // --- Primitives ---
 export type Scalar = string | number | boolean;
 
@@ -183,7 +181,6 @@ export interface Stage extends TargetBase {
     videoTransparency: number;
     videoState: VideoState;
     textToSpeechLanguage: string | null;
-    broadcasts: BroadcastMap;
 }
  
 export interface Sprite extends TargetBase {

@@ -1,5 +1,3 @@
-// import { zipSync } from 'fflate';
-
 import { paramType, type IRAsset, type IRExpr, type IRParam, type IRProc, type IRProgram, type IRScript, type IRStmt } from "../ir/IRNode.js";
 import type { AssetTable } from "./assets.js";
 import {
@@ -121,15 +119,12 @@ export class SB3Generator {
     private used = new Set<KnownExtension>();
     private topY = 0;
 
-    constructor() {}
-
     generate(ir: IRProgram, assets: AssetTable = new Map()): Sb3Project {
         this.sb3 = minimalProject();
         this.varIDs.clear();
         this.listIDs.clear();
         this.procSigs.clear();
         this.broadcastIDs.clear();
-
         this.used.clear();
 
         const stage = minimalStage();
@@ -179,9 +174,7 @@ export class SB3Generator {
     }
 
     private generateID(type: keyof typeof this.IDStore): string {
-        const id = this.IDStore[type];
-        this.IDStore[type]++;
-        return `${type}${id}`;
+        return `${type}${this.IDStore[type]++}`;
     }
 
     /** Registers each name on the target and remembers its id, so references can resolve to it. */
@@ -245,17 +238,17 @@ export class SB3Generator {
     }
 
     private signature(proc: IRProc): ProcSignature {
-        let sig = this.procSigs.get(proc.name);
-        if (!sig) {
-            sig = {
-                proccode: proccodeOf(proc),
-                argumentids: proc.params.map(() => this.generateID("var")),
-                types: proc.params.map((p) => p.type),
-                // The sb3 schema rejects anything but "true"/"false".
-                warp: String(proc.warp),
-            };
-            this.procSigs.set(proc.name, sig);
-        }
+        const cached = this.procSigs.get(proc.name);
+        if (cached) return cached;
+
+        const sig: ProcSignature = {
+            proccode: proccodeOf(proc),
+            argumentids: proc.params.map(() => this.generateID("var")),
+            types: proc.params.map((p) => p.type),
+            // The sb3 schema rejects anything but "true"/"false".
+            warp: String(proc.warp),
+        };
+        this.procSigs.set(proc.name, sig);
         return sig;
     }
 
@@ -415,7 +408,7 @@ export class SB3Generator {
                         block.fields[slot.name] = [String(expr.value), null];
                         break;
                     }
-                    
+
                     const name = expr.kind === "var" ? expr.name : expr.kind === "lit" ? String(expr.value) : null;
                     if (name === null)
                         throw new KatnipError("Codegen",`${opcode}.${slot.name} needs a ${slot.ref} name, got ${expr.kind}`);
@@ -457,12 +450,12 @@ export class SB3Generator {
 
     /** Broadcasts are registered on the stage, whichever target uses them. */
     private broadcastID(name: string): Uid {
-        let id = this.broadcastIDs.get(name);
-        if (!id) {
-            id = this.generateID("broadcast");
-            this.broadcastIDs.set(name, id);
-            this.sb3.targets[0]!.broadcasts[id] = name;
-        }
+        const existing = this.broadcastIDs.get(name);
+        if (existing) return existing;
+
+        const id = this.generateID("broadcast");
+        this.broadcastIDs.set(name, id);
+        this.sb3.targets[0]!.broadcasts[id] = name;
         return id;
     }
 

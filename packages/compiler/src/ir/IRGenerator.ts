@@ -47,7 +47,7 @@ export class IRGenerator {
         procs: new Map(),
         sprites: [],
         variables: new Map(),
-        lists: new Map([]),
+        lists: new Map(),
     };
 
     private sprite: IRSprite | null = null;
@@ -113,7 +113,6 @@ export class IRGenerator {
                 case "ImportDeclaration":
                 case "StructDeclaration":
                 case "VariableAssignment":
-                
                 // Statements not supported outside of a sprite declaration must error
                 case "HandlerStatement":
                 case "SwitchDeclaration":
@@ -131,7 +130,6 @@ export class IRGenerator {
             }
         }
 
-        
         for (const [decl, sig] of this.analyzer.procSignatures) {
             if (!this.plans.has(sig)) continue;
             const proc = this.lowerProc(decl);
@@ -202,12 +200,11 @@ export class IRGenerator {
 
     private declareMember(node: VariableDeclarationNode, sink?: IRStmt[]): void {
         const target = isPublicVar(node) ? this.program : this.sprite ?? this.program;
+        const init = node.initializer;
         const kind =
             node.varType?.type === "Type"
                 ? node.varType.typeName
-                : node.initializer && this.analyzer.exprTypes.get(node.initializer)?.kind;
-        const init = node.initializer;
-
+                : init && this.analyzer.exprTypes.get(init)?.kind;
         const name = this.emittedName(node);
 
         if (kind !== "list" && kind !== "dict") {
@@ -223,8 +220,8 @@ export class IRGenerator {
                 }
                 return;
             }
-            const value = init ? this.lowerExpr(init, sink) : null;
-            this.emit(sink, this.set(this.declare(node.name, target), value ?? { kind: "lit", value: "" }));
+            const value: IRExpr = init ? this.lowerExpr(init, sink) : { kind: "lit", value: "" };
+            this.emit(sink, this.set(this.declare(node.name, target), value));
             return;
         }
 
@@ -257,7 +254,6 @@ export class IRGenerator {
         });
         this.popTo(out, mark);
     }
-
 
     private listsOf(node: ExpressionNode): string[] {
         const names = node.type === "Identifier" ? this.listNames.get(node.name) : undefined;
@@ -293,10 +289,8 @@ export class IRGenerator {
             if (sig.meta?.operator) this.operatorProcs.set(sig.meta.operator, sig);
             if (sig.meta?.lower !== "userproc") continue;
 
-            const mangled = this.mangle(decl.name);
             const returns = sig.meta.returns ?? { kind: "void" };
-
-            this.plans.set(sig, this.planFor(mangled, returns, sig.meta.retResolved));
+            this.plans.set(sig, this.planFor(this.mangle(decl.name), returns, sig.meta.retResolved));
         }
     }
 
@@ -306,13 +300,11 @@ export class IRGenerator {
         if (resolved === "vstack")
             return { mangled, returns, strategy: "vstack", retVars: [], vStackName: `${mangled}_stack` };
         const width = returns.kind === "tuple" ? returns.width : 1;
-
         let retVars;
         if (width === 1)
             retVars = [`${mangled}_ret`];
         else
             retVars = Array.from({ length: width }, (_, i) => `${mangled}_ret${i}`);
-
         return { mangled, returns, strategy: "var", retVars, vStackName: null };
     }
 
@@ -358,7 +350,7 @@ export class IRGenerator {
             vStackName: plan.vStackName,
             retVars: plan.retVars,
             temps,
-            body: body,
+            body,
         };
     }
 
@@ -409,10 +401,9 @@ export class IRGenerator {
                 this.emit(out, { kind: "while", cond, body: this.lowerBlock(node.body) });
                 break;
             }
-            case "ForStatement": {
+            case "ForStatement":
                 this.lowerFor(node, out);
                 break;
-            }
             case "SwitchDeclaration": {
                 const value = this.lowerExpr(node.value, out);
                 let chain: IRStmt[] = [];
@@ -450,15 +441,13 @@ export class IRGenerator {
                 if (plan.strategy === "var")
                     lowered.forEach((value, i) => this.emit(out, this.set(plan.retVars[i], value)));
                 else if (plan.strategy === "vstack") {
-                    let staged;
+                    let staged = lowered;
                     if (this.pending.length > mark) {
-                        staged = lowered.map((value, i) => {
-                              const name = this.declare(`staged${i}`);
-                              this.emit(out, this.set(name, value));
-                              return { kind: "var", name } as IRExpr;
-                          })
-                    } else {
-                        staged = lowered;
+                        staged = lowered.map((value, i): IRExpr => {
+                            const name = this.declare(`staged${i}`);
+                            this.emit(out, this.set(name, value));
+                            return { kind: "var", name };
+                        });
                     }
                     this.popTo(out, mark);
                     for (const value of staged)
@@ -509,7 +498,6 @@ export class IRGenerator {
                         this.emit(out, replace);
                         break;
                     }
-                    
                     this.emit(out, {
                         kind: "if",
                         cond: { kind: "op", opcode: "operator_gt", inputs: [slot(), { kind: "lit", value: 0 }] },
@@ -551,9 +539,8 @@ export class IRGenerator {
                         break;
                     }
                 }
+                // lowerExpr emits a userproc call itself; any other result is discarded
                 this.lowerExpr(node.expression, out);
-                // `lowerExpr()` will automatically parse a userproc call and emit it;
-                // we ignore the return if its anything else (reporter/yields), as it shouldn't be here
                 break;
             }
         }
@@ -576,7 +563,6 @@ export class IRGenerator {
                 opcode: "data_itemoflist",
                 inputs: [{ kind: "var", name: list }, { kind: "var", name: iter }],
             });
-            
             const step: IRStmt[] = [];
             if (names[1]) step.push(this.set(this.declare(names[1]), item(lists[1])));
             step.push(this.set(iter, item(lists[0])));
@@ -601,28 +587,26 @@ export class IRGenerator {
             return;
         }
         const isList = type?.kind === "list";
-        if (!isList && !(type?.kind === "primitive" && type.name === "str")) return; // TODO: dict iteration
+        if (!isList && !(type?.kind === "primitive" && type.name === "str")) return;
 
         const index: IRExpr = { kind: "var", name };
         let element: IRExpr;
-        if (isList) {
+        if (isList)
             element = { kind: "op", opcode: "data_itemoflist", inputs: [iterable, index] };
-        } else {
+        else
             element = { kind: "op", opcode: "operator_letter_of", inputs: [index, iterable] };
-        }
-        
+
         const times: IRExpr = {
             kind: "op",
             opcode: isList ? "data_lengthoflist" : "operator_length",
             inputs: [structuredClone(iterable)],
         };
-        const step: IRStmt = this.set(name, element);
-        this.emit(out, { kind: "for", iter: name, times, body: [step, ...this.lowerBlock(node.body)] });
+        this.emit(out, { kind: "for", iter: name, times, body: [this.set(name, element), ...this.lowerBlock(node.body)] });
     }
 
     /**
      * `for ((a, b), zip(l1, l2))` and `for ((i, v), enumerate(l))` walk by index.
-     * The 1-based loop counter is the index, and each pattern part is read out of its own list per iteration. 
+     * The 1-based loop counter is the index, and each pattern part is read out of its own list per iteration.
      * Returns false if the iterable isn't a zip()/enumerate() call.
      */
     private lowerForPairs(node: ForStatementNode, out: IRStmt[]): boolean {
@@ -643,19 +627,13 @@ export class IRGenerator {
             opcode: "data_itemoflist",
             inputs: [structuredClone(list), { kind: "var", name: iter }],
         });
-        const length = (list: IRExpr): IRExpr => ({
-            kind: "op",
-            opcode: "data_lengthoflist",
-            inputs: [structuredClone(list)],
-        });
+        // TODO: zip should stop at the shorter list
+        const times: IRExpr = { kind: "op", opcode: "data_lengthoflist", inputs: [structuredClone(lists[0]!)] };
 
         const step: IRStmt[] = [];
-        let times: IRExpr;
         if (builtin === "katnip_enumerate") {
-            times = length(lists[0]!);
             if (names[1]) step.push(this.set(this.declare(names[1]!), item(lists[0]!)));
         } else {
-            times = length(lists[0]!); // TODO: Switch to the smallest, using a check, if needed. this.minOf(length(lists[0]!), length(lists[1]!)); 
             if (names[1]) step.push(this.set(this.declare(names[1]!), item(lists[1]!)));
             step.push(this.set(iter, item(lists[0]!))); // last: this write clobbers the index
         }
@@ -686,7 +664,7 @@ export class IRGenerator {
         const stop = arg("stop")!;
         const step = arg("step") ?? { kind: "lit", value: 1 };
 
-        /** The numeric value of a literal expr, or null if it isn't one. Drives the constant folding below. */
+        /** Literal value as a number for constant folding, else null. */
         const num = (expr: IRExpr): number | null => {
             if (expr.kind !== "lit") return null;
             const n = Number(expr.value);
@@ -715,13 +693,11 @@ export class IRGenerator {
         const iter = this.declare((node.pattern as { name: string }).name);
         let value: IRExpr = { kind: "var", name: iter };
         if (c !== 1) value = { kind: "op", opcode: "operator_multiply", inputs: [value, step] };
-        
         let offset: IRExpr;
-        if (a !== null && c !== null) {
+        if (a !== null && c !== null)
             offset = { kind: "lit", value: a - c };
-        } else {
+        else
             offset = { kind: "op", opcode: "operator_subtract", inputs: [start, step] };
-        }
 
         if (num(offset) !== 0) value = { kind: "op", opcode: "operator_add", inputs: [value, offset] };
 
@@ -805,10 +781,6 @@ export class IRGenerator {
         for (const value of Object.values(node)) this.freeze(value);
     }
 
-    /**
-     * Lowers an expression, pushing any setup statements into `out`.
-     * The returned IRExpr is always call-free.
-     */
     private binop(op: string, left: IRExpr, right: IRExpr, out: IRStmt[]): IRExpr {
         const opcode = binaryOpcodes[op];
         if (opcode) return { kind: "op", opcode, inputs: [left, right] };
@@ -818,6 +790,7 @@ export class IRGenerator {
         return { kind: "lit", value: "" }; // TODO: **, % over non-num; no opcode and no builds proc
     }
 
+    /** Lowers an expression, pushing any setup statements into `out`. The returned IRExpr is always call-free. */
     private lowerExpr(node: ExpressionNode, out: IRStmt[]): IRExpr {
         switch (node.type) {
             case "Literal":
@@ -858,8 +831,8 @@ export class IRGenerator {
                 if (!plan.strategy) break;
 
                 // expression slot => first element
-                const width = plan.returns.kind === "tuple" ? plan.returns.width : 1;
                 if (plan.strategy === "var") return { kind: "var", name: plan.retVars[0] };
+                const width = plan.returns.kind === "tuple" ? plan.returns.width : 1;
                 return this.pushVstack(plan.vStackName!, width)[0];
             }
             case "InterpolatedString": {

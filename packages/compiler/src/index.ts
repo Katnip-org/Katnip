@@ -29,7 +29,7 @@ interface Options {
 /** Lex, parse and analyze. `ast` is null when the source was too broken to parse. */
 function analyze(source: string, options: Options) {
     const reporter = new ErrorReporter(source);
-    const logger = new Logger(); // disabled by default
+    const logger = new Logger();
 
     const tokens = new Lexer(reporter, logger).tokenize(source);
     const ast = new Parser(reporter, logger).parse(tokens);

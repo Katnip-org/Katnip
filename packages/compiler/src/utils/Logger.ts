@@ -21,27 +21,25 @@ export class Logger {
     logs: KatnipLog[] = [];
 
     private formatters: Record<KatnipLogType, (msg: string) => string> = {
-        [KatnipLogType.Info]: (msg) => pc.cyan(msg),
-        [KatnipLogType.Warn]: (msg) => pc.yellow(msg),
-        [KatnipLogType.Error]: (msg) => pc.red(msg),
-        [KatnipLogType.Debug]: (msg) => pc.gray(msg)
+        [KatnipLogType.Info]: pc.cyan,
+        [KatnipLogType.Warn]: pc.yellow,
+        [KatnipLogType.Error]: pc.red,
+        [KatnipLogType.Debug]: pc.gray
     };
 
     private sanitizeForLog(value: any): string {
-        if (typeof value === "string") {
+        if (typeof value === "string")
             return JSON.stringify(value); // \n and \r etc are escaped
-        }
         return String(value);
     }
 
     print(log: KatnipLog) {
-        if (this.enabled) {
-            const baseMessage =
-                `${log.timestamp} - [${log.type}] ${this.sanitizeForLog(log.message)}` +
-                (log.location ? ` at line ${log.location.line}, column ${log.location.column}` : "");
-            console.log(this.formatters[log.type](baseMessage));
-            this.write(baseMessage);
-        }
+        if (!this.enabled) return;
+        const baseMessage =
+            `${log.timestamp} - [${log.type}] ${this.sanitizeForLog(log.message)}` +
+            (log.location ? ` at line ${log.location.line}, column ${log.location.column}` : "");
+        console.log(this.formatters[log.type](baseMessage));
+        this.write(baseMessage);
     }
 
     protected write(_msg: string): void {}

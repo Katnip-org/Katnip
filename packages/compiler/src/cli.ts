@@ -55,22 +55,15 @@ cli
             type: 'boolean',
         });
     }, (argv: any) => {
-        // Read in the source file
         fs.readFile(argv.source as PathLike, { encoding: 'utf-8' })
             .then((fileContent: string) => {
-                // Create an error reporter instance
                 const reporter = new ErrorReporter(fileContent, true);
                 const logger = new FileLogger();
-                
                 if (argv.logger === true) logger.enable();
-                else logger.disable();
 
                 const lexer = new Lexer(reporter, logger);
                 const tokens = lexer.tokenize(fileContent);
-
-                // Create temp file with tokens for debugging
-                const tempFilePath = argv.output; // `${outputPath}.tokens.json`;
-                fs.writeFile(tempFilePath, JSON.stringify(tokens, null, 2));
+                fs.writeFile(argv.output, JSON.stringify(tokens, null, 2));
             })
             .catch((err: any) => {
                 console.error('Error reading file:', err);
@@ -94,14 +87,10 @@ cli
             .then((fileContent: string) => {
                 const reporter = new ErrorReporter(fileContent, true);
                 const logger = new FileLogger();
-
                 if (argv.logger === true) logger.enable();
-                else logger.disable();
 
                 const lexer = new Lexer(reporter, logger);
                 const tokens = lexer.tokenize(fileContent);
-
-                // If lexer produced errors, print and abort
                 if (reporter.hasErrors()) {
                     reporter.print();
                     return;
@@ -135,9 +124,7 @@ cli
             .then(async (fileContent: string) => {
                 const reporter = new ErrorReporter(fileContent, true);
                 const logger = new FileLogger();
-
                 if (argv.logger === true) logger.enable();
-                else logger.disable();
 
                 const lexer = new Lexer(reporter, logger);
                 const tokens = lexer.tokenize(fileContent);

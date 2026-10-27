@@ -10,7 +10,7 @@ import type { ReturnMethod } from "../semantic/SymbolTable.js";
 
 /** Most basic IR type */
 export type IRExpr =
-    | { kind: "lit"; value: string | number | boolean } // Literals
+    | { kind: "lit"; value: string | number | boolean }
     | { kind: "op"; opcode: string; inputs: IRExpr[] } // Operator/reporter
     | { kind: "param"; name: string } // argument_reporter from the proc signature
     | { kind: "var"; name: string } // Variable read; not an op (sb3 input form [12, name, id])
@@ -19,7 +19,7 @@ export type IRExpr =
 /** IR building blocks */
 export type IRStmt =
     | { kind: "raw"; opcode: string; inputs: IRExpr[] } // Scratch block with no substack
-    | { kind: "call"; proc: string; args: IRExpr[] } // Proc call
+    | { kind: "call"; proc: string; args: IRExpr[] }
     | { kind: "if"; cond: IRExpr; then: IRStmt[]; else: IRStmt[] }
     | { kind: "while"; cond: IRExpr; body: IRStmt[] }
     | { kind: "repeat"; times: IRExpr; body: IRStmt[] } // control_repeat: times runs 1..times inclusive
