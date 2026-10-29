@@ -316,3 +316,42 @@ test("a non-case statement inside a switch is reported, not silently dropped", (
     const { reporter } = parse("switch (x) { y = 1; case (1) { } }");
     assert.match(reporter.getErrors()[0]?.message ?? "", /Only 'case' and 'default'/);
 });
+
+// -- error recovery: one typo should read as one error --
+
+const SPRITE = `sprite Cat {
+    events.onFlag() {
+        motion.forward(100);
+        looks.say("hi");
+    }
+}`;
+
+test("a half-typed struct or enum is one error, and the sprite after it still parses", () => {
+    for (const head of ["struct", "struct P", "enum", "enum E"]) {
+        const { ast, reporter } = parse(`${head}\n${SPRITE}`);
+        assert.equal(reporter.getErrors().length, 1, head);
+        assert.ok(ast?.body.some((s) => s.type === "SpriteDeclaration"), head);
+    }
+});
+
+test("a bad struct field or enum member is one error, not one per token", () => {
+    assert.equal(parse(`struct P { x: num, 5, y: num }\n${SPRITE}`).reporter.getErrors().length, 1);
+    assert.equal(parse(`enum E { A, "b", C }\n${SPRITE}`).reporter.getErrors().length, 1);
+});
+
+test("a missing '>' or ']' stops at the list instead of reading the rest of the file", () => {
+    assert.equal(parse(`public xs: list<num = [1];\n${SPRITE}`).reporter.getErrors().length, 1);
+    assert.equal(parse(`public xs: list<num> = [1, 2;\n${SPRITE}`).reporter.getErrors().length, 1);
+});
+
+test("errors after the first stay quiet until a statement parses cleanly", () => {
+    const { reporter } = parse(`sprite Cat {
+    events.onFlag() {
+        motion.forward(100;
+        looks.say("hi");
+        looks.say("a" "b");
+    }
+}`);
+    const lines = reporter.getErrors().map((e) => e.location?.line);
+    assert.deepEqual(lines, [3, 5]);
+});

@@ -984,7 +984,8 @@ export class SemanticAnalyzer {
                     if (namespace?.scope.lookupLocal(enumName)?.some(s => s.kind === "enum"))
                         return { kind: "enum", name: enumName };
                 }
-                this.error(`Unknown type '${node.typeName}'`, node);
+                // An empty name is a type the parser failed to read, and it already reported that
+                if (node.typeName) this.error(`Unknown type '${node.typeName}'`, node);
                 return { kind: "unknown" };
             }
         }

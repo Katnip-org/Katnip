@@ -6,10 +6,16 @@ import { isValuedTokenType, UnitTokenType } from "../lexer/Token.js";
 import type { Token, TokenInfoFor, TokenPos, TokenType, ValuedToken } from "../lexer/Token.js";
 import { ErrorReporter, KatnipError } from "../utils/ErrorReporter.js";
 import { KatnipLog, KatnipLogType, Logger } from "../utils/Logger.js";
-import { type AST, type DecoratorNode, type ParameterNode, type ProcedureDeclarationNode, type TypeNode, type TupleTypeNode, type NamedArgumentNode, type ExpressionNode, type StatementNode, type EnumDeclarationNode, type EnumMemberNode, type StructDeclarationNode, type StructFieldNode, type VariableDeclarationNode, VariableDeclarationType, type VariableAssignmentNode, type DictEntryNode, type ElifClauseNode, type BlockNode, type CaseDeclarationNode, type DefaultCaseDeclarationNode, type BinaryOperator, type AssignmentOperator, type UnaryOperator } from "./AST-nodes.js";
+import { type AST, type DecoratorNode, type ParameterNode, type ProcedureDeclarationNode, type TypeNode, type TupleTypeNode, type NamedArgumentNode, type ExpressionNode, type StatementNode, type ErrorStatementNode, type EnumDeclarationNode, type EnumMemberNode, type StructDeclarationNode, type StructFieldNode, type VariableDeclarationNode, VariableDeclarationType, type VariableAssignmentNode, type DictEntryNode, type ElifClauseNode, type BlockNode, type CaseDeclarationNode, type DefaultCaseDeclarationNode, type BinaryOperator, type AssignmentOperator, type UnaryOperator } from "./AST-nodes.js";
 import { bindingPowerTable, getBindingPower } from "./BindingPowerTable.js";
 
+/** Words that start a top-level declaration, so error recovery stops in front of them. */
+const declarationKeywords = ["sprite", "stage", "proc", "enum", "struct", "public", "private", "import", "costume", "sound"];
+
 export class Parser {
+    /** Set by a reported error, cleared by the next statement that parses without one. */
+    private panicking = false;
+    private errorAttempts = 0;
     private tokens: Token[] = [];
     private position = 0;
 
@@ -27,6 +33,7 @@ export class Parser {
         this.logger.print(new KatnipLog(KatnipLogType.Info, `--- Parsing started with ${tokens.length} tokens ---`));
         this.tokens = tokens;
         this.position = 0;
+        this.panicking = false;
 
         const statements = [];
         while (!this.isAtEnd()) {
@@ -36,7 +43,7 @@ export class Parser {
             if (stmt) statements.push(stmt);
 
             if (this.position === before) {
-                this.reporter.add(
+                this.report(
                     new KatnipError(
                     "Parser",
                     `Parser got stuck on token '${this.peek()?.token.type}'`,
@@ -156,7 +163,7 @@ export class Parser {
         const currentToken = this.peek();
 
         if (previousToken) {
-            this.reporter.add(
+            this.report(
                 new KatnipError(
                     "Parser",
                     message,
@@ -167,7 +174,7 @@ export class Parser {
                 )
             );
         } else if (currentToken) {
-            this.reporter.add(
+            this.report(
                 new KatnipError("Parser", message, currentToken.start)
             );
         }
@@ -209,7 +216,7 @@ export class Parser {
 
         const prev = this.previous();
         if (prev) {
-            this.reporter.add(
+            this.report(
                 new KatnipError(
                     "Parser",
                     message,
@@ -220,7 +227,7 @@ export class Parser {
                 )
             );
         } else if (this.peek()) {
-            this.reporter.add(
+            this.report(
                 new KatnipError("Parser", message, this.peek()!.start)
             );
         }
@@ -253,7 +260,7 @@ export class Parser {
         }
 
         if (this.peek() == null) {
-            this.reporter.add(
+            this.report(
                 new KatnipError("Parser", message, beginning)
             );
         }
@@ -266,7 +273,7 @@ export class Parser {
     private expectSemicolon(message: string): void {
         if (this.tryConsume("type", [";"])) return;
         const prev = this.previous();
-        this.reporter.add(
+        this.report(
             new KatnipError(
                 "Parser",
                 message,
@@ -330,16 +337,11 @@ export class Parser {
 
             while (!this.isAtEnd() && !this.checkToken("type", [">"])) {
                 typeParams.push(this.parseTypeAnnotation());
-
-                if (!this.tryConsume("type", [","]) && !this.checkToken("type", [">"])) {
-                    this.reporter.add(
-                        new KatnipError(
-                            "Parser",
-                            "Expected ',' or '>'",
-                            this.peek()?.start ?? { line: -1, column: -1 }
-                        )
-                    );
-                }
+                if (this.tryConsume("type", [","])) continue;
+                // A missing ',' or '>' ends the list here rather than reading the rest of the file as types
+                if (!this.checkToken("type", [">"]))
+                    this.report(new KatnipError("Parser", "Expected ',' or '>'", this.peek()?.start ?? { line: -1, column: -1 }));
+                break;
             }
 
             this.consume({ type: ">" }, "Expected closing '>'");
@@ -386,7 +388,21 @@ export class Parser {
      * Parses a single statement from the token list.
      * @returns The parsed statement or an error token.
      */
-    private parseStatement(): StatementNode | null{
+    private parseStatement(): StatementNode | null {
+        const attempts = this.errorAttempts;
+        const stmt = this.parseStatementInner();
+        if (this.errorAttempts === attempts) this.panicking = false;
+        return stmt;
+    }
+
+    private report(error: KatnipError): void {
+        this.errorAttempts++;
+        if (this.panicking) return;
+        this.panicking = true;
+        this.reporter.add(error);
+    }
+
+    private parseStatementInner(): StatementNode | null {
         this.logger.log(new KatnipLog(KatnipLogType.Debug, `parsing statement starting with token: ${this.peek()?.token.type} | value: ${isValuedTokenType(this.peek()?.token.type || "<EOF>") ? (this.peek()?.token as ValuedToken).value : "N/A"}`));
         if (this.checkToken("type", ["Comment_SingleExpanded", "Comment_SingleCollapsed", "Comment_MultilineExpanded", "Comment_MultilineCollapsed"])) {
             this.advance();
@@ -419,7 +435,7 @@ export class Parser {
             if (this.checkToken("value", ["switch"])) return this.parseSwitchStatement();
             if (this.checkToken("value", ["case", "default"])) {
                 const word = (this.peek()!.token as ValuedToken).value;
-                this.reporter.add(new KatnipError("Parser", `'${word}' is reserved for switch blocks`, this.peek()!.start));
+                this.report(new KatnipError("Parser", `'${word}' is reserved for switch blocks`, this.peek()!.start));
                 return this.parseCaseLike();
             }
         }
@@ -438,7 +454,7 @@ export class Parser {
             };
         }
 
-        this.reporter.add(
+        this.report(
             new KatnipError("Parser", `Unexpected token: Type '${this.peek()!.token.type}'`, this.peek()?.start || { line: -1, column: -1 })
         );
         this.advance();
@@ -494,7 +510,7 @@ export class Parser {
                 this.logger.log(new KatnipLog(KatnipLogType.Debug, `parsing proc param/decorator, next token: ${this.peek()?.token.type}, ${this.peek() && isValuedTokenType(this.peek()!.token.type) ? (this.peek()!.token as ValuedToken).value : "N/A"}`));
                 if (this.checkToken("type", ["@"])) {
                     if (!parsingDecorators) {
-                        this.reporter.add(
+                        this.report(
                             new KatnipError("Parser", "Decorators must come before parameters", this.peek()!.start)
                         );
                         parsingDecorators = true;
@@ -503,7 +519,7 @@ export class Parser {
                 } else if (this.checkToken("type", ["Identifier"])) {
                     parsingDecorators = false;
                 } else {
-                    this.reporter.add(
+                    this.report(
                         new KatnipError("Parser", "Expected decorator or parameter", this.peek()?.start || { line: -1, column: -1 })
                     );
                 }
@@ -617,15 +633,17 @@ export class Parser {
      * Parses an enum definition from the token list.
      * @returns The parsed enum declaration node.
      */
-    private parseEnumDefinition(): EnumDeclarationNode {
+    private parseEnumDefinition(): EnumDeclarationNode | ErrorStatementNode {
         const { access, start: accessStart } = this.parseAccessModifier();
-        this.consume({ type: "Identifier", value: "enum" }, "Expected 'enum' keyword");
+        const keyword = this.consume({ type: "Identifier", value: "enum" }, "Expected 'enum' keyword");
+        if (!this.declarationHeader("enum")) return this.headerError(keyword);
         const nameToken = this.consume({ type: "Identifier" }, "Expected enum name");
         const name = nameToken.token.value;
 
         this.consume({ type: "{" }, "Expected opening brace for enum members");
         const members: EnumMemberNode[] = [];
         while (!this.isAtEnd() && !this.checkToken("type", ["}"])) {
+            if (!this.memberName("Expected enum member name")) break;
             const memberToken = this.consume({ type: "Identifier" }, "Expected enum member name");
             const memberName = memberToken.token.value;
 
@@ -636,7 +654,7 @@ export class Parser {
                 } else if (this.checkToken("type", ["Number"])) {
                     value = Number((this.advance()!.token as ValuedToken).value);
                 } else {
-                    this.reporter.add(
+                    this.report(
                         new KatnipError("Parser", "Expected string or number literal for enum member value", this.peek()?.start || { line: -1, column: -1 })
                     );
                 }
@@ -644,7 +662,7 @@ export class Parser {
             members.push({ name: memberName, value });
 
             if (!this.tryConsume("type", [","]) && !this.checkToken("type", ["}"])) {
-                this.reporter.add(
+                this.report(
                     new KatnipError("Parser", "Expected ',' or '}'", this.peek()?.start || { line: -1, column: -1 })
                 );
             }
@@ -664,19 +682,45 @@ export class Parser {
     }
 
     /**
+     * `enum` and `struct` need a name and then `{`. Checked before consuming anything, so a half-typed
+     * `struct` costs one error and the tokens after it still parse as the next statement.
+     */
+    private declarationHeader(keyword: string): boolean {
+        if (this.checkToken("type", ["Identifier"]) && this.peek(1)?.token.type === "{") return true;
+        this.report(new KatnipError("Parser", `Expected a name and '{' after '${keyword}'`, this.previous()!.end));
+        // `struct P` is missing only its body, but in `struct` + `sprite Cat {}` the name belongs to the next declaration
+        if (this.checkToken("type", ["Identifier"]) && !this.checkToken("value", declarationKeywords)) this.advance();
+        return false;
+    }
+
+    private headerError(keyword: { start: TokenPos; end: TokenPos }): ErrorStatementNode {
+        return { type: "ErrorStatement", message: "Incomplete declaration", loc: { start: keyword.start, end: keyword.end } };
+    }
+
+    /** Inside enum/struct braces: a non-name is reported once and the rest of the braces skipped. */
+    private memberName(message: string): boolean {
+        if (this.checkToken("type", ["Identifier"])) return true;
+        this.report(new KatnipError("Parser", message, this.peek()!.start));
+        this.synchronize({ type: "}" }, "Expected closing brace");
+        return false;
+    }
+
+    /**
      * Parses a struct definition: `struct Name { a: num, b = 0, c: str = "x" }`.
      * Each field needs a type annotation or a default (or both).
      * @returns The parsed struct declaration node.
      */
-    private parseStructDefinition(): StructDeclarationNode {
+    private parseStructDefinition(): StructDeclarationNode | ErrorStatementNode {
         const { access, start: accessStart } = this.parseAccessModifier();
-        this.consume({ type: "Identifier", value: "struct" }, "Expected 'struct' keyword");
+        const keyword = this.consume({ type: "Identifier", value: "struct" }, "Expected 'struct' keyword");
+        if (!this.declarationHeader("struct")) return this.headerError(keyword);
         const nameToken = this.consume({ type: "Identifier" }, "Expected struct name");
         const name = nameToken.token.value;
 
         this.consume({ type: "{" }, "Expected opening brace for struct fields");
         const fields: StructFieldNode[] = [];
         while (!this.isAtEnd() && !this.checkToken("type", ["}"])) {
+            if (!this.memberName("Expected struct field name")) break;
             const fieldToken = this.consume({ type: "Identifier" }, "Expected struct field name");
             const fieldName = fieldToken.token.value;
 
@@ -688,7 +732,7 @@ export class Parser {
             } else if (this.tryConsume("type", ["="])) {
                 fieldDefault = this.parseExpression();
             } else {
-                this.reporter.add(
+                this.report(
                     new KatnipError("Parser", `Struct field '${fieldName}' needs a type annotation or a default value`, fieldToken.start)
                 );
             }
@@ -701,7 +745,7 @@ export class Parser {
             });
 
             if (!this.tryConsume("type", [","]) && !this.checkToken("type", ["}"])) {
-                this.reporter.add(
+                this.report(
                     new KatnipError("Parser", "Expected ',' or '}'", this.peek()?.start || { line: -1, column: -1 })
                 );
             }
@@ -790,7 +834,7 @@ export class Parser {
             name = nameToken.token.value;
             // Codegen maps the name "stage" onto the stage target, so a sprite may not claim it.
             if (name === "stage")
-                this.reporter.add(new KatnipError("Parser", "'stage' is reserved; use a `stage { }` block to add code to the stage", nameToken.start));
+                this.report(new KatnipError("Parser", "'stage' is reserved; use a `stage { }` block to add code to the stage", nameToken.start));
         }
 
         const stmts = this.parseBlockExpression();
@@ -880,7 +924,7 @@ export class Parser {
         if (rawPattern.type === "Identifier" || rawPattern.type === "TupleExpression") {
             pattern = rawPattern;
         } else {
-            this.reporter.add(
+            this.report(
                 new KatnipError(
                     "Parser",
                     "Expected identifier or tuple pattern in for loop",
@@ -1019,7 +1063,7 @@ export class Parser {
             if (stmt?.type === "CaseDeclaration" || stmt?.type === "DefaultCaseDeclaration") {
                 body.push(stmt as CaseDeclarationNode | DefaultCaseDeclarationNode);
             } else if (stmt && stmt.type !== "ErrorStatement") {
-                this.reporter.add(
+                this.report(
                     new KatnipError("Parser", "Only 'case' and 'default' blocks are allowed inside a switch", stmt.loc.start)
                 );
             }
@@ -1203,7 +1247,7 @@ export class Parser {
             end = expr.loc.end;
 
             if (!this.checkToken("type", ["InterpolatedStringEnd"])) {
-                this.reporter.add(
+                this.report(
                     new KatnipError(
                         "Parser",
                         "Expected end of interpolated expression '}'",
@@ -1288,11 +1332,10 @@ export class Parser {
             if (!this.checkToken("type", ["]"])) {
                 do {
                     listContents.push(this.parseExpression());
-                    if (!this.tryConsume("type", [","]) && !this.checkToken("type", ["]"])) {
-                        this.reporter.add(
-                            new KatnipError("Parser", "Expected ',' or ']'", this.peek()?.start || { line: -1, column: -1 })
-                        );
-                    }
+                    if (this.tryConsume("type", [","])) continue;
+                    if (!this.checkToken("type", ["]"]))
+                        this.report(new KatnipError("Parser", "Expected ',' or ']'", this.peek()?.start || { line: -1, column: -1 }));
+                    break;
                 } while (!this.isAtEnd() && !this.checkToken("type", ["]"]));
             }
 
@@ -1391,7 +1434,7 @@ export class Parser {
         // Fallback error
         const unexpectedToken = token.token.type;
         const unexpectedValue = isValuedTokenType(unexpectedToken) ? (token.token as ValuedToken).value : null;
-        this.reporter.add(new KatnipError(
+        this.report(new KatnipError(
             "Parser",
             `Unexpected token in expression: Type '${unexpectedToken}'${unexpectedValue ? `, Value '${unexpectedValue}'` : ''}`,
             token.start
@@ -1434,7 +1477,7 @@ export class Parser {
     ): ExpressionNode {
         const token = this.peek();
         if (!token) {
-            this.reporter.add(new KatnipError("Parser", "Unexpected end of input in infix expression", left.loc?.end || { line: -1, column: -1 }));
+            this.report(new KatnipError("Parser", "Unexpected end of input in infix expression", left.loc?.end || { line: -1, column: -1 }));
             return { type: "ErrorToken", value: "", loc: left.loc || { start: { line: -1, column: -1 }, end: { line: -1, column: -1 } } } as ExpressionNode;
         }
 
@@ -1471,7 +1514,7 @@ export class Parser {
             // No ':' => plain index access (arr[expr]), which needs an index.
             if (!this.checkToken("type", [":"])) {
                 if (!sliceStart) {
-                    this.reporter.add(
+                    this.report(
                         new KatnipError("Parser", "Expected an index or slice inside '[]'", this.peek()?.start || { line: -1, column: -1 })
                     );
                 }
@@ -1549,7 +1592,7 @@ export class Parser {
      */
     private parseBlockExpression(): StatementNode[] {
         if (!this.checkToken("type", ["{"])) {
-            this.reporter.add(new KatnipError(
+            this.report(new KatnipError(
                 "Parser",
                 "Expected '{' to open block",
                 this.peek()?.start ?? this.previous()?.end ?? { line: -1, column: -1 },
