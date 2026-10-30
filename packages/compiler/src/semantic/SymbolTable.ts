@@ -57,6 +57,22 @@ export interface Signature {
     decorators?: DecoratorNode[];
 }
 
+/** An enum as code outside the stdlib reaches it: `Key`, `sensing.TouchTarget`. */
+export interface StdlibEnum {
+    qualified: string;
+    members: EnumMemberNode[];
+}
+
+/** A stdlib proc that is exactly one Scratch block, and how user code spells a call to it. */
+export interface StdlibBlock {
+    callee: string;
+    method: boolean;
+    hat: boolean;
+    /** In .knip param order, which is also the block's slot order (see scratchDefs.opcodeSlots). */
+    params: { name: string; type: InternalType; enums: StdlibEnum[] }[];
+    returns: InternalType;
+}
+
 export interface SymbolBase {
     name: string;
     declNode: NodeBase;

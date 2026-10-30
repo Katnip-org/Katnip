@@ -34,6 +34,8 @@ import {
     type NamespaceSymbol,
     type Signature,
     type SignatureMeta,
+    type StdlibBlock,
+    type StdlibEnum,
 } from "./SymbolTable.js";
 import { resolveReturnStrategies } from "./CallGraph.js";
 import {
@@ -159,6 +161,12 @@ export class SemanticAnalyzer {
     readonly constMembers = new Map<string, string | number | boolean>();
 
     /**
+     * Stdlib procs that lower to exactly their one block (command/reporter), keyed by opcode;
+     * the first overload wins. Filled by `loadStdlib`, for mapping a block back to the call that emits it.
+     */
+    readonly stdlibBlocks = new Map<string, StdlibBlock>();
+
+    /**
      * Member values of each enum, in declaration order, keyed by enum name (as `constMembers` is:
      * a name shared across namespaces collides, last declaration wins).
      * These are the *lowered* values (exactly what a member reference folds to), so a literal
@@ -224,6 +232,7 @@ export class SemanticAnalyzer {
                         this.enumExamples.set(stmt.name, `${module.namespace}.${stmt.name}.${stmt.members[0].name}`);
             this.finalizeStdlibScope(module.ast.body);
             this.hoistNamespaceConsts(module.ast.body, isPrelude ? null : module.namespace);
+            this.indexStdlibBlocks(module.ast.body, isPrelude ? null : module.namespace);
 
             for (const stmt of module.ast.body)
                 if (stmt.type === "ProcedureDeclaration" && this.procSignatures.get(stmt)?.meta?.lower === "builds")
@@ -265,6 +274,46 @@ export class SemanticAnalyzer {
         for (const stmt of body)
             if (stmt.type === "VariableDeclaration" && stmt.initializer?.type === "Literal")
                 this.constMembers.set(`${namespace}.${stmt.name}`, stmt.initializer.value ?? "");
+    }
+
+    private indexStdlibBlocks(body: StatementNode[], namespace: string | null): void {
+        for (const stmt of body) {
+            if (stmt.type !== "ProcedureDeclaration") continue;
+            const sig = this.procSignatures.get(stmt);
+            const meta = sig?.meta;
+            if (!sig || !meta?.opcode || this.stdlibBlocks.has(meta.opcode)) continue;
+            // yields/builds procs expand to more than their one block, so they can't stand in for it
+            if (meta.lower !== "command" && meta.lower !== "reporter") continue;
+
+            const method = stmt.parameters[0]?.name === "self";
+            let callee = stmt.name;
+            if (!method && namespace) callee = `${namespace}.${stmt.name}`;
+            this.stdlibBlocks.set(meta.opcode, {
+                callee,
+                method,
+                hat: meta.hat === true,
+                params: stmt.parameters.map((param, i) => {
+                    const type = sig.resolvedParamTypes?.[i] ?? { kind: "unknown" };
+                    return { name: param.name, type, enums: this.enumsIn(type, namespace) };
+                }),
+                returns: sig.resolvedReturn ?? { kind: "unknown" },
+            });
+        }
+    }
+
+    /** The enums a stdlib type names, resolved the way the module's own scope resolves them. */
+    private enumsIn(type: InternalType, namespace: string | null): StdlibEnum[] {
+        if (type.kind === "union") return [...this.enumsIn(type.left, namespace), ...this.enumsIn(type.right, namespace)];
+        if (type.kind !== "enum") return [];
+
+        const isEnum = (s: SymbolEntry): s is EnumSymbol => s.kind === "enum";
+        const own = this.current.lookupLocal(type.name)?.find(isEnum);
+        const found = own ?? this.stdlibScope.lookupLocal(type.name)?.find(isEnum);
+        if (!found) return [];
+        // A namespaced module's own enum is reached through the namespace; prelude enums are bare
+        let qualified = type.name;
+        if (own && namespace) qualified = `${namespace}.${type.name}`;
+        return [{ qualified, members: found.members }];
     }
 
     // -- Import loading --
