@@ -120,7 +120,7 @@ function scheduleCheck(context: vscode.ExtensionContext, doc: vscode.TextDocumen
 }
 
 const KEYWORDS = [
-    "if", "elif", "else", "for", "while", "do", "forever", "return", "switch", "case", "default",
+    "if", "elif", "else", "for", "while", "do", "forever", "repeat", "return", "switch", "case", "default",
     "proc", "enum", "struct", "sprite", "stage", "private", "public", "import", "costume", "sound", "as",
     "true", "false",
     "num", "str", "bool", "list", "dict", "void",

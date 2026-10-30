@@ -106,6 +106,7 @@ export type StatementNode =
     | WhileStatementNode
     | DoWhileStatementNode
     | ForeverStatementNode
+    | RepeatStatementNode
     | ForStatementNode
     | ProcedureDeclarationNode
     | EnumDeclarationNode
@@ -161,6 +162,11 @@ export interface DoWhileStatementNode extends BlockStatementBase {
 
 export interface ForeverStatementNode extends BlockStatementBase {
     type: "ForeverStatement";
+}
+
+export interface RepeatStatementNode extends BlockStatementBase {
+    type: "RepeatStatement";
+    times: ExpressionNode;
 }
 
 export interface ForStatementNode extends BlockStatementBase {

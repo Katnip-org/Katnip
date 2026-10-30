@@ -133,6 +133,7 @@ export class IRGenerator {
                 case "WhileStatement":
                 case "DoWhileStatement":
                 case "ForeverStatement":
+                case "RepeatStatement":
                 case "ForStatement":
                 case "ReturnStatement":
                     // TODO: error and say its not allowed
@@ -631,6 +632,11 @@ export class IRGenerator {
             case "ForeverStatement":
                 this.emit(out, { kind: "forever", body: this.lowerBlock(node.body) });
                 break;
+            case "RepeatStatement": {
+                const times = this.lowerExpr(node.times, out);
+                this.emit(out, { kind: "repeat", times, body: this.lowerBlock(node.body) });
+                break;
+            }
             case "ForStatement":
                 this.lowerFor(node, out);
                 break;

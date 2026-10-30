@@ -410,6 +410,15 @@ test("a for loop matches the shape the editor serializes control_for_each with",
     assert.equal(say.parent, loopId);
 });
 
+test("repeat builds control_repeat with its count as a whole-number shadow", () => {
+    const blocks = blocksOf(build(`sprite Cat { events.onFlag() { repeat (3) { looks.say("hi"); } } }`));
+    const [loopId, loop] = find(blocks, "control_repeat")!;
+    assert.deepEqual(loop.inputs.TIMES, [1, [6, "3"]]);
+    const [sayId, say] = find(blocks, "looks_say")!;
+    assert.deepEqual(loop.inputs.SUBSTACK, [2, sayId]);
+    assert.equal(say.parent, loopId);
+});
+
 test("the default costume's id is the md5 of the bytes packed, whatever line endings git checked out", async () => {
     const { defaultCostumeId, defaultCostumeMd5ext, defaultCostumeSvg } = await import("../assets.generated.js");
     const md5 = createHash("md5").update(defaultCostumeSvg).digest("hex");

@@ -430,6 +430,7 @@ export class Parser {
             if (this.checkToken("value", ["while"])) return this.parseWhileStatement();
             if (this.checkToken("value", ["do"])) return this.parseDoWhileStatement();
             if (this.checkToken("value", ["forever"])) return this.parseForeverStatement();
+            if (this.checkToken("value", ["repeat"])) return this.parseRepeatStatement();
             if (this.checkToken("value", ["return"])) return this.parseReturnStatement();
 
             if (this.checkToken("value", ["switch"])) return this.parseSwitchStatement();
@@ -1011,6 +1012,36 @@ export class Parser {
         } satisfies BlockNode;
 
         return { type: "ForeverStatement", body, loc: { start: keyword.start, end: body.loc.end } };
+    }
+
+    /**
+     * Parses `repeat (times) { ... }`.
+     */
+    private parseRepeatStatement(): StatementNode {
+        const keyword = this.consume({ type: "Identifier", value: "repeat" }, "Expected 'repeat' keyword");
+        this.consume({ type: "(" }, "Expected '(' after 'repeat'");
+        const times = this.parseExpression();
+        this.consume({ type: ")" }, "Expected ')' after repeat count");
+
+        const bodyExpression = this.parseBlockExpression();
+        const body = {
+            type: "Block",
+            body: bodyExpression,
+            loc: {
+                start: bodyExpression[0]?.loc.start || times.loc.end,
+                end: bodyExpression[bodyExpression.length - 1]?.loc.end || times.loc.end
+            }
+        } satisfies BlockNode;
+
+        return {
+            type: "RepeatStatement",
+            times,
+            body,
+            loc: {
+                start: keyword.start,
+                end: this.previous()?.end || body.loc.end
+            }
+        };
     }
 
     /**

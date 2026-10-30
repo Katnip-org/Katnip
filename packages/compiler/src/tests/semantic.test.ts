@@ -34,6 +34,11 @@ test("conditions must be bool", () => {
     assert.match(errorsOf("proc f() -> void { while (2) { } }"), /must be of type 'bool'/);
 });
 
+test("a repeat count must be num", () => {
+    assert.match(errorsOf(`proc f() -> void { repeat ("a") { } }`), /'repeat' count must be of type 'num'/);
+    assert.equal(errorsOf("proc f() -> void { repeat (3) { } }"), "");
+});
+
 test("return outside a procedure is an error", () => {
     assert.match(errorsOf("return 1;"), /'return' can only be used inside a procedure/);
 });

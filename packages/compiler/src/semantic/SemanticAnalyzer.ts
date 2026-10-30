@@ -711,6 +711,13 @@ export class SemanticAnalyzer {
             case "ForeverStatement":
                 this.visitBlock(node.body);
                 break;
+            case "RepeatStatement": {
+                const times = this.inferType(node.times);
+                this.checkAssign(times, { kind: "primitive", name: "num" }, node.times, node.times,
+                    () => `'repeat' count must be of type 'num', not '${typeToString(times)}'`);
+                this.visitBlock(node.body);
+                break;
+            }
             case "ForStatement": {
                 const iterableType = this.inferType(node.iterable);
                 let elementType = this.iterationType(iterableType);
