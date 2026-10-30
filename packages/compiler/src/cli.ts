@@ -6,6 +6,7 @@ import { Parser } from "./parser/Parser.js";
 import { SemanticAnalyzer } from "./semantic/SemanticAnalyzer.js";
 import { loadStdlibModules } from "./semantic/StdlibLoader.js";
 import { loadImports, type AssetReader, type ImportResolver } from "./semantic/ModuleLoader.js";
+import { loadData, loadImportedData } from "./codegen/assets.js";
 import { ErrorReporter, KatnipError } from "./utils/ErrorReporter.js";
 import { Logger } from "./utils/Logger.js";
 import { compileToIR, compileToSb3, decompileSb3 } from "./index.js";
@@ -163,9 +164,11 @@ cli
                     return;
                 }
 
-                analyzer.loadImports(
-                    loadImports(ast, path.resolve(argv.source as string), fileResolver, reporter, logger),
-                );
+                const sourcePath = path.resolve(argv.source as string);
+                const modules = loadImports(ast, sourcePath, fileResolver, reporter, logger);
+                loadImportedData(modules, fileAssetReader);
+                analyzer.loadImports(modules);
+                loadData(ast, sourcePath, fileAssetReader, reporter);
                 // Analyze even when parsing reported errors: the parser recovers into a
                 // usable AST (error nodes are no-ops in the analyzer), so semantic errors
                 // surface alongside syntax errors instead of being hidden behind the first.

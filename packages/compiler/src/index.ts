@@ -10,7 +10,7 @@ import { IRGenerator } from "./ir/IRGenerator.js";
 import type { IRProgram } from "./ir/IRNode.js";
 import { SB3Generator } from "./codegen/SB3Generator.js";
 import { packSb3 } from "./codegen/pack.js";
-import { loadAssets } from "./codegen/assets.js";
+import { loadAssets, loadData, loadImportedData } from "./codegen/assets.js";
 
 export { KatnipError } from "./utils/ErrorReporter.js";
 export type { AssetReader, ImportResolver } from "./semantic/ModuleLoader.js";
@@ -46,13 +46,16 @@ function analyze(source: string, options: Options) {
         return { reporter, ast: null, analyzer: null, assets: null };
     }
 
-    if (options.resolve)
-        analyzer.loadImports(
-            loadImports(ast, options.path ?? "", options.resolve, reporter, logger),
-        );
-
     // No reader means every declared asset is "missing", which is a clearer failure than a silent default costume.
-    const assets = loadAssets(ast, options.path ?? "", options.readAsset ?? (() => null), reporter);
+    const read = options.readAsset ?? (() => null);
+    if (options.resolve) {
+        const modules = loadImports(ast, options.path ?? "", options.resolve, reporter, logger);
+        loadImportedData(modules, read);
+        analyzer.loadImports(modules);
+    }
+
+    loadData(ast, options.path ?? "", read, reporter);
+    const assets = loadAssets(ast, options.path ?? "", read, reporter);
 
     analyzer.analyze(ast);
     return { reporter, ast, analyzer, assets };

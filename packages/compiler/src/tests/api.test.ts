@@ -168,3 +168,52 @@ test("error carets line up under tab-indented and CRLF source", async () => {
     assert(lines.some((l) => l.endsWith("| \t\tlooks.say(nope);")), "the source line keeps its tabs and loses the \r");
     assert(lines.some((l) => l.endsWith("| \t\t          ^^^^")), "the carets sit under 'nope'");
 });
+
+test("import() loads a csv row or column into a list and a flat json object into a dict", () => {
+    const text = (s: string) => new TextEncoder().encode(s);
+    const assets = {
+        "/proj/row.csv": text("1,2,123,12555,234324"),
+        "/proj/col.csv": text("1\r\n2\r\n123\r\n\r\n12555\n234324\n"),
+        "/proj/names.csv": text(`Alice, Bob ,"Smith, Jr.",007,`),
+        "/proj/scores.json": text(`{"alice": 3, "bob": 5}`),
+        "/proj/flags.json": text(`[true, false]`),
+    };
+    const source = `
+        sprite Cat {
+            private row: list<num> = import("./row.csv");
+            private col: list<num> = import("./col.csv");
+            private names = import("./names.csv");
+            private scores: dict<str, num> = import("./scores.json");
+            private flags = import("./flags.json");
+        }
+    `;
+    const { errors, sb3 } = compileToSb3(source, { path: ENTRY_PATH, readAsset: virtualAssetReader(assets) });
+    assert.deepEqual(errors, []);
+
+    const lists = Object.fromEntries(Object.values(projectOf(sb3!).targets[1].lists) as [string, unknown[]][]);
+    assert.deepEqual(lists.row, [1, 2, 123, 12555, 234324]);
+    assert.deepEqual(lists.col, [1, 2, 123, 12555, 234324]);
+    assert.deepEqual(lists.names, ["Alice", "Bob", "Smith, Jr.", 7]);
+    assert.deepEqual(lists.scores_keys, ["alice", "bob"]);
+    assert.deepEqual(lists.scores_vals, [3, 5]);
+    assert.deepEqual(lists.flags, [true, false]);
+});
+
+test("import() rejects grids, nested json and missing files", () => {
+    const text = (s: string) => new TextEncoder().encode(s);
+    const assets = {
+        "/proj/grid.csv": text("1,2\n3,4"),
+        "/proj/deep.json": text(`{"a": {"b": 1}}`),
+        "/proj/bad.json": text(`{"a": `),
+    };
+    const check = (file: string) =>
+        checkSource(`private x = import("./${file}");`, { path: ENTRY_PATH, readAsset: virtualAssetReader(assets) })
+            .map((e) => e.message)
+            .join("\n");
+
+    assert.match(check("grid.csv"), /single row or a single column/);
+    assert.match(check("deep.json"), /flat array or a flat object/);
+    assert.match(check("bad.json"), /Invalid JSON/);
+    assert.match(check("nope.csv"), /Cannot resolve '\.\/nope\.csv'/);
+    assert.match(check("thing.txt"), /loads .json or .csv files/);
+});
