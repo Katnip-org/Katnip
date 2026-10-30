@@ -254,6 +254,12 @@ test("list and dict returns on user procs are rejected", () => {
     assert.match(errorsOf("proc f() -> dict<str, num> { return {}; }"), /multi-size returns/);
 });
 
+test("dict literals with mixed values check against the declared union", () => {
+    assert.equal(errorsOf(`private d: dict<str, str | num> = {"a": "x", "b": 1};`), "");
+    assert.equal(errorsOf(`private d = {"a": "x", "b": 1};`), "");
+    assert.match(errorsOf(`private d: dict<str, str> = {"a": "x", "b": 1};`), /cannot be initialized/);
+});
+
 test("stdlib methods and namespaces resolve with types", () => {
     const result = compile(
         `

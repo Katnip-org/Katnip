@@ -1158,36 +1158,15 @@ export class SemanticAnalyzer {
             case "CallExpression":
                 return this.resolveCall(expression).type;
             case "DictExpression": {
-                const unknownDict: InternalType = { kind: "dict", key: { kind: "unknown" }, value: { kind: "unknown" } };
-                if (expression.entries.length == 0) return unknownDict;
-
-                const firstKeyType = this.inferType(expression.entries[0].key);
-                const firstValueType = this.inferType(expression.entries[0].value);
-
-                // Keep inferring after a mismatch so every entry is typed and later errors still surface.
-                let mismatched = false;
-                for (const entry of expression.entries.slice(1)) {
-                    const keyType = this.inferType(entry.key);
-                    const valueType = this.inferType(entry.value);
-                    if (mismatched) continue;
-
-                    if (!isAssignable(keyType, firstKeyType)) {
-                        this.error(
-                            `Expected key of type ${typeToString(firstKeyType)}, got ${typeToString(keyType)}`,
-                            entry.key,
-                        );
-                        mismatched = true;
-                    } else if (!isAssignable(valueType, firstValueType)) {
-                        this.error(
-                            `Expected value of type ${typeToString(firstValueType)}, got ${typeToString(valueType)}`,
-                            entry.value,
-                        );
-                        mismatched = true;
-                    }
+                if (expression.entries.length == 0) {
+                    return { kind: "dict", key: { kind: "unknown" }, value: { kind: "unknown" } };
                 }
 
-                if (mismatched) return unknownDict;
-                return { kind: "dict", key: firstKeyType, value: firstValueType };
+                return {
+                    kind: "dict",
+                    key: this.unionOf(expression.entries.map(entry => this.inferType(entry.key))),
+                    value: this.unionOf(expression.entries.map(entry => this.inferType(entry.value))),
+                };
             }
             case "IndexerAccess": {
                 const objectType = this.inferType(expression.object);
@@ -1216,19 +1195,7 @@ export class SemanticAnalyzer {
                     return { kind: "list", element: { kind: "unknown" } };
                 }
 
-                const types: InternalType[] = [];
-                for (const element of expression.elements) {
-                    const t = this.inferType(element);
-                    const seen = types.some(existing => isAssignable(existing, t) && isAssignable(t, existing));
-                    if (!seen) types.push(t);
-                }
-
-                let element = types[0];
-                for (let i = 1; i < types.length; i++) {
-                    element = { kind: "union", left: element, right: types[i] };
-                }
-
-                return { kind: "list", element };
+                return { kind: "list", element: this.unionOf(expression.elements.map(element => this.inferType(element))) };
             }
             case "Literal":
                 switch (expression.valueType) {
@@ -1705,6 +1672,21 @@ export class SemanticAnalyzer {
     }
 
     // -- Assignability --
+
+    /** Combines the types of a literal's elements into one, dropping duplicates. */
+    private unionOf(inferred: InternalType[]): InternalType {
+        const types: InternalType[] = [];
+        for (const t of inferred) {
+            const seen = types.some(existing => isAssignable(existing, t) && isAssignable(t, existing));
+            if (!seen) types.push(t);
+        }
+
+        let union = types[0];
+        for (let i = 1; i < types.length; i++) {
+            union = { kind: "union", left: union, right: types[i] };
+        }
+        return union;
+    }
 
     /**
      * Checks a value expression against a target type, reporting on failure.
