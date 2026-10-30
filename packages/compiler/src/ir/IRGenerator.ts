@@ -167,7 +167,7 @@ export class IRGenerator {
             sounds: [],
             scripts: [],
             variables: new Map(),
-            lists: new Map([["_tempKeys", []], ["_tempVals", []]]),
+            lists: new Map(),
             procs: new Map(),
         };
         this.program.sprites.push(this.sprite);

@@ -8,7 +8,7 @@ import { loadStdlibModules } from "./semantic/StdlibLoader.js";
 import { loadImports, type AssetReader, type ImportResolver } from "./semantic/ModuleLoader.js";
 import { ErrorReporter, KatnipError } from "./utils/ErrorReporter.js";
 import { Logger } from "./utils/Logger.js";
-import { compileToIR, compileToSb3 } from "./index.js";
+import { compileToIR, compileToSb3, decompileSb3 } from "./index.js";
 
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
@@ -262,6 +262,29 @@ cli
             })
             .catch((err: any) => {
                 console.error('Error lowering file:', err);
+                process.exitCode = 1;
+            });
+    })
+    .command('decompile <source> [output]', 'Decompile a Scratch .sb3 into .knip source', (yargs: any) => {
+        yargs.positional('source', {
+            describe: 'The path to the .sb3 file',
+            type: 'string',
+            demandOption: true,
+        }).positional('output', {
+            describe: 'The path to write the .knip to (defaults to the source path with a .knip extension)',
+            type: 'string',
+        });
+    }, (argv: any) => {
+        const source = argv.source as string;
+        fs.readFile(source as PathLike)
+            .then(async (sb3: Uint8Array) => {
+                const output = (argv.output as string | undefined)
+                    ?? `${source.replace(/\.sb3$/i, '')}.knip`;
+                await fs.writeFile(output as PathLike, decompileSb3(sb3));
+                console.log(`Wrote ${output}`);
+            })
+            .catch((err: any) => {
+                console.error('Error decompiling file:', err instanceof Error ? err.message : err);
                 process.exitCode = 1;
             });
     })

@@ -15,6 +15,7 @@ import { loadAssets } from "./codegen/assets.js";
 export { KatnipError } from "./utils/ErrorReporter.js";
 export type { AssetReader, ImportResolver } from "./semantic/ModuleLoader.js";
 export type { IRProgram } from "./ir/IRNode.js";
+export { decompileProject, decompileSb3 } from "./decompiler/index.js";
 
 let stdlibCache: StdlibModule[] | null = null;
 
