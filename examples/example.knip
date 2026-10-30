@@ -22,6 +22,7 @@ sprite test {
         # Call the start function
         start();
 
+        private m_score: num;
         # Loop over pose list using tuple unpacking
         for((name, speed, power), poseList){
             looks.say("Move: " + name);
@@ -34,8 +35,8 @@ sprite test {
                 console.log("Weak stats.");
             }
 
-            score = score(speed + power);
-            console.log("Score: " + score);
+            m_score = score(speed + power);
+            console.log("Score: " + m_score);
         }
 
         # Constant checks

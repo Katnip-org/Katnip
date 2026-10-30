@@ -1,5 +1,4 @@
 # Project TODO List
-- [ ] Trailing commas in lists
 - [ ] Comments on multiline list definitions
 - [ ] Investigate imports + clean the system up
 - [ ] Implement comment attaching funcitonality
@@ -19,3 +18,4 @@
 - [x] Overhaul token system. Use enums, and change overall interface with them
 - [x] Add list and dictionary literal functionality to expression parsing
 - [x] remove githooks
+- [x] Trailing commas in lists

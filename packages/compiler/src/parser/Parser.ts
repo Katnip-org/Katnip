@@ -31,7 +31,8 @@ export class Parser {
      */
     parse(tokens: Token[]): AST | void {
         this.logger.print(new KatnipLog(KatnipLogType.Info, `--- Parsing started with ${tokens.length} tokens ---`));
-        this.tokens = tokens;
+        // Comments can sit between any two tokens, so they're dropped here rather than skipped by every parse function
+        this.tokens = tokens.filter((token) => !token.token.type.startsWith("Comment_"));
         this.position = 0;
         this.panicking = false;
 
@@ -404,10 +405,6 @@ export class Parser {
 
     private parseStatementInner(): StatementNode | null {
         this.logger.log(new KatnipLog(KatnipLogType.Debug, `parsing statement starting with token: ${this.peek()?.token.type} | value: ${isValuedTokenType(this.peek()?.token.type || "<EOF>") ? (this.peek()?.token as ValuedToken).value : "N/A"}`));
-        if (this.checkToken("type", ["Comment_SingleExpanded", "Comment_SingleCollapsed", "Comment_MultilineExpanded", "Comment_MultilineCollapsed"])) {
-            this.advance();
-            return null;
-        }
         if (this.checkToken("type", ["Identifier"])) {
             if (this.checkToken("value", ["proc"]) && !(this.peek(1)?.token.type === ".")) return this.parseProcedureDefinition();
             if (this.checkToken("value", ["enum"])) return this.parseEnumDefinition();

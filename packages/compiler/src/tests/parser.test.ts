@@ -355,3 +355,14 @@ test("errors after the first stay quiet until a statement parses cleanly", () =>
     const lines = reporter.getErrors().map((e) => e.location?.line);
     assert.deepEqual(lines, [3, 5]);
 });
+
+test("comments parse anywhere between tokens, not only before a statement", () => {
+    for (const source of [
+        "xs = [\n  1, # one\n  2\n];",
+        "looks.say(\n  \"hi\" # greet\n);",
+        "looks.say(#< note >#\"hi\");",
+        "proc f(\n  a: num, # first\n  b: num\n) -> void { }",
+        "enum E {\n  A, # a\n  B\n}",
+    ])
+        parseStmt(source);
+});
