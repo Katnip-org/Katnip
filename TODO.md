@@ -1,5 +1,4 @@
 # Project TODO List
-- [ ] Comments on multiline list definitions
 - [ ] Investigate imports + clean the system up
 - [ ] Implement comment attaching funcitonality
 - [ ] Fix redudant "src" pass in inside of `lexer.ts`
@@ -19,3 +18,4 @@
 - [x] Add list and dictionary literal functionality to expression parsing
 - [x] remove githooks
 - [x] Trailing commas in lists
+- [x] Comments on multiline list definitions

@@ -46,7 +46,7 @@ pnpm build
 node packages/compiler/build/cli.js help
 ```
 
-Run the test suite (~180 tests across lexer, parser, semantic, IR, and codegen):
+Run the test suite (278 tests across lexer, parser, semantic, IR, codegen, and decompiler):
 
 ```bash
 pnpm test
@@ -60,12 +60,13 @@ node packages/compiler/build/cli.js build examples/codegen.knip
 
 ## VS Code extension
 
-Live diagnostics, highlighting, and autocomplete for `.knip` files. Build the `.vsix`
+Live diagnostics, highlighting, basic completion, and a build command for `.knip` files.
+Install `Katnip-org.katnip-vscode` from the marketplace, or build the `.vsix`
 (rebuilds and vendors the compiler, then packages):
 
 ```bash
 pnpm --filter katnip-vscode run package
-code --install-extension packages/vscode/katnip-vscode-0.0.14.vsix --force
+code --install-extension packages/vscode/katnip-vscode-0.1.25.vsix --force
 ```
 
 Run `Developer: Reload Window`, then open any `.knip` file.
@@ -74,7 +75,7 @@ Run `Developer: Reload Window`, then open any `.knip` file.
 
 | Path | What's in it |
 | --- | --- |
-| `packages/compiler` | The compiler: lexer, parser, semantic analyzer, IR, SB3 codegen, CLI |
+| `packages/compiler` | The compiler: lexer, parser, semantic analyzer, IR, SB3 codegen, decompiler, CLI |
 | `packages/compiler/stdlib` | The standard library, written in Katnip itself |
 | `packages/vscode` | VS Code extension |
 | `examples` | Sample `.knip` programs |
@@ -89,8 +90,10 @@ The frontend type-checks, the IR reconciles Katnip's semantics with what Scratch
 actually express (tuple returns, ranged `for`, `switch` -- none of which exist as blocks),
 and the SB3 generator emits the block JSON that gets zipped into a `.sb3`.
 
-Not yet lowered to blocks: structs, slices, `**`, and some `katnip_*` builtins.
-[`features.md`](features.md) tracks the gaps.
+`katnip decompile` goes the other way, from a `.sb3` back to `.knip` source.
+
+Not yet lowered to blocks: slices, `**`, tuple destructuring, `list.remove`, and the remaining
+`katnip_*` builtins. [`features.md`](features.md) tracks the gaps.
 
 ## License
 

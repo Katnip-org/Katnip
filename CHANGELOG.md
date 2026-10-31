@@ -489,6 +489,32 @@ Katnip is no longer a language that describes Scratch. It is a compiler that pro
 
 ---
 
+## v2.7.0 — Closing the Gaps
+**Commits:** `a95ac45` ⇒ `5359dd2`
+**Dates:** 2026-08-09 ⇒ 2026-10-30
+
+### Summary
+With the pipeline complete, most features that only type-checked now reach real blocks, and the compiler learns to run in reverse.
+
+### Major Changes
+- Imports lower: imported procs reach every target that calls them, and literal values fold at the use site.
+- Structs lower to one variable or list per field.
+- `stage { }` block, plus `costume` and `sound` declarations packed into the `.sb3`.
+- `forever` and `repeat` statements.
+- `zip`, `enumerate` and a fixed `range` in `for` headers; `@proccode` carried through to codegen.
+- `public` and `private` choose a variable's owner, replacing placement-based scope and `temp`.
+- Casts build; `math` gains `random`, `round`, `mod` and named `operator_mathop` wrappers.
+- `import("./file.csv")` and `import("./file.json")` load flat data into a list or dict at compile time.
+- `katnip decompile` and `decompileSb3` turn a `.sb3` into `.knip` source.
+- Mixed list and dict literals infer a union type.
+- Warnings as a non-blocking severity; parser recovery and multi-line comment handling improved.
+- Compile-time benchmark suite and a `--compression` build option.
+
+### Significance
+2.6 proved source could become a project. 2.7 makes that true for most of the language, and opens the door for existing Scratch projects to come the other way.
+
+---
+
 # Summary of Evolution
 
 0.x:
@@ -516,6 +542,8 @@ Katnip is no longer a language that describes Scratch. It is a compiler that pro
 - Test suite established.
 - IR lowering implemented.
 - SB3 code generation completed — the compiler produces runnable Scratch projects.
+- Declared gaps closed: imports, structs, assets, and new loop forms reach real blocks.
+- Decompiler added, so `.sb3` projects can come back as source.
 
 Katnip’s trajectory:
 Scratch interpreter ⇒ Structured tokenizer ⇒ Parser ⇒ Typed compiler frontend ⇒ Modern language foundation ⇒ Complete compiler emitting Scratch.

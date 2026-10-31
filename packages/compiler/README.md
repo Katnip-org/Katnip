@@ -54,7 +54,8 @@ Drag the `.sb3` onto [MistWarp](https://warp.mistium.com/editor) or [TurboWarp](
 | Command | What it does |
 | --- | --- |
 | `katnip check <source>` | Lex, parse, and analyze; reports errors and warnings |
-| `katnip build <source> [output]` | Compile to `.sb3` (defaults to the source path with a `.sb3` extension) |
+| `katnip build <source> [output]` | Compile to `.sb3` (defaults to the source path with a `.sb3` extension). `--compression 0-9` sets the zip level |
+| `katnip decompile <source> [output]` | Turn a `.sb3` into `.knip` source (defaults to the source path with a `.knip` extension) |
 | `katnip lower <source> [output]` | Emit the IR as JSON (stdout by default) |
 | `katnip parse <source> <output.json>` | Write the AST as JSON |
 | `katnip tokenize <source> <output.json>` | Write the token stream as JSON |
@@ -63,7 +64,7 @@ Drag the `.sb3` onto [MistWarp](https://warp.mistium.com/editor) or [TurboWarp](
 ## Library
 
 ```js
-import { checkSource, compileToIR, compileToSb3 } from "@katnip-org/compiler";
+import { checkSource, compileToIR, compileToSb3, decompileSb3 } from "@katnip-org/compiler";
 import { readFileSync, writeFileSync } from "node:fs";
 
 const source = readFileSync("hello.knip", "utf8");
@@ -72,29 +73,36 @@ const errors = checkSource(source);          // readonly KatnipError[]
 
 const { errors: buildErrors, sb3 } = compileToSb3(source);
 if (sb3) writeFileSync("hello.sb3", sb3);    // sb3 is a Uint8Array
+
+const knip = decompileSb3(readFileSync("hello.sb3"));   // .knip source
 ```
 
 `sb3` (and `ir` from `compileToIR`) is absent when `errors` holds anything of severity
 `"error"`; warnings do not stop a build.
 
 Both accept `{ path, resolve }` to enable `import`s — `resolve(specifier, fromPath)`
-returns `{ path, source }` or `null`.
+returns `{ path, source }` or `null`. Pass `readAsset(specifier, fromPath)`, returning bytes or
+`null`, to enable costumes, sounds and `import()` data files, and `compression` (0-9) to set
+the zip level.
 
 ## What's supported
 
 The pipeline is complete end to end: variables, procedures with overloads and defaults,
-sprites and events, clones, lists and dicts, enums, all the loop and branch forms, and a
+sprites and events, costumes and sounds, clones, lists and dicts, CSV and JSON data files,
+enums, structs, imports, all the loop and branch forms, a decompiler, and a
 standard library (`motion`, `looks`, `sensing`, `pen`, `events`, `clone`, `math`, `str`,
 `list`, `dict`, `console`) written in Katnip itself.
 
-Not yet lowered to blocks: structs, slices, `**`, and some `katnip_*` builtins. See
+Not yet lowered to blocks: slices, `**`, tuple destructuring, `list.remove`, and the remaining
+`katnip_*` builtins. See
 [`features.md`](https://github.com/Katnip-org/Katnip/blob/main/features.md) for the
 per-feature status.
 
 ## Links
 
-* Documentation — <https://katnip.org>
-* Source and issues — <https://github.com/Katnip-org/Katnip>
+* Documentation: <https://docs.katnip.org>
+* Website: <https://katnip.org>
+* Source and issues: <https://github.com/Katnip-org/Katnip>
 
 ## License
 
