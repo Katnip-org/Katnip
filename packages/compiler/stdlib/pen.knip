@@ -1,3 +1,4 @@
+#! katnip: stdlib
 #> pen.knip ~ pen extension blocks. <#
 
 public enum ColorParam { COLOR = "color", SATURATION = "saturation", BRIGHTNESS = "brightness", TRANSPARENCY = "transparency" }

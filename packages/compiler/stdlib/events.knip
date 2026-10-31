@@ -1,3 +1,4 @@
+#! katnip: stdlib
 #> events.knip ~ event hat blocks. <#
 enum GreaterThanProperty { LOUDNESS, TIMER }
 

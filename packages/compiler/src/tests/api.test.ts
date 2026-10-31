@@ -4,6 +4,7 @@
  * embedder does, so a stage that is individually correct but wired up wrong still fails here.
  */
 
+import { stdlibSources } from "../stdlib.generated.js";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
@@ -12,7 +13,7 @@ import { spawnSync } from "node:child_process";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { unzipSync } from "fflate";
-import { checkSource, compileToSb3 } from "../index.js";
+import { checkSource, compileToIR, compileToSb3 } from "../index.js";
 import { ENTRY_PATH, virtualAssetReader, virtualResolver } from "./helpers.js";
 
 const HELLO = `sprite Cat { events.onFlag() { looks.say("hi", 1); } }`;
@@ -216,4 +217,23 @@ test("import() rejects grids, nested json and missing files", () => {
     assert.match(check("bad.json"), /Invalid JSON/);
     assert.match(check("nope.csv"), /Cannot resolve '\.\/nope\.csv'/);
     assert.match(check("thing.txt"), /loads .json or .csv files/);
+});
+
+test("every stdlib file checks clean on its own, by its marker", () => {
+    for (const { name, content } of stdlibSources) {
+        assert.match(content, /^#! katnip: stdlib\r?\n/, name);
+        assert.deepEqual(checkSource(content).map((e) => `${name}: ${e.message}`), []);
+    }
+});
+
+test("the stdlib marker relaxes checks only on the first line, and can't be built", () => {
+    const source = `proc f(@operator = "+", a: T) -> void {}\n`;
+    assert.match(checkSource(source).map((e) => e.message).join("\n"), /@operator is only valid/);
+    assert.match(checkSource(`\n#! katnip: stdlib\n${source}`).map((e) => e.message).join("\n"), /@operator is only valid/);
+    assert.deepEqual(checkSource(`#! katnip: stdlib\r\n${source}`), []);
+
+    const { errors, sb3 } = compileToSb3(`#! katnip: stdlib\nsprite Cat {}`);
+    assert.equal(sb3, undefined);
+    assert.match(errors.map((e) => e.message).join("\n"), /can only be checked/);
+    assert.equal(compileToIR(`#! katnip: stdlib\nsprite Cat {}`).ir, undefined);
 });

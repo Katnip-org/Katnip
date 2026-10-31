@@ -1,3 +1,4 @@
+#! katnip: stdlib
 #> math.knip ~ math operations + math constants. <#
 
 public pi: num = 3.141592653589793;

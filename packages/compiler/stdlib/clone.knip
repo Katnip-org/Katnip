@@ -1,3 +1,4 @@
+#! katnip: stdlib
 #> clone.knip ~ clone lifecycle blocks. <#
 
 enum CloneTarget { MYSELF = "_myself_" }

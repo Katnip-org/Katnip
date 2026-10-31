@@ -1,3 +1,4 @@
+#! katnip: stdlib
 #> motion.knip ~ sprite motion blocks. <#
 
 public enum Target { RANDOM = "_random_", MOUSE = "_mouse_" }

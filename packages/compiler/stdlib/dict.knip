@@ -1,3 +1,4 @@
+#! katnip: stdlib
 #> dict.knip ~ methods on dict values (first param `self` marks a method). <#
 
 proc contains(@opcode = "katnip_dict_contains", self: dict<K, V>, key: K) -> bool {}

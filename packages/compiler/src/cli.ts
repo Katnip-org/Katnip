@@ -9,7 +9,7 @@ import { loadImports, type AssetReader, type ImportResolver } from "./semantic/M
 import { loadData, loadImportedData } from "./codegen/assets.js";
 import { ErrorReporter, KatnipError } from "./utils/ErrorReporter.js";
 import { Logger } from "./utils/Logger.js";
-import { compileToIR, compileToSb3, decompileSb3 } from "./index.js";
+import { compileToIR, compileToSb3, decompileSb3, isStdlibSource } from "./index.js";
 
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
@@ -169,6 +169,7 @@ cli
                 loadImportedData(modules, fileAssetReader);
                 analyzer.loadImports(modules);
                 loadData(ast, sourcePath, fileAssetReader, reporter);
+                if (isStdlibSource(fileContent)) analyzer.checkAsStdlib();
                 // Analyze even when parsing reported errors: the parser recovers into a
                 // usable AST (error nodes are no-ops in the analyzer), so semantic errors
                 // surface alongside syntax errors instead of being hidden behind the first.

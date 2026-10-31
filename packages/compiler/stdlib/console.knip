@@ -1,3 +1,4 @@
+#! katnip: stdlib
 #> console.knip ~ debug/interaction helpers. <#
 
 proc log(@opcode = "katnip_console_log", msg: str) -> void {}

@@ -1,3 +1,4 @@
+#! katnip: stdlib
 #> sensing.knip ~ sensing blocks. <#
 
 public enum TouchTarget { MOUSE = "_mouse_", EDGE = "_edge_" }

@@ -1,3 +1,4 @@
+#! katnip: stdlib
 #> prelude.knip ~ bare global builtins, available without a namespace. <#
 
 proc typeof(@opcode = "katnip_typeof", value: any) -> str {} # TODO: use the katnip one

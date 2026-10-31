@@ -27,6 +27,9 @@ interface Options {
     compression?: number;
 }
 
+/** A file's first line can mark it as stdlib source, so it checks on its own. It can't be built: typevars have no lowering. */
+export const isStdlibSource = (source: string) => /^#![ \t]*katnip:[ \t]*stdlib[ \t]*\r?(\n|$)/.test(source);
+
 /** Lex, parse and analyze. `ast` is null when the source was too broken to parse. */
 function analyze(source: string, options: Options) {
     const reporter = new ErrorReporter(source);
@@ -57,8 +60,13 @@ function analyze(source: string, options: Options) {
     loadData(ast, options.path ?? "", read, reporter);
     const assets = loadAssets(ast, options.path ?? "", read, reporter);
 
+    if (isStdlibSource(source)) analyzer.checkAsStdlib();
     analyzer.analyze(ast);
     return { reporter, ast, analyzer, assets };
+}
+
+function stdlibBuildError(): KatnipError {
+    return new KatnipError("Compiler", "this file is marked '#! katnip: stdlib', so it can only be checked, not built", { line: 1, column: 1 });
 }
 
 export function checkSource(source: string, options: Options = {}): readonly KatnipError[] {
@@ -71,6 +79,7 @@ export function compileToIR(
     options: Options = {},
 ): { errors: readonly KatnipError[]; ir?: IRProgram } {
     const { reporter, ast, analyzer } = analyze(source, options);
+    if (isStdlibSource(source)) reporter.add(stdlibBuildError());
     const errors = reporter.getErrors();
     if (reporter.hasErrors() || !ast || !analyzer) return { errors };
 
@@ -89,6 +98,7 @@ export function compileToSb3(
     options: Options = {},
 ): { errors: readonly KatnipError[]; sb3?: Uint8Array } {
     const { reporter, ast, analyzer, assets } = analyze(source, options);
+    if (isStdlibSource(source)) reporter.add(stdlibBuildError());
     const errors = reporter.getErrors();
     if (reporter.hasErrors() || !ast || !analyzer) return { errors };
 

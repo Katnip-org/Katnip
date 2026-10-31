@@ -1,3 +1,4 @@
+#! katnip: stdlib
 #> list.knip ~ methods on list values (first param `self` marks a method). <#
 
 proc add(@opcode = "data_addtolist", self: list<T>, item: T) -> void {}

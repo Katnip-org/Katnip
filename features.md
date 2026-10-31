@@ -10,7 +10,7 @@ Status of every language and toolchain feature, tracked against the compiler pip
 | 🔴 | Not implemented, or implemented only far enough to type-check |
 
 Last verified against `main` (compiler `0.1.25`, VS Code extension `0.1.25`) with a green
-`node --test` run of 296 cases, 293 passing and 3 `todo` cases pinning the gaps below, and a clean `katnip build` of `examples/all.knip`,
+`node --test` run of 298 cases, 295 passing and 3 `todo` cases pinning the gaps below, and a clean `katnip build` of `examples/all.knip`,
 `examples/assets.knip` and `examples/codegen.knip`.
 
 The practical "what do I write instead" version is [Known gaps](https://docs.katnip.org/reference/known-gaps/).

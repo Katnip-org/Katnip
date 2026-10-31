@@ -146,6 +146,12 @@ export class SemanticAnalyzer {
     /** True only while resolving stdlib signatures, where T/K/V typevars are legal. */
     private allowTypevars = false;
 
+    /** Checks the analyzed file by stdlib rules, for a `#! katnip: stdlib` file opened on its own. */
+    checkAsStdlib(): void {
+        this.allowTypevars = true;
+        this.inStdlib = true;
+    }
+
     /** True only while hoisting a stdlib module, whose enum values are real sb3 field strings. */
     private inStdlib = false;
 

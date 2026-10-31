@@ -1,3 +1,4 @@
+#! katnip: stdlib
 #> str.knip ~ methods on string values (first param `self` marks a method). <#
 
 proc contains(@opcode = "operator_contains", self: str, substring: str) -> bool {}

@@ -1,3 +1,4 @@
+#! katnip: stdlib
 #> looks.knip ~ sprite appearance blocks. <#
 
 public enum GraphicEffect { COLOR, FISHEYE, WHIRL, PIXELATE, MOSAIC, BRIGHTNESS, GHOST }
