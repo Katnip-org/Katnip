@@ -129,6 +129,8 @@ The practical "what do I write instead" version is [Known gaps](https://docs.kat
 
 ## Expressions and operators
 
+* 🟢 **Decimal literals**; a whole number written with a point keeps it, so
+  `math.random(0.0, 1.0)` stays fractional in Scratch, where `math.random(0, 1)` picks 0 or 1.
 * 🟢 **Arithmetic**; `+`, `-`, `*`, `/`, `%`, and unary `-`.
 * 🟢 **Comparison**; `==`, `!=`, `<`, `>`.
 * 🟢 **Logic**; `&&`, `||`, and unary `!`, all requiring `bool` operands.
@@ -261,6 +263,8 @@ the compiler cannot enumerate, `Target`, `TouchTarget`, `DistanceTarget`, `Objec
 * 🟢 **`pen`**; down, up, clear, stamp, hex color, color params, size; the extension is
   declared in the project automatically.
 * 🟢 **`clone`**; `onStart`, `create`, `delete`.
+* 🟢 **`sound`**; `play`, `playUntilDone`, `stopAll`, effects, volume. The `sound` asset
+  declaration still works; only `sound.` selects the namespace.
 * 🟡 **`list`**; `add`, `contains`, `length`, `clear`, `indexOf`, `show`, `hide` are 🟢;
   `remove` is 🔴 (yields), `merge` is 🔴 (`katnip_list_merge`).
 * 🟢 **`math`**; `pi`, `e`, `tau` fold to literals; the `MathOp` enum and `op` wrap

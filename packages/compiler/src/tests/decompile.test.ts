@@ -211,3 +211,11 @@ test("a for each counts with its own variable, unless the loop would shadow it",
 test("rejects bytes without a project.json", () => {
     assert.throws(() => decompileSb3(new Uint8Array([80, 75, 5, 6, ...new Array(18).fill(0)])), /project\.json/);
 });
+
+test("sound blocks and a pointed whole number survive a round trip", () => {
+    const knip = decompileSb3(build(`public v: num = 0;
+sprite Cat { events.onFlag() { sound.play("boing"); v = math.random(0.0, 1.0); } }`));
+    expectChecks(knip);
+    assert.match(knip, /sound\.play\("boing"\)/);
+    assert.match(knip, /math\.random\(0\.0, 1\.0\)/);
+});

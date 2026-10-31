@@ -408,7 +408,10 @@ export class Decompiler {
             default: {
                 if (String(slot[1]) === "") return numLit(0);
                 const n = looseNumber(slot[1]);
-                return n === null ? strLit(String(slot[1])) : numLit(n);
+                if (n === null) return strLit(String(slot[1]));
+                // Scratch's random treats 1.0 and 1 differently, so the point has to survive.
+                if (Number.isInteger(n) && String(slot[1]).includes(".")) return { ...numLit(n), code: String(slot[1]) };
+                return numLit(n);
             }
         }
     }

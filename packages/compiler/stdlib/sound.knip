@@ -1,0 +1,16 @@
+#! katnip: stdlib
+#> sound.knip ~ sound blocks. <#
+
+public enum SoundEffect { PITCH, PAN }
+
+proc play(@opcode = "sound_play", name: str) -> void {}
+proc playUntilDone(@opcode = "sound_playuntildone", name: str) -> void {}
+proc stopAll(@opcode = "sound_stopallsounds") -> void {}
+
+proc setEffect(@opcode = "sound_seteffectto", effect: SoundEffect, value: num) -> void {}
+proc changeEffect(@opcode = "sound_changeeffectby", effect: SoundEffect, change: num) -> void {}
+proc clearEffects(@opcode = "sound_cleareffects") -> void {}
+
+proc setVolume(@opcode = "sound_setvolumeto", volume: num) -> void {}
+proc changeVolume(@opcode = "sound_changevolumeby", change: num) -> void {}
+proc volume(@opcode = "sound_volume") -> num {}

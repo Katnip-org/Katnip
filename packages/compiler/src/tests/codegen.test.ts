@@ -227,6 +227,30 @@ test("extensions are declared for the blocks actually emitted", () => {
     assert.deepEqual(build(`sprite Cat { events.onFlag() { looks.say("hi"); } }`).extensions, []);
 });
 
+test("sound blocks emit their menu, effect field and volume input", () => {
+    const blocks = blocksOf(build(`sprite Cat { events.onFlag() {
+        sound.play("boing");
+        sound.setEffect("PITCH", 10);
+        sound.setVolume(sound.volume() - 1);
+    } }`));
+
+    assert.deepEqual(find(blocks, "sound_sounds_menu")![1].fields.SOUND_MENU, ["boing", null]);
+    assert.deepEqual(find(blocks, "sound_seteffectto")![1].fields.EFFECT, ["PITCH", null]);
+    assert(find(blocks, "sound_volume"), "the volume reporter should nest in setVolume");
+    assert(find(blocks, "sound_setvolumeto")![1].inputs.VOLUME, "setVolume should fill its input");
+});
+
+test("a whole number written with a decimal point keeps it, so Scratch's random stays fractional", () => {
+    const blocks = blocksOf(build(`sprite Cat { events.onFlag() {
+        private r: num = math.random(0.0, 1.0);
+        private i: num = math.random(0, 1);
+    } }`));
+    const randoms = Object.values(blocks).filter((b) => b.opcode === "operator_random");
+    assert.deepEqual(randoms[0]!.inputs.FROM, [1, [4, "0.0"]]);
+    assert.deepEqual(randoms[0]!.inputs.TO, [1, [4, "1.0"]]);
+    assert.deepEqual(randoms[1]!.inputs.TO, [1, [4, "1"]]);
+});
+
 test("a cap block ends its stack", () => {
     const blocks = blocksOf(build(`
         proc early(n: num) -> num { return n; looks.say("dead"); }

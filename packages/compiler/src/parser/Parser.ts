@@ -6,7 +6,7 @@ import { isValuedTokenType, UnitTokenType } from "../lexer/Token.js";
 import type { Token, TokenInfoFor, TokenPos, TokenType, ValuedToken } from "../lexer/Token.js";
 import { ErrorReporter, KatnipError } from "../utils/ErrorReporter.js";
 import { KatnipLog, KatnipLogType, Logger } from "../utils/Logger.js";
-import { type AST, type DecoratorNode, type ParameterNode, type ProcedureDeclarationNode, type TypeNode, type TupleTypeNode, type NamedArgumentNode, type ExpressionNode, type StatementNode, type ErrorStatementNode, type EnumDeclarationNode, type EnumMemberNode, type StructDeclarationNode, type StructFieldNode, type VariableDeclarationNode, VariableDeclarationType, type VariableAssignmentNode, type DictEntryNode, type ElifClauseNode, type BlockNode, type CaseDeclarationNode, type DefaultCaseDeclarationNode, type BinaryOperator, type AssignmentOperator, type UnaryOperator } from "./AST-nodes.js";
+import { type AST, type LiteralExpressionNode, type DecoratorNode, type ParameterNode, type ProcedureDeclarationNode, type TypeNode, type TupleTypeNode, type NamedArgumentNode, type ExpressionNode, type StatementNode, type ErrorStatementNode, type EnumDeclarationNode, type EnumMemberNode, type StructDeclarationNode, type StructFieldNode, type VariableDeclarationNode, VariableDeclarationType, type VariableAssignmentNode, type DictEntryNode, type ElifClauseNode, type BlockNode, type CaseDeclarationNode, type DefaultCaseDeclarationNode, type BinaryOperator, type AssignmentOperator, type UnaryOperator } from "./AST-nodes.js";
 import { bindingPowerTable, getBindingPower } from "./BindingPowerTable.js";
 
 /** Words that start a top-level declaration, so error recovery stops in front of them. */
@@ -420,7 +420,7 @@ export class Parser {
             if (this.checkToken("value", ["sprite", "stage"])) return this.parseSpriteDefinition(this.checkToken("value", ["stage"]));
             if (this.checkToken("value", ["import"])) return this.parseImportLike("import");
             if (this.checkToken("value", ["costume"])) return this.parseImportLike("costume");
-            if (this.checkToken("value", ["sound"])) return this.parseImportLike("sound");
+            if (this.checkToken("value", ["sound"]) && !(this.peek(1)?.token.type === ".")) return this.parseImportLike("sound");
 
             if (this.checkToken("value", ["if"])) return this.parseIfStatement();
             if (this.checkToken("value", ["for"])) return this.parseForStatement();
@@ -1446,12 +1446,16 @@ export class Parser {
         // Number literal
         if (this.checkToken("type", ["Number"])) {
             const lit = this.consume({ type: "Number" }, "Expected number literal");
-            return {
+            const text = lit.token.value;
+            const value = Number(text);
+            const node: LiteralExpressionNode = {
                 type: "Literal",
-                value: Number(lit.token.value),
+                value,
                 valueType: "Number",
                 loc: { start: lit.start, end: lit.end },
-            } as ExpressionNode;
+            };
+            if (Number.isInteger(value) && text.includes(".")) node.raw = text;
+            return node;
         }
 
         // EOF

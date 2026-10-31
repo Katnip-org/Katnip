@@ -81,6 +81,17 @@ export const opcodeSlots: Record<string, Slot[]> = {
     looks_backdropnumbername: [field("NUMBER_NAME")],
     looks_size: [],
 
+    // sound
+    sound_play: [menu("SOUND_MENU", "sound_sounds_menu", "SOUND_MENU", "pop")],
+    sound_playuntildone: [menu("SOUND_MENU", "sound_sounds_menu", "SOUND_MENU", "pop")],
+    sound_stopallsounds: [],
+    sound_seteffectto: [field("EFFECT"), input("VALUE", 4)],
+    sound_changeeffectby: [field("EFFECT"), input("VALUE", 4)],
+    sound_cleareffects: [],
+    sound_setvolumeto: [input("VOLUME", 4)],
+    sound_changevolumeby: [input("VOLUME", 4)],
+    sound_volume: [],
+
     // sensing
     sensing_touchingobject: [menu("TOUCHINGOBJECTMENU", "sensing_touchingobjectmenu", "TOUCHINGOBJECTMENU", "_mouse_")],
     sensing_touchingcolor: [input("COLOR", 9)],

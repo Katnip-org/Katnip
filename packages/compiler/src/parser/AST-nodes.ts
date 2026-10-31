@@ -278,6 +278,8 @@ export interface LiteralExpressionNode extends NodeBase {
     type: "Literal";
     value: string | number | boolean | null;
     valueType: "String" | "Number" | "Boolean" | "Null";
+    /** Source text of a whole number written with a decimal point. Scratch treats `1.0` and `1` differently. */
+    raw?: string;
 }
 
 export interface InterpolatedStringExpressionNode extends NodeBase {

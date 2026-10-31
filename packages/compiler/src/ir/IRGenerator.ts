@@ -1296,7 +1296,7 @@ export class IRGenerator {
     private lowerExpr(node: ExpressionNode, out: IRStmt[]): IRExpr {
         switch (node.type) {
             case "Literal":
-                return { kind: "lit", value: node.value ?? "" };
+                return { kind: "lit", value: node.raw ?? node.value ?? "" };
 
             case "Identifier": {
                 const operand = this.substitutions?.get(node.name);
@@ -1495,7 +1495,7 @@ function literals(nodes: (ExpressionNode | undefined)[]): (string | number | boo
             continue;
         }
         if (node.type !== "Literal") return null;
-        values.push(node.value ?? "");
+        values.push(node.raw ?? node.value ?? "");
     }
     return values;
 }

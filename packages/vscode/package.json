@@ -2,7 +2,7 @@
   "name": "katnip-vscode",
   "displayName": "Katnip",
   "description": "Live diagnostics, highlighting, completion and .sb3 builds for the Katnip language (.knip).",
-  "version": "0.1.25",
+  "version": "0.1.26",
   "icon": "icon.png",
   "repository": {
     "type": "git",
