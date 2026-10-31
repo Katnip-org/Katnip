@@ -114,10 +114,8 @@ test("compound assignment desugars to setvariableto over the binop", () => {
     });
 });
 
-test("a compound assign with no opcode falls back like the binary expression does", () => {
-    const program = lower(HAT + `sprite Cat { onflag() { private x = 0; x **= 6; } }`);
-    const sets = raws(program.sprites[0].scripts[0].body, "data_setvariableto");
-    assert.deepEqual(sets[1].inputs[1], { kind: "lit", value: "" }); // ** has no lowering yet
+test("an operator with no opcode and no proc behind it refuses to lower", () => {
+    assert.throws(() => lower(HAT + `sprite Cat { onflag() { private x = 0; x **= 6; } }`), /'\*\*' operator isn't supported/);
 });
 
 test("command in statement position emits a raw block (no plan lookup crash)", () => {
@@ -838,8 +836,8 @@ test("a stdlib enum keeps the bare value sb3 fields match on", () => {
     assert.deepEqual(value.inputs[0], { kind: "lit", value: "number" });
 });
 
-test("an unresolved member expression stays empty rather than throwing", () => {
-    assert.deepEqual(folded("", "self.whatever"), { kind: "lit", value: "" });
+test("an unresolved member expression refuses to lower", () => {
+    assert.throws(() => folded("", "self.whatever"), /can't be used here/);
 });
 
 // -- call arguments --

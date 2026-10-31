@@ -4,21 +4,23 @@ public pi: num = 3.141592653589793;
 public e: num = 2.718281828459045;
 public tau: num = 6.283185307179586;
 
-#>
-proc pow(base: num, exponent: num) -> num {
-    if (exponent == 0) {
-        return(1);
+# Whole exponents multiply, so 2 ** 3 is exactly 8 rather than e ^ (3 * ln 2).
+proc pow(@operator = "**", base: num, exponent: num) -> num {
+    private power: num = abs(exponent);
+    if (power == floor(power) && power < 1e15) {
+        private result: num = 1;
+        private square: num = base;
+        while (power > 0) {
+            if (power % 2 == 1) { result = result * square; }
+            square = square * square;
+            power = floor(power / 2);
+        }
+        if (exponent < 0) { return 1 / result; }
+        return result;
     }
-
-    private result = epow(exponent * ln(abs(base)));
-
-    if (base < 0) {
-        result = result * (Num(abs(exponent) % 2 == 0) * 2 - 1);
-    }
-
-    return(result);
+    if (base < 0) { return 0 / 0; }
+    return epow(exponent * ln(base));
 }
-<#
 
 # --- Misc ---
 

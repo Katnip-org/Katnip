@@ -93,8 +93,8 @@ enums, structs, imports, all the loop and branch forms, a decompiler, and a
 standard library (`motion`, `looks`, `sensing`, `pen`, `events`, `clone`, `math`, `str`,
 `list`, `dict`, `console`) written in Katnip itself.
 
-Not yet lowered to blocks: slices, `**`, tuple destructuring, `list.remove`, and the remaining
-`katnip_*` builtins. See
+Not yet lowered to blocks: `list.remove`, whole-list values, and the remaining `katnip_*`
+builtins. They stop the build with an error. See
 [`features.md`](https://github.com/Katnip-org/Katnip/blob/main/features.md) for the
 per-feature status.
 

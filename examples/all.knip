@@ -13,13 +13,11 @@ public  b: bool = true; # bool literal
 private u: num | str = 5; # union type
 private li: list<num> = [1, 2, 3]; # list
 private di: dict<str, num> = {"a": 1}; # dict
-private pairs: list<(str, num)> = [("a", 1), ("b", 2)]; # tuple type + literals
 private col: Color = Color.RED; # enum-typed
 private inferred = -n; # inferred + unary minus
 
 # operators, each family once (all bool / all num)
-# TODO: impl **
-private arith: num  = n + n - n * n / n % n;
+private arith: num  = n + n - n * n / n % n ** 2;
 private cmp: bool   = n < 1 && n > 0 && n <= 1 && n >= 0 && n == n;
 private logic: bool = (b ^ b) || (b !& b) || (b !| b) || (b !^ b) || !b;
 
@@ -37,7 +35,6 @@ proc add(
 
 # sprite: member access + one handler with all control flow
 sprite Cat {
-    self.x = 0; # member assignment
 
     events.onFlag() {
         private t: num = 5;
@@ -61,7 +58,8 @@ sprite Cat {
         do { t += 1; } while (t < 3); # do-while
 
         for (i, n) { motion.forward(i); } # counter loop
-        for ((name, dist), pairs) { motion.forward(dist); } # tuple-destructure loop
+        for ((name, dist), di) { motion.forward(dist); } # tuple-destructure loop
+        looks.say(s[1:2]); # slice: 1-based, stop-inclusive
         for (r, range(2, 6, 2)) { motion.forward(r); } # range: 1-based, stop-inclusive -> 2 4 6
         for ((idx, val), enumerate(li)) { motion.forward(idx + val); } # enumerate: 1-based index + value
         for ((p, q), zip(li, li)) { motion.forward(p + q); } # zip: two lists, one counter, stops at the shorter

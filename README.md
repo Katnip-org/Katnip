@@ -92,8 +92,8 @@ and the SB3 generator emits the block JSON that gets zipped into a `.sb3`.
 
 `katnip decompile` goes the other way, from a `.sb3` back to `.knip` source.
 
-Not yet lowered to blocks: slices, `**`, tuple destructuring, `list.remove`, and the remaining
-`katnip_*` builtins. [`features.md`](features.md) tracks the gaps.
+Not yet lowered to blocks: `list.remove`, whole-list values, and the remaining `katnip_*`
+builtins. They stop the build with an error. [`features.md`](features.md) tracks the gaps.
 
 ## License
 

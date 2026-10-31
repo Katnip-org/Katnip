@@ -1,3 +1,21 @@
 #> str.knip ~ methods on string values (first param `self` marks a method). <#
 
 proc contains(@opcode = "operator_contains", self: str, substring: str) -> bool {}
+
+# s[start:stop:step]: 1-based, stop-inclusive, like range().
+proc slice(@operator = "[:]", self: str, start: num, stop: num, step: num = 1) -> str {
+    private result: str = "";
+    private i: num = start;
+    if (step > 0) {
+        while (i <= stop && i <= len(self)) {
+            result = result + self[i];
+            i += step;
+        }
+    } elif (step < 0) {
+        while (i >= stop && i >= 1) {
+            result = result + self[i];
+            i += step;
+        }
+    }
+    return result;
+}

@@ -235,7 +235,7 @@ export class SemanticAnalyzer {
             this.indexStdlibBlocks(module.ast.body, isPrelude ? null : module.namespace);
 
             for (const stmt of module.ast.body)
-                if (stmt.type === "ProcedureDeclaration" && this.procSignatures.get(stmt)?.meta?.lower === "builds")
+                if (stmt.type === "ProcedureDeclaration" && ["builds", "userproc"].includes(this.procSignatures.get(stmt)?.meta?.lower ?? ""))
                     this.visit(stmt);
 
             this.current = savedScope;
@@ -473,6 +473,7 @@ export class SemanticAnalyzer {
     private hoistProcedure(node: ProcedureDeclarationNode): void {
         const meta = this.extractMeta(node.decorators);
         meta.returns = this.deriveReturns(node.returnType);
+        if (this.inStdlib) meta.stdlib = true;
         if (!meta.lower) {
             meta.lower = meta.opcode ? (meta.returns.kind === "void" ? "command" : "reporter") : "userproc";
         }
@@ -484,7 +485,7 @@ export class SemanticAnalyzer {
             } else {
                 meta.buildsExpr = only.argument;
             }
-        } else if (meta.operator) {
+        } else if (meta.operator && !this.inStdlib) {
             this.error(`@operator is only valid on a @lower = "builds" proc`, node);
         }
 
@@ -664,10 +665,17 @@ export class SemanticAnalyzer {
             }
             case "VariableAssignment": {
                 // Scratch args are read-only reporters, and a struct param's fields are args too
-                let root = node.left;
-                while (root.type === "MemberExpression") root = root.object;
-                if (root.type === "Identifier" && this.current.lookup(root.name)?.[0]?.kind === "parameter")
-                    this.error(`Cannot assign to parameter '${root.name}'`, node.left);
+                const targets = node.left.type === "TupleExpression" ? node.left.elements : [node.left];
+                if (node.left.type === "TupleExpression") {
+                    if (node.operator !== "=") this.error(`'${node.operator}' cannot assign to a tuple pattern`, node.left);
+                    for (const part of targets)
+                        if (part.type !== "Identifier") this.error("A tuple pattern can only assign to plain variables", part);
+                }
+                for (let root of targets) {
+                    while (root.type === "MemberExpression") root = root.object;
+                    if (root.type === "Identifier" && this.current.lookup(root.name)?.[0]?.kind === "parameter")
+                        this.error(`Cannot assign to parameter '${root.name}'`, root);
+                }
                 const target = this.inferType(node.left);
                 const value = this.inferType(node.right);
                 this.checkAssign(
@@ -1212,9 +1220,17 @@ export class SemanticAnalyzer {
                 return this.resolveMemberAccess(expression);
             case "SliceAccess": {
                 const objectType = this.inferType(expression.object);
-                if (expression.start) this.inferType(expression.start);
-                if (expression.end) this.inferType(expression.end);
-                if (expression.step) this.inferType(expression.step);
+                const sliceable =
+                    objectType.kind === "list" ||
+                    objectType.kind === "unknown" ||
+                    (objectType.kind === "primitive" && objectType.name === "str");
+                if (!sliceable) this.error(`Cannot slice a value of type '${typeToString(objectType)}'`, expression.object);
+                for (const bound of [expression.start, expression.end, expression.step]) {
+                    if (!bound) continue;
+                    const type = this.inferType(bound);
+                    if (!isAssignable(type, { kind: "primitive", name: "num" }))
+                        this.error(`A slice bound must be of type 'num', not '${typeToString(type)}'`, bound);
+                }
                 return objectType;
             }
             case "TupleExpression":

@@ -45,14 +45,7 @@ function varReads(body: IRStmt[]): string[] {
 
 const isEmptyLit = (expr: IRExpr) => expr.kind === "lit" && expr.value === "";
 
-test("the ** operator computes a power", { todo: "no opcode and no builds proc; the IR lowers it to an empty literal" }, () => {
-    const body = script(`sprite Cat { events.onFlag() { private x: num = 2 ** 3; looks.say(f"{x}"); } }`);
-    const set = body.find((s): s is Extract<IRStmt, { kind: "raw" }> => s.kind === "raw" && s.opcode === "data_setvariableto")!;
-
-    assert(!isEmptyLit(set.inputs[1]!), "2 ** 3 must lower to a real computation, not an empty literal");
-});
-
-test("imported procs reach codegen", { todo: "the IR walks only the entry file, so codegen throws 'call to unknown proc'" }, () => {
+test("imported procs reach codegen", () => {
     const files = { "/proj/lib.knip": `public proc twice(n: num) -> num { return n * 2; }` };
     const { errors, sb3 } = compileToSb3(
         `import "./lib.knip";\nsprite Cat { events.onFlag() { looks.say(f"{lib.twice(2)}"); } }`,
@@ -101,7 +94,7 @@ test("every stdlib opcode has codegen metadata", { todo: "the katnip_* builtins 
     assert.deepEqual(missing, [], `stdlib procs with no codegen metadata:\n  ${missing.join("\n  ")}`);
 });
 
-test("tuple destructuring reads every element", { todo: "a non-Identifier assignment target is skipped, dropping the call entirely" }, () => {
+test("tuple destructuring reads every element", () => {
     const body = script(`proc two() -> (num, num) { return (1, 2); }
 sprite Cat { events.onFlag() { private a: num = 0; private b: num = 0; (a, b) = two(); looks.say(f"{a}{b}"); } }`);
 

@@ -13,6 +13,7 @@ import type {
     ExpressionNode,
     ForStatementNode,
     ProcedureDeclarationNode,
+    SliceAccessNode,
     SourceLocation,
     SpriteDeclarationNode,
     StatementNode,
@@ -69,6 +70,15 @@ export class IRGenerator {
     /** Local name => mangled global. */
     private temps = new Map<string, string>();
 
+    /** Return variables this statement read, which a later call in the statement would overwrite. */
+    private liveRets: Extract<IRExpr, { kind: "var" }>[] = [];
+    private stagedRets = 0;
+    /** Sliced lists are filled by a generated warp proc, per owner, source and destination. */
+    private readonly sliceProcs = new Set<string>();
+    private sliceLists = 0;
+    /** Stdlib userprocs a call has reached; the rest stay out of the project. */
+    private readonly usedStdlib = new Set<Signature>();
+
     /** Vstack slots pushed and not yet popped: one list name per slot, in push order. */
     private readonly pending: string[] = [];
 
@@ -124,8 +134,8 @@ export class IRGenerator {
                 case "EnumDeclaration":
                 case "ImportDeclaration":
                 case "StructDeclaration":
+                    break;
                 case "VariableAssignment":
-                // Statements not supported outside of a sprite declaration must error
                 case "HandlerStatement":
                 case "SwitchDeclaration":
                 case "ExpressionStatement":
@@ -136,15 +146,14 @@ export class IRGenerator {
                 case "RepeatStatement":
                 case "ForStatement":
                 case "ReturnStatement":
-                    // TODO: error and say its not allowed
-                    break;
+                    throw new KatnipError("IR", "this statement isn't allowed at the top level; put it inside an event handler", spanOf(stmt));
                 case "ErrorStatement":
                     break;
             }
         }
 
         for (const [decl, sig] of this.analyzer.procSignatures) {
-            if (!this.plans.has(sig)) continue;
+            if (!this.plans.has(sig) || (sig.meta?.stdlib && !this.usedStdlib.has(sig))) continue;
             const proc = this.lowerProc(decl);
             if (proc) this.program.procs.set(proc.name, proc);
         }
@@ -210,6 +219,11 @@ export class IRGenerator {
                     (stmt.kind === "costume" ? this.sprite.costumes : this.sprite.sounds).push({ name, path: stmt.specifier });
                     break;
                 }
+                case "VariableDeclaration":
+                case "ErrorStatement":
+                    break;
+                default:
+                    throw new KatnipError("IR", "this statement isn't allowed directly in a sprite; put it inside an event handler", spanOf(stmt));
             }
         }
 
@@ -225,6 +239,7 @@ export class IRGenerator {
     private declareMember(node: VariableDeclarationNode, sink?: IRStmt[]): void {
         const target = isPublicVar(node) ? this.program : this.sprite ?? this.program;
         const init = node.initializer;
+        if (!sink) this.liveRets = [];
         const struct = this.declaredStruct(node);
         if (struct) {
             this.declareStruct(node, struct.name, struct.list, target, sink);
@@ -256,6 +271,10 @@ export class IRGenerator {
             return;
         }
 
+        const slice = init?.type === "SliceAccess" ? init : null;
+        if (init && !slice && init.type !== (kind === "list" ? "ListExpression" : "DictExpression"))
+            throw new KatnipError("IR", `a ${kind} can only be initialized from a literal or a slice for now`, spanOf(init));
+
         const entries = init?.type === "DictExpression" ? init.entries : [];
         const columns: [string, ExpressionNode[]][] =
             kind === "list"
@@ -267,13 +286,13 @@ export class IRGenerator {
         this.listNames.set(node.name, columns.map(([column]) => column));
 
         const baked = columns.map(([, elements]) => literals(elements));
-        const runtime = sink !== undefined || baked.some((values) => values === null);
+        const runtime = sink !== undefined || slice !== null || baked.some((values) => values === null);
 
         const out = sink ?? (this.sprite ? this.spriteInit : this.init);
         const mark = this.pending.length;
         columns.forEach(([name, elements], i) => {
             target.lists.set(name, runtime ? [] : baked[i]!);
-            if (!runtime) return;
+            if (!runtime || slice) return;
 
             this.emit(out, { kind: "raw", opcode: "data_deletealloflist", inputs: [{ kind: "var", name }] });
             for (const element of elements)
@@ -283,6 +302,7 @@ export class IRGenerator {
                     inputs: [{ kind: "var", name }, this.lowerExpr(element, out)],
                 });
         });
+        if (slice) this.assignSlice(columns[0]![0], slice, out);
         this.popTo(out, mark);
     }
 
@@ -320,6 +340,8 @@ export class IRGenerator {
         if (list) {
             const columns = fields.map((field) => `${base}_${field.name}`);
             this.structLists.set(node.name, columns);
+            if (init && init.type !== "ListExpression")
+                throw new KatnipError("IR", "a list of structs can only be initialized from a literal for now", spanOf(init));
             const elements = init?.type === "ListExpression" ? init.elements : [];
             const baked = elements.map((element) => {
                 const row = this.literalFields(element);
@@ -501,7 +523,8 @@ export class IRGenerator {
             if (sig.meta?.lower !== "userproc") continue;
 
             const returns = sig.meta.returns ?? { kind: "void" };
-            this.plans.set(sig, this.planFor(this.mangle(decl.name), returns, sig.meta.retResolved));
+            const name = sig.meta.stdlib ? `katnip_${decl.name}` : decl.name;
+            this.plans.set(sig, this.planFor(this.mangle(name), returns, sig.meta.retResolved));
         }
     }
 
@@ -592,6 +615,9 @@ export class IRGenerator {
     /** Appends the lowering of one statement to `out`; may append more than one block. */
     private lowerStmt(node: StatementNode, out: IRStmt[]): void {
         const mark = this.pending.length;
+        const [liveRets, stagedRets] = [this.liveRets, this.stagedRets];
+        this.liveRets = [];
+        this.stagedRets = 0;
         switch (node.type) {
             case "IfStatement": {
                 const cond = this.lowerExpr(node.condition, out);
@@ -602,6 +628,7 @@ export class IRGenerator {
                     const elif = node.elifs![idx];
                     const pre: IRStmt[] = [];
                     const elifMark = this.pending.length;
+                    this.liveRets = []; // runs in the else branch, after the condition has been read
                     const elifCond = this.lowerExpr(elif.condition, pre);
                     this.branch(pre, elifMark, elifCond, elif.block, elseStmt);
                     elseStmt = pre;
@@ -624,6 +651,9 @@ export class IRGenerator {
                 // The condition's setup has to rerun before every check, not only the first
                 if (out.length > setup) {
                     this.popTo(body, mark);
+                    // Same temp names as the first lowering, because `cond` is the one read
+                    this.liveRets = [];
+                    this.stagedRets = 0;
                     this.lowerExpr(node.condition, body);
                 }
                 this.emit(out, { kind: "while", cond, body });
@@ -651,6 +681,7 @@ export class IRGenerator {
                     }
                     const pre: IRStmt[] = [];
                     const clauseMark = this.pending.length;
+                    this.liveRets = [];
                     const cond = clause.values
                         .map(
                             (test): IRExpr => ({
@@ -706,6 +737,10 @@ export class IRGenerator {
                 break;
             }
             case "VariableAssignment": {
+                if (node.left.type === "TupleExpression") {
+                    this.lowerTupleAssignment(node.left.elements, node.right, out);
+                    break;
+                }
                 if (this.lowerStructAssignment(node.left, node.operator, node.right, out)) break;
                 if (node.left.type === "IndexerAccess") {
                     const lists = this.listsOf(node.left.object);
@@ -757,7 +792,14 @@ export class IRGenerator {
                     });
                     break;
                 }
-                if (node.left.type !== "Identifier") break; // TODO: member -> struct write
+                if (node.left.type !== "Identifier")
+                    throw new KatnipError("IR", "this can't be assigned to; a value from an imported module is read-only", spanOf(node.left));
+                if (this.listNames.has(node.left.name)) {
+                    if (node.operator !== "=" || node.right.type !== "SliceAccess" || this.listNames.get(node.left.name)!.length > 1)
+                        throw new KatnipError("IR", "a whole list or dict can only be replaced with a slice for now", spanOf(node.left));
+                    this.assignSlice(this.listNames.get(node.left.name)![0]!, node.right, out);
+                    break;
+                }
                 const value: IRExpr =
                     node.operator === "="
                         ? this.lowerExpr(node.right, out)
@@ -783,12 +825,43 @@ export class IRGenerator {
                         break;
                     }
                 }
+                // Nothing reads a tuple here, so it's fine that lowerExpr would refuse one
+                if (expr.type === "CallExpression" && this.analyzer.exprTypes.get(expr)?.kind === "tuple") {
+                    const sig = this.analyzer.callResolutions.get(expr)!;
+                    this.lowerUserproc(expr, sig, this.lowerArgs(expr, sig, out), out);
+                    break;
+                }
                 // lowerExpr emits a userproc call itself; any other result is discarded
                 this.lowerExpr(node.expression, out);
                 break;
             }
         }
         this.popTo(out, mark);
+        this.liveRets = liveRets;
+        this.stagedRets = stagedRets;
+    }
+
+    /** `(a, b) = f();` and `(a, b) = (b, a);`, staged so a value can read a variable written before it. */
+    private lowerTupleAssignment(targets: ExpressionNode[], right: ExpressionNode, out: IRStmt[]): void {
+        const names = targets.map((target) => {
+            if (target.type !== "Identifier" || this.structVars.has(target.name) || this.listNames.has(target.name))
+                throw new KatnipError("IR", "a tuple pattern can only assign to plain variables", spanOf(target));
+            return this.local(target.name);
+        });
+
+        let values: IRExpr[];
+        if (right.type === "TupleExpression") {
+            values = right.elements.map((element) => this.lowerExpr(element, out));
+        } else {
+            const sig = right.type === "CallExpression" ? this.analyzer.callResolutions.get(right) : undefined;
+            if (!sig || !this.plans.has(sig))
+                throw new KatnipError("IR", "a tuple pattern can only unpack a tuple literal or a procedure's return value", spanOf(right));
+            const call = right as CallExpressionNode;
+            values = this.lowerUserproc(call, sig, this.lowerArgs(call, sig, out), out);
+        }
+        if (values.length !== names.length)
+            throw new KatnipError("IR", "a tuple pattern can't unpack a struct element yet", spanOf(right));
+        this.assignStruct(names, values, out);
     }
 
     /** num => counter, list/str/dict => index. */
@@ -799,7 +872,8 @@ export class IRGenerator {
             const lists = this.listsOf(node.iterable);
             const parts = node.pattern.type === "TupleExpression" ? node.pattern.elements : [node.pattern];
             const names = parts.map((part) => (part.type === "Identifier" ? part.name : null));
-            if (names.length > 2 || names.some((name) => name === null)) return; // TODO: error
+            if (names.length > 2 || names.some((name) => name === null))
+                throw new KatnipError("IR", "a dict loop binds one or two plain names", spanOf(node.pattern));
 
             const iter = this.declare(names[0]!);
             const item = (list: string): IRExpr => ({
@@ -842,7 +916,8 @@ export class IRGenerator {
             return;
         }
         if (this.lowerForPairs(node, out)) return;
-        if (node.pattern.type !== "Identifier") return; // TODO: destructuring a non-dict
+        if (node.pattern.type !== "Identifier")
+            throw new KatnipError("IR", "a tuple pattern here isn't supported yet; only dict, zip() and enumerate() loops destructure", spanOf(node.pattern));
         if (this.lowerForRange(node, out)) return;
         const iterable = this.lowerExpr(node.iterable, out);
         const name = this.declare(node.pattern.name);
@@ -852,7 +927,8 @@ export class IRGenerator {
             return;
         }
         const isList = type?.kind === "list";
-        if (!isList && !(type?.kind === "primitive" && type.name === "str")) return;
+        if (!isList && !(type?.kind === "primitive" && type.name === "str"))
+            throw new KatnipError("IR", "a for loop needs a num, str, list or dict; cast this value first", spanOf(node.iterable));
 
         const index: IRExpr = { kind: "var", name };
         let element: IRExpr;
@@ -883,7 +959,8 @@ export class IRGenerator {
 
         const parts = node.pattern.type === "TupleExpression" ? node.pattern.elements : [node.pattern];
         const names = parts.map((part) => (part.type === "Identifier" ? part.name : null));
-        if (names.length > 2 || names.some((name) => name === null)) return true; // TODO: error
+        if (names.length > 2 || names.some((name) => name === null))
+            throw new KatnipError("IR", "this loop binds one or two plain names", spanOf(node.pattern));
 
         const lists = this.callArgs(call, sig!).map((arg) => this.lowerExpr(arg, out));
         const iter = this.declare(names[0]!);
@@ -1073,9 +1150,146 @@ export class IRGenerator {
         const opcode = binaryOpcodes[op];
         if (opcode) return { kind: "op", opcode, inputs: [left, right] };
 
+        const power = op === "**" ? this.inlinePower(left, right, out) : null;
+        if (power) return power;
+
         const composed = this.operatorProcs.get(op);
-        if (composed) return this.inlineBuilds(composed, [left, right], out);
-        return { kind: "lit", value: "" }; // TODO: **, % over non-num; no opcode and no builds proc
+        if (composed?.meta?.lower === "builds") return this.inlineBuilds(composed, [left, right], out);
+        if (composed) return this.callPlan(composed, [left, right], out)[0]!;
+        throw new KatnipError("IR", `the '${op}' operator isn't supported yet`);
+    }
+
+    /** `**` with a literal exponent, when plain blocks read better than a call to math.pow; else null. */
+    private inlinePower(left: IRExpr, right: IRExpr, out: IRStmt[]): IRExpr | null {
+        const exponent = literalValue(right);
+        if (exponent === null) return null;
+        const base = literalValue(left);
+        if (base !== null && Number.isFinite(base ** exponent)) return { kind: "lit", value: base ** exponent };
+        if (exponent === 0) return { kind: "lit", value: 1 };
+        if (exponent === 1) return left;
+        if (exponent === 0.5) return { kind: "op", opcode: "operator_mathop", inputs: [{ kind: "lit", value: "sqrt" }, left] };
+        if (!Number.isInteger(exponent) || exponent < 0 || exponent > MAX_INLINE_POWER) return null;
+
+        const factor = this.reusable(left, out);
+        let product = structuredClone(factor);
+        for (let i = 1; i < exponent; i++)
+            product = { kind: "op", opcode: "operator_multiply", inputs: [product, structuredClone(factor)] };
+        return product;
+    }
+
+    /**
+     * An expression that can be written out more than once. Copies of anything bigger than a plain
+     * read would add blocks, and would disagree for a reporter like `math.random`, so those go in a temp.
+     */
+    private reusable(expr: IRExpr, out: IRStmt[]): IRExpr {
+        if (expr.kind === "lit" || expr.kind === "param") return expr;
+        // A later call in the statement moves a return variable by editing this one node, which a copy would miss
+        if (expr.kind === "var" && !this.liveRets.includes(expr)) return expr;
+        const name = this.declare(`ret_stage${this.stagedRets++}`);
+        this.emit(out, this.set(name, expr));
+        // Read by that set, so a later call must not move it
+        const read = nodesIn(expr);
+        this.liveRets = this.liveRets.filter((ret) => !read.has(ret));
+        return { kind: "var", name };
+    }
+
+    /** Evaluates `s[a:b:c]` on a str through its stdlib proc, or on a list into a hidden one. */
+    private lowerSlice(node: SliceAccessNode, out: IRStmt[]): IRExpr {
+        const type = this.analyzer.exprTypes.get(node.object);
+        if (type?.kind === "list") {
+            const hidden = this.mangle(`slice${this.sliceLists++}`);
+            (this.sprite ?? this.program).lists.set(hidden, []);
+            this.fillSlice(hidden, node, out);
+            return { kind: "var", name: hidden };
+        }
+        if (type?.kind !== "primitive" || type.name !== "str")
+            throw new KatnipError("IR", "only a str or a list can be sliced; cast this value first", spanOf(node.object));
+
+        const object = this.lowerExpr(node.object, out);
+        const indices = inlineSliceIndices(node);
+        if (indices) {
+            if (indices.length === 0) return { kind: "lit", value: "" };
+            const text = indices.length > 1 ? this.reusable(object, out) : object;
+            return indices
+                .map((value): IRExpr => ({
+                    kind: "op",
+                    opcode: "operator_letter_of",
+                    inputs: [{ kind: "lit", value }, structuredClone(text)],
+                }))
+                .reduceRight((right, left) => ({ kind: "op", opcode: "operator_join", inputs: [left, right] }));
+        }
+
+        const length: IRExpr = { kind: "op", opcode: "operator_length", inputs: [structuredClone(object)] };
+        const bounds = this.sliceBounds(node, length, out);
+        return this.callPlan(this.operatorProcs.get("[:]")!, [object, ...bounds], out)[0]!;
+    }
+
+    /** start, stop, step. An omitted bound depends on the step's sign, so that must be known here. */
+    private sliceBounds(node: SliceAccessNode, length: IRExpr, out: IRStmt[]): [IRExpr, IRExpr, IRExpr] {
+        const step = node.step ? literalNumber(node.step) : 1;
+        if (step === 0) throw new KatnipError("IR", "a slice step cannot be 0", spanOf(node.step!));
+        if (step === null && (!node.start || !node.end))
+            throw new KatnipError("IR", "a slice with a computed step needs both its start and its stop", spanOf(node));
+        const backwards = step !== null && step < 0;
+        const one: IRExpr = { kind: "lit", value: 1 };
+        const start = node.start ? this.lowerExpr(node.start, out) : backwards ? length : one;
+        const stop = node.end ? this.lowerExpr(node.end, out) : backwards ? structuredClone(one) : structuredClone(length);
+        return [start, stop, node.step ? this.lowerExpr(node.step, out) : structuredClone(one)];
+    }
+
+    /** `dst = src[a:b:c]`; slicing a list onto itself goes through a hidden copy, as filling clears the target first. */
+    private assignSlice(dst: string, node: SliceAccessNode, out: IRStmt[]): void {
+        if (node.object.type === "Identifier" && this.listNames.get(node.object.name)?.[0] === dst) {
+            const hidden = this.lowerSlice(node, out) as { name: string };
+            const length: IRExpr = { kind: "op", opcode: "data_lengthoflist", inputs: [{ kind: "var", name: hidden.name }] };
+            this.callSliceProc(hidden.name, dst, [{ kind: "lit", value: 1 }, length, { kind: "lit", value: 1 }], out);
+            return;
+        }
+        this.fillSlice(dst, node, out);
+    }
+
+    private fillSlice(dst: string, node: SliceAccessNode, out: IRStmt[]): void {
+        const lists = this.listsOf(node.object);
+        if (lists.length !== 1) throw new KatnipError("IR", "a dict can't be sliced", spanOf(node.object));
+        const length: IRExpr = { kind: "op", opcode: "data_lengthoflist", inputs: [{ kind: "var", name: lists[0]! }] };
+        this.callSliceProc(lists[0]!, dst, this.sliceBounds(node, length, out), out);
+    }
+
+    private callSliceProc(src: string, dst: string, bounds: IRExpr[], out: IRStmt[]): void {
+        const owner = this.sprite ?? this.program;
+        const proc = `slice_${src}_to_${dst}`;
+        const key = `${this.sprite?.name ?? ""}/${proc}`;
+        if (!this.sliceProcs.has(key)) {
+            this.sliceProcs.add(key);
+            owner.procs.set(proc, sliceProc(proc, src, dst, this.mangle(`${proc}_i`), owner));
+        }
+        this.emit(out, { kind: "call", proc, args: bounds });
+    }
+
+    /** Emits a userproc call and returns its return variables, keeping earlier ones this statement still reads safe. */
+    private callPlan(sig: Signature, args: IRExpr[], out: IRStmt[]): IRExpr[] {
+        const plan = this.plans.get(sig)!;
+        if (sig.meta?.stdlib) this.usedStdlib.add(sig);
+
+        // An argument is read as the call starts, so only what's left over needs moving clear of the call.
+        const consumed = nodesIn(args);
+        for (const ret of this.liveRets) {
+            if (consumed.has(ret)) continue;
+            const name = this.declare(`ret_stage${this.stagedRets++}`);
+            this.emit(out, this.set(name, { kind: "var", name: ret.name }));
+            ret.name = name;
+        }
+        this.liveRets = [];
+
+        this.emit(out, { kind: "call", proc: plan.mangled, args });
+        if (!plan.strategy) return [];
+        if (plan.strategy === "var") {
+            const rets = plan.retVars.map((name): Extract<IRExpr, { kind: "var" }> => ({ kind: "var", name }));
+            this.liveRets.push(...rets);
+            return rets;
+        }
+        const width = plan.returns.kind === "tuple" ? plan.returns.width : 1;
+        return this.pushVstack(plan.vStackName!, width);
     }
 
     /** Lowers an expression, pushing any setup statements into `out`. The returned IRExpr is always call-free. */
@@ -1105,6 +1319,8 @@ export class IRGenerator {
                 const type = this.analyzer.exprTypes.get(node);
                 if (node.operator === "+" && type?.kind === "primitive" && type.name === "str")
                     return { kind: "op", opcode: "operator_join", inputs: [left, right] };
+                if (this.analyzer.exprTypes.get(node.left)?.kind === "list")
+                    throw new KatnipError("IR", `'${node.operator}' on whole lists isn't supported yet`, spanOf(node));
 
                 return this.binop(node.operator, left, right, out);
             }
@@ -1120,7 +1336,8 @@ export class IRGenerator {
                 if (sig.meta?.lower === "reporter") return { kind: "op", opcode: sig.meta.opcode!, inputs: args };
                 if (sig.meta?.lower === "builds") return this.inlineBuilds(sig, args, out);
 
-                // expression slot => first element
+                if (this.analyzer.exprTypes.get(node)?.kind === "tuple")
+                    throw new KatnipError("IR", "a tuple return must be unpacked with a pattern: (a, b) = f();", spanOf(node));
                 return this.lowerUserproc(node, sig, args, out)[0] ?? { kind: "lit", value: "" };
             }
             case "InterpolatedString": {
@@ -1178,9 +1395,12 @@ export class IRGenerator {
                     return { kind: "var", name: this.listsOf(node)[0]! };
                 break;
             }
-            // TODO: SliceAccess
+            case "SliceAccess":
+                return this.lowerSlice(node, out);
+            case "TupleExpression":
+                throw new KatnipError("IR", "a tuple can only be returned or unpacked for now", spanOf(node));
         }
-        return { kind: "lit", value: "" };
+        throw new KatnipError("IR", "this kind of value can't be used here yet", spanOf(node));
     }
 
     /** Call arguments in signature order; a struct argument spreads into one value per field. */
@@ -1196,11 +1416,7 @@ export class IRGenerator {
         const plan = this.plans.get(sig);
         if (!plan)
             throw new KatnipError("IR", `@lower = "${sig.meta?.lower}" procs are not lowered yet`, spanOf(node));
-        this.emit(out, { kind: "call", proc: plan.mangled, args });
-        if (!plan.strategy) return [];
-        if (plan.strategy === "var") return plan.retVars.map((name) => ({ kind: "var", name }));
-        const width = plan.returns.kind === "tuple" ? plan.returns.width : 1;
-        return this.pushVstack(plan.vStackName!, width);
+        return this.callPlan(sig, args, out);
     }
 
     /**
@@ -1284,6 +1500,97 @@ function literals(nodes: (ExpressionNode | undefined)[]): (string | number | boo
     return values;
 }
 
+/** The value of a literal or a negated literal, else null. */
+function literalNumber(node: ExpressionNode): number | null {
+    if (node.type === "Literal" && typeof node.value === "number") return node.value;
+    if (node.type === "UnaryExpression" && node.operator === "-") {
+        const value = literalNumber(node.argument);
+        if (value !== null) return -value;
+    }
+    return null;
+}
+
+/** Every object in an IR tree, by identity. */
+function nodesIn(root: unknown, found = new Set<unknown>()): Set<unknown> {
+    if (root === null || typeof root !== "object") return found;
+    found.add(root);
+    for (const value of Object.values(root)) nodesIn(value, found);
+    return found;
+}
+
+/** literalNumber for lowered IR, where `-2` has become `0 - 2`. */
+function literalValue(expr: IRExpr): number | null {
+    if (expr.kind === "lit") return typeof expr.value === "number" ? expr.value : null;
+    if (expr.kind !== "op" || expr.opcode !== "operator_subtract") return null;
+    const [left, right] = expr.inputs.map(literalValue);
+    return left == null || right == null ? null : left - right;
+}
+
+/** The letters a slice reads, when its bounds are known here and few enough to write out; else null. */
+function inlineSliceIndices(node: SliceAccessNode): number[] | null {
+    const step = node.step ? literalNumber(node.step) : 1;
+    if (step === null || step === 0) return null;
+    // Open ends that reach the string's end depend on its length, which only exists at runtime
+    let start = step > 0 ? 1 : null;
+    if (node.start) start = literalNumber(node.start);
+    let stop = step < 0 ? 1 : null;
+    if (node.end) stop = literalNumber(node.end);
+    if (start === null || stop === null || ![start, stop, step].every(Number.isInteger)) return null;
+
+    const count = Math.max(0, Math.floor((stop - start) / step) + 1);
+    if (count > MAX_INLINE_SLICE) return null;
+    return Array.from({ length: count }, (_, i) => start + i * step);
+}
+
+/** A warp proc copying src[start:stop:step] into dst. A plain loop in a script would yield once per element. */
+function sliceProc(name: string, src: string, dst: string, iter: string, owner: IRSprite | IRProgram): IRProc {
+    owner.variables.set(iter, 0);
+    const param = (name: string): IRExpr => ({ kind: "param", name });
+    const op = (opcode: string, ...inputs: IRExpr[]): IRExpr => ({ kind: "op", opcode, inputs });
+    const i: IRExpr = { kind: "var", name: iter };
+    const list = (name: string): IRExpr => ({ kind: "var", name });
+    const span = op("operator_divide", op("operator_subtract", param("stop"), param("start")), param("step"));
+    const inRange = op(
+        "operator_and",
+        op("operator_gt", i, { kind: "lit", value: 0 }),
+        op("operator_not", op("operator_gt", i, op("data_lengthoflist", list(src)))),
+    );
+    return {
+        name,
+        params: ["start", "stop", "step"].map((name) => ({ name, type: paramType.NUMBER })),
+        returns: { kind: "void" },
+        warp: true,
+        strategy: null,
+        vStackName: null,
+        retVars: [],
+        temps: [],
+        body: [
+            { kind: "raw", opcode: "data_deletealloflist", inputs: [list(dst)] },
+            { kind: "raw", opcode: "data_setvariableto", inputs: [i, param("start")] },
+            {
+                kind: "if",
+                cond: op("operator_not", op("operator_equals", param("step"), { kind: "lit", value: 0 })),
+                then: [
+                    {
+                        kind: "repeat",
+                        times: op("operator_add", op("operator_mathop", { kind: "lit", value: "floor" }, span), { kind: "lit", value: 1 }),
+                        body: [
+                            {
+                                kind: "if",
+                                cond: inRange,
+                                then: [{ kind: "raw", opcode: "data_addtolist", inputs: [list(dst), op("data_itemoflist", list(src), i)] }],
+                                else: [],
+                            },
+                            { kind: "raw", opcode: "data_setvariableto", inputs: [i, op("operator_add", i, param("step"))] },
+                        ],
+                    },
+                ],
+                else: [],
+            },
+        ],
+    };
+}
+
 /** Whether an IR tree reads any of `names` as a variable. */
 function mentions(node: unknown, names: Set<string>): boolean {
     if (node === null || typeof node !== "object") return false;
@@ -1309,6 +1616,10 @@ function paramTypeOf(type: TypeNode): paramType {
     return paramType.STRING;
 }
 
+/** Past these, `x * x * x * x` and long join chains read worse in the editor than a call. */
+const MAX_INLINE_POWER = 3;
+const MAX_INLINE_SLICE = 8;
+
 const binaryOpcodes: Record<string, string> = {
     "+": "operator_add",
     "-": "operator_subtract",
@@ -1321,5 +1632,4 @@ const binaryOpcodes: Record<string, string> = {
     "&&": "operator_and",
     "||": "operator_or",
     // !=, <=, >=, !&, !|, !^ and ^ have no opcode: they come from the @lower = "builds" procs
-    // TODO: impl **
 }

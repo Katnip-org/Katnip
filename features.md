@@ -10,8 +10,7 @@ Status of every language and toolchain feature, tracked against the compiler pip
 | 🔴 | Not implemented, or implemented only far enough to type-check |
 
 Last verified against `main` (compiler `0.1.25`, VS Code extension `0.1.25`) with a green
-`node --test` run of 278 cases, 272 passing and 6 `todo` cases pinning the gaps below, one of
-which (imports) now passes, and a clean `katnip build` of `examples/all.knip`,
+`node --test` run of 296 cases, 293 passing and 3 `todo` cases pinning the gaps below, and a clean `katnip build` of `examples/all.knip`,
 `examples/assets.knip` and `examples/codegen.knip`.
 
 The practical "what do I write instead" version is [Known gaps](https://docs.katnip.org/reference/known-gaps/).
@@ -30,7 +29,7 @@ The practical "what do I write instead" version is [Known gaps](https://docs.kat
   skipped.
 * 🟢 **Semantic analyzer**; two-pass (hoist, then walk), scoped symbol table, structured
   `InternalType` with unions, tuples, generics.
-* 🟡 **IR generator**; lowers everything Scratch-shaped, with named gaps below (slices, `**`, tuple destructuring, `katnip_*` builtins).
+* 🟡 **IR generator**; lowers everything Scratch-shaped, with named gaps below, and reports anything it has no lowering for rather than dropping it.
 * 🟡 **SB3 codegen**; emits blocks, variables, lists, procs, extensions, packs to `.sb3`;
   throws on any opcode missing slot metadata.
 
@@ -123,9 +122,8 @@ The practical "what do I write instead" version is [Known gaps](https://docs.kat
 * 🟢 **`return`**; scalar and tuple frames, followed by `control_stop`.
 * 🟢 **Event handlers**; `events.onFlag() { }` and friends, gated by the analyzer to sprite
   top level.
-* 🟡 **Statement placement errors**; handlers, imports, and switch placement are checked,
-  but statements the IR cannot place outside a sprite are silently dropped rather than
-  reported.
+* 🟢 **Statement placement errors**; handlers, imports, and switch placement are checked,
+  and a statement outside a handler stops the build.
 * 🟢 **`forever`**; lowers to `control_forever`.
 * 🟢 **`repeat`**; lowers to `control_repeat`; the count must be a `num`.
 
@@ -146,9 +144,11 @@ The practical "what do I write instead" version is [Known gaps](https://docs.kat
   `operator_join` chain.
 * 🟢 **Enum member access**; folded to a compile-time constant.
 * 🟢 **Namespace constants**; `math.pi` folds to its literal.
-* 🔴 **Power**; the `**` operator parses and type-checks, but has no opcode and no `builds`
-  proc, so the IR silently lowers it to an empty literal. Do not use it yet.
-* 🔴 **Power assignment**; `**=` has the same gap.
+* 🟢 **Power**; `**` and `**=` fold literals, and write out exponents 0 to 3 and 0.5 as plain
+  blocks. Anything else calls `math.pow`, a warp proc added to the project only if used, which is
+  exact for whole exponents.
+* 🟢 **Several calls in one statement**; `f(1) + f(2)` keeps both results. A result held across
+  a recursive call in the same statement can still be overwritten.
 
 ## Collections
 
@@ -164,8 +164,10 @@ The practical "what do I write instead" version is [Known gaps](https://docs.kat
   run, rather than baked once like a top-level list.
 * 🟢 **Data files**; `import("./file.csv")` and `import("./file.json")` become a list or dict
   literal at compile time. A CSV must be one row or one column, and JSON must be flat.
-* ⛔ **Slices**; `s[1:5:2]` parses and gets a naive type, and lowers to an empty literal.
-  Silently wrong, not an error.
+* 🟢 **Slices**; `s[1:5:2]` on a `str` or `list`, 1-based and stop-inclusive. A literal string
+  slice of up to 8 letters becomes `letter of` and `join` blocks. List slices can
+  initialize or replace a list, be walked by `for`, or take a method call.
+* 🔴 **Whole-list values**; `a = b`, `private c = a` and `a + b` stop the build.
 
 ## Procedures and the return ABI
 
@@ -179,10 +181,10 @@ The practical "what do I write instead" version is [Known gaps](https://docs.kat
 * 🟢 **Recursion**; verified end to end with `fib` in `examples/codegen.knip`.
 * 🟢 **Argument reporter kinds**; `%s`, `%n`, and `%b` all emitted from the declared
   parameter types.
-* ⛔ **Tuple returns**; the multi-slot frame is emitted, but a call site only reads the
-  first element, and a tuple-pattern assignment, `(a, b) = f();`, is skipped entirely, so
-  the call never happens. Silently wrong; see
-  [Known gaps](https://docs.katnip.org/reference/known-gaps/#tuple-destructuring-is-half-built).
+* 🟢 **Tuple returns**; `(a, b) = f();` and `(a, b) = (b, a);` assign plain variables, on both
+  return strategies.
+* 🔴 **Tuple values**; storing a tuple in a variable or list, or reading one without a pattern,
+  stops the build.
 * 🔴 **List and dict returns**; explicitly rejected by the analyzer, since the frame width
   is not statically known.
 * 🔴 **`@lower = "yields"` procs**; declared in the stdlib (`list.remove`,
@@ -220,7 +222,7 @@ The practical "what do I write instead" version is [Known gaps](https://docs.kat
   Reading an imported list, or a value with no literal initializer, is a check error (*only
   members with a literal initializer are supported*). A proc that touches its own module's
   variable fails codegen with `undeclared variable` for any file importing that module, even
-  if the proc is never called. Writing to an imported value is ⛔ silently dropped.
+  if the proc is never called. Writing to an imported value stops the build.
 
 ## Structs
 
@@ -264,11 +266,10 @@ the compiler cannot enumerate, `Target`, `TouchTarget`, `DistanceTarget`, `Objec
 * 🟢 **`math`**; `pi`, `e`, `tau` fold to literals; the `MathOp` enum and `op` wrap
   `operator_mathop`, and `abs`, `floor`, `ceil`, `sqrt`, `sin`, `cos`, `tan`, `asin`,
   `acos`, `atan`, `ln`, `log`, `epow` are `builds` procs over it. `random`, `round` and `mod`
-  bind their own blocks. `pow` was removed rather than fixed. No `min` or `max` yet.
-* 🟡 **`str`**; `contains` is 🟢; the rest of the string surface is not written yet.
+  bind their own blocks, and `pow` backs `**`. No `min` or `max` yet.
+* 🟡 **`str`**; `contains` and `slice` are 🟢; the rest of the string surface is not written yet.
 * 🔴 **`dict`**; `contains`, `length`, `keys`, `values`, `merge` all resolve to `katnip_*`
-  opcodes with no codegen metadata. `keys` and `values` assigned to a list build and leave it
-  ⛔ **empty**.
+  opcodes with no codegen metadata, so all five stop the build.
 * 🔴 **`console`**; `log`, `warn`, `error` are `katnip_*`; `input` is a yields proc.
 * 🟢 **Casts**; `Num`, `Str` and `Bool` are `builds` procs that inline the value unchanged.
   They are type-checker assertions, not runtime conversions. `List` was removed from the
@@ -276,8 +277,7 @@ the compiler cannot enumerate, `Target`, `TouchTarget`, `DistanceTarget`, `Objec
 * 🔴 **Helpers**; `typeof` and `motion.getPosition` have no codegen metadata; using one
   throws `no slot metadata`.
 * 🟡 **Iteration helpers**; in a `for` header `range()`, `zip()` and `enumerate()` are 🟢,
-  folded into the loop and never built. Used *as a value*, `zip` and `enumerate` throw
-  `no slot metadata` 🔴, and `range` is worse, it silently produces an ⛔ **empty list**.
+  folded into the loop and never built. Used *as a value*, all three stop the build 🔴.
 
 Every enum-typed parameter above is reachable two ways: the namespaced member
 (`pen.ColorParam.COLOR`) or a literal that matches a member value (`"color"`). Only a
@@ -326,7 +326,7 @@ Every enum-typed parameter above is reachable two ways: the namespaced member
 * 🟢 **Warnings**; a non-blocking severity alongside errors; `no sprites declared, so this
   builds to an empty project` is the only one today.
 * 🟢 **Tests**; `node --test` cases across lexer, parser, semantic, callgraph, imports, IR,
-  and codegen, decompiler and API, plus 6 `todo` cases in `gaps.test.ts` that assert each gap on this page is
+  and codegen, decompiler and API, plus 3 `todo` cases in `gaps.test.ts` that assert each gap on this page is
   still a gap, so closing one fails loudly. The imports case now passes.
 * 🟢 **Public API**; `checkSource`, `compileToIR`, `compileToSb3`, `decompileSb3` and
   `decompileProject` exported for embedding, with pluggable import and asset readers.
@@ -339,11 +339,8 @@ Every enum-typed parameter above is reachable two ways: the namespaced member
 
 ## Nearest gaps, in rough order
 
-1. Close the silently-wrong gaps, namely `**`, slices, `range()` or `dict.keys()` as a value,
-   tuple-pattern assignment and writes to an imported value, since each builds a project that
-   runs and lies.
-2. Give the remaining `katnip_*` builtins real lowerings; `console`, `typeof`, `list.merge`
+1. Give the remaining `katnip_*` builtins real lowerings; `console`, `typeof`, `list.merge`
    and the dict methods are the widest hole.
-3. Lower imported module variables and lists, so a module can own state.
-4. Lower `@lower = "yields"` procs, unblocking `list.remove` and `console.input`.
-5. Attach comments to the AST and emit them into the sb3 comment map.
+2. Lower imported module variables and lists, so a module can own state.
+3. Lower `@lower = "yields"` procs, unblocking `list.remove` and `console.input`.
+4. Attach comments to the AST and emit them into the sb3 comment map.
