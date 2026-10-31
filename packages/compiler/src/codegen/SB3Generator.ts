@@ -1,4 +1,4 @@
-import { paramType, type IRAsset, type IRExpr, type IRParam, type IRProc, type IRProgram, type IRScript, type IRStmt } from "../ir/IRNode.js";
+import { paramType, type IRAsset, type IRExpr, type IRParam, type IRProc, type IRProgram, type IRScript, type IRSprite, type IRStmt } from "../ir/IRNode.js";
 import type { AssetTable } from "./assets.js";
 import {
     isBlock,
@@ -18,6 +18,7 @@ import {
     type StopMutation,
     type Target,
     type Uid,
+    COSTUME_FORMATS,
 } from "./SB3TypeDefs.js";
 import { booleanOpcodes, opcodeSlots, type ShadowPrimitiveType } from "./scratchDefs.js";
 import { KatnipError } from "../utils/ErrorReporter.js";
@@ -102,6 +103,26 @@ const extensionIDs = new Set<KnownExtension>([
     "pen", "music", "text2speech", "translate", "videoSensing",
     "makeymakey", "microbit", "ev3", "boost", "wedo2", "gdxfor",
 ]);
+
+/** The global procs a target's scripts can reach. Custom blocks are per target, so the rest would be dead weight. */
+const reachableProcs = (ir: IRProgram, sprite: IRSprite): IRProc[] => {
+    const reached = new Map<string, IRProc>();
+    const walk = (node: unknown): void => {
+        if (node === null || typeof node !== "object") return;
+        const call = node as { kind?: string; proc?: string };
+        if (call.kind === "call") {
+            const proc = ir.procs.get(call.proc!);
+            if (proc && !reached.has(proc.name)) {
+                reached.set(proc.name, proc);
+                walk(proc.body);
+            }
+        }
+        for (const value of Object.values(node)) walk(value);
+    };
+    walk(sprite.scripts);
+    for (const proc of sprite.procs.values()) walk(proc.body);
+    return [...reached.values()];
+};
 
 const isCap = (block: Block): boolean => {
     if (block.opcode === "control_forever" || block.opcode === "control_delete_this_clone") return true;
@@ -214,7 +235,7 @@ export class SB3Generator {
             this.topY = 0;
             target.blocks = this.processBlocks(ir_sprite.scripts);
 
-            for (const proc of [...ir.procs.values(), ...ir_sprite.procs.values()])
+            for (const proc of [...reachableProcs(ir, ir_sprite), ...ir_sprite.procs.values()])
                 this.emitProc(proc, target.blocks);
 
             // Keep the default costume when none are declared; a costume-less target will not load.
@@ -227,12 +248,13 @@ export class SB3Generator {
         return this.sb3;
     }
 
-    /** Scratch computes rotation centers, bitmap resolution and sample rates on load, so only the identity is written. */
+    /** Scratch computes rotation centers and sample rates on load. A bitmap's resolution it would assume is 2, showing it at half size. */
     private asset(ref: IRAsset, assets: AssetTable): Costume | Sound {
         const resolved = assets.get(ref.path);
         if (!resolved) throw new KatnipError("Codegen", `asset '${ref.path}' was never loaded`);
         const { assetId, md5ext, dataFormat } = resolved;
-        return { name: ref.name, assetId, md5ext, dataFormat } as Costume | Sound;
+        const bitmap = (COSTUME_FORMATS as readonly string[]).includes(dataFormat) && dataFormat !== "svg";
+        return { name: ref.name, assetId, md5ext, dataFormat, ...(bitmap && { bitmapResolution: 1 }) } as Costume | Sound;
     }
 
     private generateID(type: keyof typeof this.IDStore): string {

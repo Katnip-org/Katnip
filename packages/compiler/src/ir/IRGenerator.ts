@@ -7,6 +7,7 @@
 
 import { isPublicVar } from "../parser/AST-nodes.js";
 import type {
+    LiteralExpressionNode,
     AST,
     BlockNode,
     CallExpressionNode,
@@ -73,13 +74,23 @@ export class IRGenerator {
     /** Return variables this statement read, which a later call in the statement would overwrite. */
     private liveRets: Extract<IRExpr, { kind: "var" }>[] = [];
     private stagedRets = 0;
-    /** Names each yields result, so two in one statement don't share a variable. */
-    private yieldCount = 0;
-    /** Sliced lists are filled by a generated warp proc, per owner, source and destination. */
-    private readonly sliceProcs = new Set<string>();
+    /** Names each staged value, so two in one statement don't share a variable. */
+    private stageCount = 0;
     private sliceLists = 0;
     /** Stdlib userprocs a call has reached; the rest stay out of the project. */
     private readonly usedStdlib = new Set<Signature>();
+    private readonly decls = new Map<Signature, ProcedureDeclarationNode>();
+    /** Scratch can't pass a list, so a proc taking one gets a copy per sprite and set of lists. */
+    private readonly procCopies = new Map<Signature, Map<string, ReturnPlan>>();
+    /** Copies waiting to lower; lowerProc isn't re-entrant, so they wait for the caller to finish. */
+    private copyQueue: ProcCopy[] = [];
+    /** Set while declaring a module's variables, so their sb3 names can't collide with another file's. */
+    private modulePrefix = "";
+    /** What an imported proc's bare names mean: its own module's variables. */
+    private readonly moduleScopes = new Map<ProcedureDeclarationNode, ModuleScope>();
+    private readonly buildsScopes = new Map<Signature, ModuleScope>();
+    /** A module's never-written literals, which need no variable. */
+    private moduleFolds = new Map<string, string | number | boolean>();
 
     /** Vstack slots pushed and not yet popped: one list name per slot, in push order. */
     private readonly pending: string[] = [];
@@ -107,6 +118,7 @@ export class IRGenerator {
     generate(ast: AST): IRProgram {
         for (const stmt of ast.body) if (stmt.type === "StructDeclaration") this.structs.set(stmt.name, stmt.fields);
         this.planReturns();
+        this.declareModules();
         // Collected before any sprite is lowered, because a sprite may be declared ahead of the
         // global it shadows and its members still have to be renamed clear of it.
         this.globalNames = new Set(
@@ -154,11 +166,15 @@ export class IRGenerator {
             }
         }
 
-        for (const [decl, sig] of this.analyzer.procSignatures) {
-            if (!this.plans.has(sig) || (sig.meta?.stdlib && !this.usedStdlib.has(sig))) continue;
-            const proc = this.lowerProc(decl);
-            if (proc) this.program.procs.set(proc.name, proc);
-        }
+        // Each pass can reach more: a copy may use a stdlib proc, and an imported proc may need a copy
+        do {
+            this.lowerCopies(this.program);
+            for (const [decl, sig] of this.analyzer.procSignatures) {
+                if (!this.plans.has(sig) || (sig.meta?.stdlib && !this.usedStdlib.has(sig))) continue;
+                const proc = this.lowerProc(decl);
+                if (proc) this.program.procs.set(proc.name, proc);
+            }
+        } while (this.copyQueue.length);
 
         // Scratch has no load hook, so list contents that need blocks are built by a green-flag script.
         // It goes in the first sprite, ahead of that sprite's own scripts so its lists are ready for them.
@@ -169,6 +185,79 @@ export class IRGenerator {
                 body: this.init,
             });
         return this.program;
+    }
+
+    /**
+     * Module variables live on the stage as `lib.x`; no Katnip name holds a dot, so nothing can collide with them.
+     * Every `m.x` becomes that plain name up front, and every path that handles a global then just works.
+     */
+    private declareModules(): void {
+        const emitted = new Map<VariableDeclarationNode, string>();
+        const folds = (decl: VariableDeclarationNode): boolean =>
+            decl.initializer?.type === "Literal" && !this.analyzer.writtenVars.has(decl);
+        const prefixes = this.analyzer.modules.map((module) => {
+            const prefix = `${this.mangle(module.namespace)}.`;
+            for (const stmt of module.ast.body) {
+                if (stmt.type === "StructDeclaration") this.structs.set(stmt.name, stmt.fields);
+                if (stmt.type === "VariableDeclaration") emitted.set(stmt, `${prefix}${stmt.name}`);
+            }
+            return prefix;
+        });
+
+        for (const [member, decl] of this.analyzer.importedMembers) {
+            if (folds(decl)) {
+                const literal = decl.initializer as LiteralExpressionNode;
+                Object.assign(member, { type: "Literal", value: literal.value, valueType: literal.valueType, raw: literal.raw });
+            } else {
+                Object.assign(member, { type: "Identifier", name: emitted.get(decl) });
+            }
+        }
+
+        this.analyzer.modules.forEach((module, i) => {
+            const global = { listNames: this.listNames, structVars: this.structVars, structLists: this.structLists };
+            const renamed = new Map<string, string>();
+            const moduleFolds = new Map<string, string | number | boolean>();
+            this.listNames = new Map(global.listNames);
+            this.structVars = new Map(global.structVars);
+            this.structLists = new Map(global.structLists);
+            this.renamed = renamed;
+            this.moduleFolds = moduleFolds;
+            this.modulePrefix = prefixes[i]!;
+
+            const vars = module.ast.body.filter((stmt) => stmt.type === "VariableDeclaration");
+            for (const stmt of vars) {
+                if (folds(stmt)) {
+                    const literal = stmt.initializer as LiteralExpressionNode;
+                    moduleFolds.set(stmt.name, literal.raw ?? literal.value ?? "");
+                    continue;
+                }
+                this.declareMember(stmt);
+                renamed.set(stmt.name, emitted.get(stmt)!);
+            }
+
+            const scope: ModuleScope = { path: module.sourcePath, renamed, moduleFolds, listNames: this.listNames, structVars: this.structVars, structLists: this.structLists };
+            for (const stmt of module.ast.body) {
+                if (stmt.type !== "ProcedureDeclaration") continue;
+                this.moduleScopes.set(stmt, scope);
+                const sig = this.analyzer.procSignatures.get(stmt);
+                if (sig) this.buildsScopes.set(sig, scope);
+            }
+
+            // Everyone else reaches these through their dotted names
+            for (const stmt of vars) {
+                const name = emitted.get(stmt)!;
+                const lists = scope.listNames.get(stmt.name);
+                if (lists) global.listNames.set(name, lists);
+                const fields = scope.structVars.get(stmt.name);
+                if (fields) global.structVars.set(name, fields);
+                const columns = scope.structLists.get(stmt.name);
+                if (columns) global.structLists.set(name, columns);
+            }
+            Object.assign(this, global);
+        });
+        this.renamed = new Map();
+        this.moduleFolds = new Map();
+        this.modulePrefix = "";
     }
 
     private lowerSprite(node: SpriteDeclarationNode): void {
@@ -187,6 +276,8 @@ export class IRGenerator {
         const listNames = new Map(this.listNames);
         const structVars = new Map(this.structVars);
         const structLists = new Map(this.structLists);
+        const outerQueue = this.copyQueue;
+        this.copyQueue = [];
 
         // Members first: a handler may be written above the member it reads, and lowering one needs
         // the member's sb3 name and backing lists to be known already.
@@ -228,6 +319,9 @@ export class IRGenerator {
                     throw new KatnipError("IR", "this statement isn't allowed directly in a sprite; put it inside an event handler", spanOf(stmt));
             }
         }
+
+        this.lowerCopies(this.sprite, node.body.body, { listNames, structVars, structLists });
+        this.copyQueue = outerQueue;
 
         if (this.spriteInit.length)
             this.sprite.scripts.unshift({ hatOpcode: "event_whenflagclicked", args: [], body: this.spriteInit });
@@ -274,8 +368,9 @@ export class IRGenerator {
         }
 
         const slice = init?.type === "SliceAccess" ? init : null;
-        if (init && !slice && init.type !== (kind === "list" ? "ListExpression" : "DictExpression"))
-            throw new KatnipError("IR", `a ${kind} can only be initialized from a literal or a slice for now`, spanOf(init));
+        const copied = init ? this.dictColumn(init) : null;
+        if (init && !slice && !copied && init.type !== (kind === "list" ? "ListExpression" : "DictExpression"))
+            throw new KatnipError("IR", `a ${kind} can only be initialized from a literal, a slice or a dict's keys() or values() for now`, spanOf(init));
 
         const entries = init?.type === "DictExpression" ? init.entries : [];
         const columns: [string, ExpressionNode[]][] =
@@ -288,13 +383,13 @@ export class IRGenerator {
         this.listNames.set(node.name, columns.map(([column]) => column));
 
         const baked = columns.map(([, elements]) => literals(elements));
-        const runtime = sink !== undefined || slice !== null || baked.some((values) => values === null);
+        const runtime = sink !== undefined || slice !== null || copied !== null || baked.some((values) => values === null);
 
         const out = sink ?? (this.sprite ? this.spriteInit : this.init);
         const mark = this.pending.length;
         columns.forEach(([name, elements], i) => {
             target.lists.set(name, runtime ? [] : baked[i]!);
-            if (!runtime || slice) return;
+            if (!runtime || slice || copied) return;
 
             this.emit(out, { kind: "raw", opcode: "data_deletealloflist", inputs: [{ kind: "var", name }] });
             for (const element of elements)
@@ -305,6 +400,7 @@ export class IRGenerator {
                 });
         });
         if (slice) this.assignSlice(columns[0]![0], slice, out);
+        if (copied) this.copyList(copied, columns[0]![0], out);
         this.popTo(out, mark);
     }
 
@@ -476,17 +572,13 @@ export class IRGenerator {
                 for (const column of columns) this.emit(out, { kind: "raw", opcode, inputs: [list(column)] });
                 return { kind: "lit", value: "" };
             case "data_addtolist": {
-                const written = new Set(columns);
-                // Adding to one column grows it, so anything reading the list has to be read first
-                const values = this.lowerStruct(this.callArgs(node, sig)[1]!, out).map((value) => (mentions(value, written) ? this.stageYield(value, out) : value));
+                const values = this.stageReads(this.lowerStruct(this.callArgs(node, sig)[1]!, out), columns, out);
                 columns.forEach((column, i) => this.emit(out, { kind: "raw", opcode, inputs: [list(column), values[i]!] }));
                 return { kind: "lit", value: "" };
             }
             case "data_insertatlist": {
                 const resolved = this.callArgs(node, sig);
-                const written = new Set(columns);
-                // Inserting into one column shifts it, so anything reading the list has to be read first
-                const values = this.lowerStruct(resolved[1]!, out).map((value) => (mentions(value, written) ? this.stageYield(value, out) : value));
+                const values = this.stageReads(this.lowerStruct(resolved[1]!, out), columns, out);
                 const index = this.stableIndex(this.lowerExpr(resolved[2]!, out), out);
                 columns.forEach((column, i) => this.emit(out, { kind: "raw", opcode, inputs: [list(column), values[i]!, structuredClone(index)] }));
                 return { kind: "lit", value: "" };
@@ -502,7 +594,40 @@ export class IRGenerator {
         return this.structLists.get(self.name) ?? null;
     }
 
+    /** The column behind `d.keys()` or `d.values()`, which read it directly instead of building a list. */
+    private dictColumn(node: ExpressionNode): string | null {
+        if (node.type !== "CallExpression") return null;
+        const sig = this.analyzer.callResolutions.get(node);
+        const opcode = sig?.meta?.opcode;
+        if (opcode !== "katnip_dict_keys" && opcode !== "katnip_dict_values") return null;
+        const [keys, vals] = this.listsOf(this.callArgs(node, sig!)[0]!);
+        if (opcode === "katnip_dict_keys") return keys!;
+        return vals!;
+    }
+
+    /** contains, length, keys and values read the columns directly; dict.merge lives in the stdlib. */
+    private lowerDictCall(node: CallExpressionNode, sig: Signature, out: IRStmt[]): IRExpr {
+        const column = this.dictColumn(node);
+        if (column) return { kind: "var", name: column };
+
+        const resolved = this.callArgs(node, sig);
+        const [keys] = this.listsOf(resolved[0]!);
+        const list = (name: string): IRExpr => ({ kind: "var", name });
+        const op = (opcode: string, ...inputs: IRExpr[]): IRExpr => ({ kind: "op", opcode, inputs });
+
+        if (sig.meta!.opcode === "katnip_dict_contains") return op("data_listcontainsitem", list(keys!), this.lowerExpr(resolved[1]!, out));
+        return op("data_lengthoflist", list(keys!));
+    }
+
+    /** `dst = d.keys()`: a stored copy, independent of the dict from here on. */
+    private copyList(src: string, dst: string, out: IRStmt[]): void {
+        const length: IRExpr = { kind: "op", opcode: "data_lengthoflist", inputs: [{ kind: "var", name: src }] };
+        this.callSliceProc(src, dst, [{ kind: "lit", value: 1 }, length, { kind: "lit", value: 1 }], out);
+    }
+
     private listsOf(node: ExpressionNode): string[] {
+        const column = this.dictColumn(node);
+        if (column) return [column];
         if (node.type === "MemberExpression") {
             const type = this.analyzer.exprTypes.get(node.object);
             if (type?.kind === "list" && type.element.kind === "struct")
@@ -528,11 +653,15 @@ export class IRGenerator {
         if (sig.params[0]?.name === "self" && call.object.type === "MemberExpression")
             positional.unshift(call.object.object);
 
-        return sig.params.map((param, i) => named.get(param.name) ?? positional[i] ?? param.default!);
+        const args = sig.params.map((param, i) => named.get(param.name) ?? positional[i] ?? param.default!);
+        if (listWriters.has(sig.meta?.opcode ?? "") && args[0] && this.dictColumn(args[0]))
+            throw new KatnipError("IR", READ_ONLY_COLUMN, spanOf(call));
+        return args;
     }
 
     private planReturns(): void {
         for (const [decl, sig] of this.analyzer.procSignatures) {
+            this.decls.set(sig, decl);
             if (sig.meta?.operator) this.operatorProcs.set(sig.meta.operator, sig);
             if (sig.meta?.lower !== "userproc") continue;
 
@@ -564,18 +693,49 @@ export class IRGenerator {
     }
 
     /** Returns null for procs that aren't lowered as userprocs (@opcode don't have bodies). */
-    private lowerProc(stmt: ProcedureDeclarationNode): IRProc | null {
+    private lowerProc(stmt: ProcedureDeclarationNode, copy?: ProcCopy): IRProc | null {
         const sig = this.analyzer.procSignatures.get(stmt);
-        const plan = sig && this.plans.get(sig);
-        if (!plan || this.lowered.has(stmt)) return null;
-        this.lowered.add(stmt);
+        const plan = copy?.plan ?? (sig && this.plans.get(sig));
+        if (!plan) return null;
+        if (!copy) {
+            // A proc taking a list only exists as the copies its calls ask for
+            if (this.lowered.has(stmt) || stmt.parameters.some((param) => isCollection(param.paramType))) return null;
+            this.lowered.add(stmt);
+        }
 
+        return this.inModule(this.moduleScopes.get(stmt), () => this.lowerProcBody(stmt, plan, copy));
+    }
+
+    /** Runs `lower` with a module's own names in scope. Its errors point into that file, not the entry file. */
+    private inModule<T>(scope: ModuleScope | undefined, lower: () => T): T {
+        if (!scope) return lower();
+        const outer = [this.renamed, this.listNames, this.structVars, this.structLists, this.moduleFolds] as const;
+        this.renamed = new Map(scope.renamed);
+        this.listNames = new Map(scope.listNames);
+        this.structVars = new Map(scope.structVars);
+        this.structLists = new Map(scope.structLists);
+        this.moduleFolds = scope.moduleFolds;
+        try {
+            return lower();
+        } catch (err) {
+            if (err instanceof KatnipError && err.location) {
+                err.message = `${scope.path}:${err.location.line}:${err.location.column}: ${err.message}`;
+                err.location = undefined;
+            }
+            throw err;
+        } finally {
+            [this.renamed, this.listNames, this.structVars, this.structLists, this.moduleFolds] = outer;
+        }
+    }
+
+    private lowerProcBody(stmt: ProcedureDeclarationNode, plan: NonNullable<ProcCopy["plan"]>, copy?: ProcCopy): IRProc {
+        const sig = this.analyzer.procSignatures.get(stmt);
         if (plan.vStackName) (this.sprite ?? this.program).lists.set(plan.vStackName, []);
         for (const name of plan.retVars) (this.sprite ?? this.program).variables.set(name, 0);
 
         const structVars = new Map(this.structVars);
         // A struct param travels as one Scratch arg per field
-        const params: IRParam[] = stmt.parameters.flatMap((param) => {
+        const params: IRParam[] = stmt.parameters.filter((param) => !isCollection(param.paramType)).flatMap((param) => {
             const fields = this.structFieldsOf(param.paramType);
             if (!fields) return [{ name: param.name, type: paramTypeOf(param.paramType) }];
             const columns = fields.map((field) => `${param.name}_${field.name}`);
@@ -589,6 +749,14 @@ export class IRGenerator {
         this.currentPlan = plan;
         this.params = new Set(params.map((param) => param.name));
         this.temps = new Map();
+        for (const { param, lists, struct } of copy?.bindings ?? []) {
+            if (struct) {
+                this.structLists.set(param, lists);
+            } else {
+                this.listNames.set(param, lists);
+                if (lists.length === 1) this.renamed.set(param, lists[0]!);
+            }
+        }
         const body = this.lowerBlock(stmt.body);
         const temps = [...this.temps.values()];
         for (const name of temps) (this.sprite ?? this.program).variables.set(name, 0);
@@ -600,15 +768,89 @@ export class IRGenerator {
         return {
             name: plan.mangled,
             params,
-            proccode: sig.meta?.proccode,
+            // Copies would share a label, and Scratch finds a custom block by its label
+            proccode: copy ? undefined : sig?.meta?.proccode,
             returns: plan.returns,
-            warp: sig.meta?.warp ?? true,
+            warp: sig?.meta?.warp ?? true,
             strategy: plan.strategy,
             vStackName: plan.vStackName,
             retVars: plan.retVars,
             temps,
             body,
         };
+    }
+
+    /** A proc declared outside `own` must not see the sprite's members, so `outer` restores the global view for it. */
+    private lowerCopies(
+        owner: IRSprite | IRProgram,
+        own: StatementNode[] = [],
+        outer?: { listNames: Map<string, string[]>; structVars: Map<string, string[]>; structLists: Map<string, string[]> },
+    ): void {
+        while (this.copyQueue.length) {
+            const copy = this.copyQueue.shift()!;
+            const saved = [this.renamed, this.listNames, this.structVars, this.structLists] as const;
+            let scope = { listNames: this.listNames, structVars: this.structVars, structLists: this.structLists };
+            let renamed = this.renamed;
+            if (outer && !own.includes(copy.decl)) {
+                scope = outer;
+                renamed = new Map();
+            }
+            this.renamed = new Map(renamed);
+            this.listNames = new Map(scope.listNames);
+            this.structVars = new Map(scope.structVars);
+            this.structLists = new Map(scope.structLists);
+            const proc = this.lowerProc(copy.decl, copy)!;
+            owner.procs.set(proc.name, proc);
+            [this.renamed, this.listNames, this.structVars, this.structLists] = saved;
+        }
+    }
+
+    /** The copy of a list-taking proc this call needs. */
+    private copyFor(node: CallExpressionNode, sig: Signature, out: IRStmt[]): ReturnPlan {
+        if (sig === this.operatorProcs.get("[:]list"))
+            throw new KatnipError("IR", "use a slice instead: dst = xs[start:stop:step];", spanOf(node));
+        const resolved = this.callArgs(node, sig);
+        const bindings: ProcCopy["bindings"] = [];
+        sig.params.forEach((param, i) => {
+            if (!isCollection(param.paramType)) return;
+            // A method writes to its receiver, and this one would only reach a throwaway copy
+            if (param.name === "self" && this.dictColumn(resolved[i]!))
+                throw new KatnipError("IR", READ_ONLY_COLUMN, spanOf(node));
+            bindings.push({ param: param.name, ...this.boundLists(resolved[i]!, out) });
+        });
+        return this.copyPlan(sig, bindings);
+    }
+
+    /** The copy of a proc bound to these lists in the current sprite, queued the first time it's asked for. */
+    private copyPlan(sig: Signature, bindings: ProcCopy["bindings"]): ReturnPlan {
+        const base = this.plans.get(sig)!;
+        const columns = bindings.flatMap((binding) => binding.lists);
+        const key = `${this.sprite?.name ?? ""}/${columns.join(",")}`;
+        const copies = this.procCopies.get(sig) ?? new Map<string, ReturnPlan>();
+        this.procCopies.set(sig, copies);
+
+        let plan = copies.get(key);
+        if (!plan) {
+            plan = this.planFor(this.mangle(`${base.mangled}_${columns.join("_")}`), base.returns, sig.meta?.retResolved);
+            copies.set(key, plan);
+            this.copyQueue.push({ decl: this.decls.get(sig)!, plan, bindings });
+        }
+        return plan;
+    }
+
+    /** The real lists behind a list argument. keys() and values() go through a copy, as a proc may write to its param. */
+    private boundLists(arg: ExpressionNode, out: IRStmt[]): { lists: string[]; struct: boolean } {
+        if (arg.type === "SliceAccess") return { lists: [(this.lowerSlice(arg, out) as { name: string }).name], struct: false };
+        const column = this.dictColumn(arg);
+        if (column) {
+            const hidden = `${column}_arg`;
+            (this.sprite ?? this.program).lists.set(hidden, []);
+            this.copyList(column, hidden, out);
+            return { lists: [hidden], struct: false };
+        }
+        const columns = arg.type === "Identifier" ? this.structLists.get(arg.name) : undefined;
+        if (columns) return { lists: columns, struct: true };
+        return { lists: this.listsOf(arg), struct: false };
     }
 
     private lowerBlock(block: BlockNode): IRStmt[] {
@@ -660,7 +902,7 @@ export class IRGenerator {
             case "DoWhileStatement": {
                 if (node.type === "DoWhileStatement") out.push(...this.lowerBlock(node.body));
                 const setup = out.length;
-                const condYields = this.yieldCount;
+                const condStages = this.stageCount;
                 const cond = this.lowerExpr(node.condition, out);
                 const body = this.lowerBlock(node.body);
                 // The condition's setup has to rerun before every check, not only the first
@@ -669,10 +911,10 @@ export class IRGenerator {
                     // Same temp names as the first lowering, because `cond` is the one read
                     this.liveRets = [];
                     this.stagedRets = 0;
-                    const bodyYields = this.yieldCount;
-                    this.yieldCount = condYields;
+                    const bodyStages = this.stageCount;
+                    this.stageCount = condStages;
                     this.lowerExpr(node.condition, body);
-                    this.yieldCount = bodyYields;
+                    this.stageCount = bodyStages;
                 }
                 this.emit(out, { kind: "while", cond, body });
                 break;
@@ -761,6 +1003,8 @@ export class IRGenerator {
                 }
                 if (this.lowerStructAssignment(node.left, node.operator, node.right, out)) break;
                 if (node.left.type === "IndexerAccess") {
+                    if (this.dictColumn(node.left.object))
+                        throw new KatnipError("IR", READ_ONLY_COLUMN, spanOf(node.left));
                     const lists = this.listsOf(node.left.object);
                     const index = this.lowerExpr(node.left.index, out);
                     const right = this.lowerExpr(node.right, out);
@@ -811,10 +1055,15 @@ export class IRGenerator {
                     break;
                 }
                 if (node.left.type !== "Identifier")
-                    throw new KatnipError("IR", "this can't be assigned to; a value from an imported module is read-only", spanOf(node.left));
+                    throw new KatnipError("IR", "this can't be assigned to; a stdlib constant is read-only", spanOf(node.left));
                 if (this.listNames.has(node.left.name)) {
+                    const copied = this.dictColumn(node.right);
+                    if (copied && node.operator === "=" && this.listNames.get(node.left.name)!.length === 1) {
+                        this.copyList(copied, this.listNames.get(node.left.name)![0]!, out);
+                        break;
+                    }
                     if (node.operator !== "=" || node.right.type !== "SliceAccess" || this.listNames.get(node.left.name)!.length > 1)
-                        throw new KatnipError("IR", "a whole list or dict can only be replaced with a slice for now", spanOf(node.left));
+                        throw new KatnipError("IR", "a whole list or dict can only be replaced with a slice or a dict's keys() or values() for now", spanOf(node.left));
                     this.assignSlice(this.listNames.get(node.left.name)![0]!, node.right, out);
                     break;
                 }
@@ -837,7 +1086,7 @@ export class IRGenerator {
                 const expr = node.expression;
                 if (expr.type === "CallExpression") {
                     const sig = this.analyzer.callResolutions.get(expr);
-                    if (sig?.meta?.lower === "command" && !this.structListSelf(expr, sig)) {
+                    if (sig?.meta?.lower === "command" && !this.structListSelf(expr, sig) && !sig.meta.opcode!.startsWith("katnip_dict_")) {
                         const args = this.callArgs(expr, sig).map((arg) => this.lowerExpr(arg, out));
                         this.emit(out, { kind: "raw", opcode: sig.meta.opcode!, inputs: args });
                         break;
@@ -922,22 +1171,7 @@ export class IRGenerator {
         if (type?.kind === "list" && type.element.kind === "struct" && node.pattern.type === "Identifier") {
             const name = node.pattern.name;
             const lists = this.structListOf(node.iterable);
-            const iter = this.declare(`${name}_i`);
-            const columns = this.structs.get(type.element.name)!.map((field) => this.declare(`${name}_${field.name}`));
-            this.structVars.set(name, columns);
-            const step = columns.map((column, i) =>
-                this.set(column, {
-                    kind: "op",
-                    opcode: "data_itemoflist",
-                    inputs: [{ kind: "var", name: lists[i]! }, { kind: "var", name: iter }],
-                }),
-            );
-            this.emit(out, {
-                kind: "for",
-                iter,
-                times: { kind: "op", opcode: "data_lengthoflist", inputs: [{ kind: "var", name: lists[0]! }] },
-                body: [...step, ...this.lowerBlock(node.body)],
-            });
+            this.lowerForStruct(name, `${name}_i`, type.element.name, lists, node, out);
             return;
         }
         if (this.lowerForPairs(node, out)) return;
@@ -970,6 +1204,31 @@ export class IRGenerator {
         this.emit(out, { kind: "for", iter: name, times, body: [this.set(name, element), ...this.lowerBlock(node.body)] });
     }
 
+    /** Walks a list of structs by index, binding `name`'s fields from every column each iteration. */
+    private lowerForStruct(name: string | null, counter: string, struct: string, lists: string[], node: ForStatementNode, out: IRStmt[]): void {
+        const iter = this.declare(counter);
+        const step: IRStmt[] = [];
+        if (name) {
+            const columns = this.structs.get(struct)!.map((field) => this.declare(`${name}_${field.name}`));
+            this.structVars.set(name, columns);
+            columns.forEach((column, i) =>
+                step.push(
+                    this.set(column, {
+                        kind: "op",
+                        opcode: "data_itemoflist",
+                        inputs: [{ kind: "var", name: lists[i]! }, { kind: "var", name: iter }],
+                    }),
+                ),
+            );
+        }
+        this.emit(out, {
+            kind: "for",
+            iter,
+            times: { kind: "op", opcode: "data_lengthoflist", inputs: [{ kind: "var", name: lists[0]! }] },
+            body: [...step, ...this.lowerBlock(node.body)],
+        });
+    }
+
     /**
      * `for ((a, b), zip(l1, l2))` and `for ((i, v), enumerate(l))` walk by index.
      * The 1-based loop counter is the index, and each pattern part is read out of its own list per iteration.
@@ -987,7 +1246,14 @@ export class IRGenerator {
         if (names.length > 2 || names.some((name) => name === null))
             throw new KatnipError("IR", "this loop binds one or two plain names", spanOf(node.pattern));
 
-        const lists = this.callArgs(call, sig!).map((arg) => this.lowerExpr(arg, out));
+        const args = this.callArgs(call, sig!);
+        const type = this.analyzer.exprTypes.get(args[0]!);
+        if (builtin === "katnip_enumerate" && type?.kind === "list" && type.element.kind === "struct") {
+            this.lowerForStruct(names[1] ?? null, names[0]!, type.element.name, this.structListOf(args[0]!), node, out);
+            return true;
+        }
+
+        const lists = args.map((arg) => this.lowerExpr(arg, out));
         const iter = this.declare(names[0]!);
         const item = (list: IRExpr): IRExpr => ({
             kind: "op",
@@ -1103,6 +1369,7 @@ export class IRGenerator {
      */
     private emittedName(node: VariableDeclarationNode): string {
         const { name } = node;
+        if (this.modulePrefix) return `${this.modulePrefix}${name}`;
         if (isPublicVar(node)) return name;
         return this.spriteName(name);
     }
@@ -1266,8 +1533,7 @@ export class IRGenerator {
     private assignSlice(dst: string, node: SliceAccessNode, out: IRStmt[]): void {
         if (node.object.type === "Identifier" && this.listNames.get(node.object.name)?.[0] === dst) {
             const hidden = this.lowerSlice(node, out) as { name: string };
-            const length: IRExpr = { kind: "op", opcode: "data_lengthoflist", inputs: [{ kind: "var", name: hidden.name }] };
-            this.callSliceProc(hidden.name, dst, [{ kind: "lit", value: 1 }, length, { kind: "lit", value: 1 }], out);
+            this.copyList(hidden.name, dst, out);
             return;
         }
         this.fillSlice(dst, node, out);
@@ -1281,19 +1547,16 @@ export class IRGenerator {
     }
 
     private callSliceProc(src: string, dst: string, bounds: IRExpr[], out: IRStmt[]): void {
-        const owner = this.sprite ?? this.program;
-        const proc = `slice_${src}_to_${dst}`;
-        const key = `${this.sprite?.name ?? ""}/${proc}`;
-        if (!this.sliceProcs.has(key)) {
-            this.sliceProcs.add(key);
-            owner.procs.set(proc, sliceProc(proc, src, dst, this.mangle(`${proc}_i`), owner));
-        }
-        this.emit(out, { kind: "call", proc, args: bounds });
+        const sig = this.operatorProcs.get("[:]list")!;
+        const plan = this.copyPlan(sig, [
+            { param: "self", lists: [src], struct: false },
+            { param: "dst", lists: [dst], struct: false },
+        ]);
+        this.callPlan(sig, bounds, out, plan);
     }
 
     /** Emits a userproc call and returns its return variables, keeping earlier ones this statement still reads safe. */
-    private callPlan(sig: Signature, args: IRExpr[], out: IRStmt[]): IRExpr[] {
-        const plan = this.plans.get(sig)!;
+    private callPlan(sig: Signature, args: IRExpr[], out: IRStmt[], plan: ReturnPlan = this.plans.get(sig)!): IRExpr[] {
         if (sig.meta?.stdlib) this.usedStdlib.add(sig);
 
         // An argument is read as the call starts, so only what's left over needs moving clear of the call.
@@ -1327,6 +1590,8 @@ export class IRGenerator {
                 const operand = this.substitutions?.get(node.name);
                 if (operand) return operand;
                 if (this.params.has(node.name)) return { kind: "param", name: node.name };
+                const fold = this.moduleFolds.get(node.name);
+                if (fold !== undefined && !this.temps.has(node.name)) return { kind: "lit", value: fold };
                 if (this.structVars.has(node.name) || this.structLists.has(node.name))
                     throw new KatnipError("IR", `struct '${node.name}' can only be used through its fields here`, spanOf(node));
                 return { kind: "var", name: this.local(node.name) };
@@ -1354,6 +1619,7 @@ export class IRGenerator {
                 // A struct literal has no signature; lowerStruct reads it wherever a struct is expected
                 if (!sig)
                     throw new KatnipError("IR", "a struct literal can only be used where a struct is expected", spanOf(node));
+                if (sig.meta?.opcode?.startsWith("katnip_dict_")) return this.lowerDictCall(node, sig, out);
                 if (sig.meta?.lower === "yields") {
                     if (this.structListSelf(node, sig))
                         throw new KatnipError("IR", "a removed struct can only be used where a struct is expected", spanOf(node));
@@ -1436,21 +1702,32 @@ export class IRGenerator {
     /** Call arguments in signature order; a struct argument spreads into one value per field. */
     private lowerArgs(node: CallExpressionNode, sig: Signature, out: IRStmt[]): IRExpr[] {
         return this.callArgs(node, sig).flatMap((arg, i) => {
+            // A userproc's list is bound into its copy, not passed
+            if (sig.meta?.lower === "userproc" && isCollection(sig.params[i]!.paramType)) return [];
             if (this.structFieldsOf(sig.params[i]!.paramType)) return this.lowerStruct(arg, out);
             return [this.lowerExpr(arg, out)];
         });
     }
 
-    private stageYield(value: IRExpr, out: IRStmt[]): IRExpr {
-        const name = this.declare(`yielded${this.yieldCount++}`);
+    private stageValue(value: IRExpr, out: IRStmt[]): IRExpr {
+        const name = this.declare(`stage${this.stageCount++}`);
         this.emit(out, this.set(name, value));
         return { kind: "var", name };
+    }
+
+    /** Writing one column moves the list under the rest, so a value reading the list has to be read first. */
+    private stageReads(values: IRExpr[], columns: string[], out: IRStmt[]): IRExpr[] {
+        const written = new Set(columns);
+        return values.map((value) => {
+            if (mentions(value, written)) return this.stageValue(value, out);
+            return value;
+        });
     }
 
     /** An index safe to reuse across several columns: anything that could read them is staged. */
     private stableIndex(index: IRExpr, out: IRStmt[]): IRExpr {
         if (index.kind === "lit" || index.kind === "var" || index.kind === "param") return index;
-        return this.stageYield(index, out);
+        return this.stageValue(index, out);
     }
 
     /**
@@ -1460,7 +1737,7 @@ export class IRGenerator {
     private lowerYields(node: CallExpressionNode, sig: Signature, out: IRStmt[], read: boolean): IRExpr[] {
         const opcode = sig.meta!.opcode!;
         const resolved = this.callArgs(node, sig);
-        const stage = (value: IRExpr): IRExpr => this.stageYield(value, out);
+        const stage = (value: IRExpr): IRExpr => this.stageValue(value, out);
 
         if (opcode === "sensing_askandwait") {
             this.emit(out, { kind: "raw", opcode, inputs: [this.lowerExpr(resolved[0]!, out)] });
@@ -1486,6 +1763,7 @@ export class IRGenerator {
         const plan = this.plans.get(sig);
         if (!plan)
             throw new KatnipError("IR", `@lower = "${sig.meta?.lower}" procs are not lowered yet`, spanOf(node));
+        if (sig.params.some((param) => isCollection(param.paramType))) return this.callPlan(sig, args, out, this.copyFor(node, sig, out));
         return this.callPlan(sig, args, out);
     }
 
@@ -1550,7 +1828,7 @@ export class IRGenerator {
     private inlineBuilds(sig: Signature, args: IRExpr[], out: IRStmt[]): IRExpr {
         const saved = this.substitutions;
         this.substitutions = new Map(sig.params.map((param, i) => [param.name, args[i]]));
-        const result = this.lowerExpr(sig.meta!.buildsExpr!, out);
+        const result = this.inModule(this.buildsScopes.get(sig.declared ?? sig), () => this.lowerExpr(sig.meta!.buildsExpr!, out));
         this.substitutions = saved;
         return result;
     }
@@ -1612,54 +1890,27 @@ function inlineSliceIndices(node: SliceAccessNode): number[] | null {
     return Array.from({ length: count }, (_, i) => start + i * step);
 }
 
-/** A warp proc copying src[start:stop:step] into dst. A plain loop in a script would yield once per element. */
-function sliceProc(name: string, src: string, dst: string, iter: string, owner: IRSprite | IRProgram): IRProc {
-    owner.variables.set(iter, 0);
-    const param = (name: string): IRExpr => ({ kind: "param", name });
-    const op = (opcode: string, ...inputs: IRExpr[]): IRExpr => ({ kind: "op", opcode, inputs });
-    const i: IRExpr = { kind: "var", name: iter };
-    const list = (name: string): IRExpr => ({ kind: "var", name });
-    const span = op("operator_divide", op("operator_subtract", param("stop"), param("start")), param("step"));
-    const inRange = op(
-        "operator_and",
-        op("operator_gt", i, { kind: "lit", value: 0 }),
-        op("operator_not", op("operator_gt", i, op("data_lengthoflist", list(src)))),
-    );
-    return {
-        name,
-        params: ["start", "stop", "step"].map((name) => ({ name, type: paramType.NUMBER })),
-        returns: { kind: "void" },
-        warp: true,
-        strategy: null,
-        vStackName: null,
-        retVars: [],
-        temps: [],
-        body: [
-            { kind: "raw", opcode: "data_deletealloflist", inputs: [list(dst)] },
-            { kind: "raw", opcode: "data_setvariableto", inputs: [i, param("start")] },
-            {
-                kind: "if",
-                cond: op("operator_not", op("operator_equals", param("step"), { kind: "lit", value: 0 })),
-                then: [
-                    {
-                        kind: "repeat",
-                        times: op("operator_add", op("operator_mathop", { kind: "lit", value: "floor" }, span), { kind: "lit", value: 1 }),
-                        body: [
-                            {
-                                kind: "if",
-                                cond: inRange,
-                                then: [{ kind: "raw", opcode: "data_addtolist", inputs: [list(dst), op("data_itemoflist", list(src), i)] }],
-                                else: [],
-                            },
-                            { kind: "raw", opcode: "data_setvariableto", inputs: [i, op("operator_add", i, param("step"))] },
-                        ],
-                    },
-                ],
-                else: [],
-            },
-        ],
-    };
-}
+type ModuleScope = {
+    path: string;
+    renamed: Map<string, string>;
+    listNames: Map<string, string[]>;
+    structVars: Map<string, string[]>;
+    structLists: Map<string, string[]>;
+    moduleFolds: Map<string, string | number | boolean>;
+};
+
+/** One generated copy of a proc taking lists: its plan, and the real lists each such param means. */
+type ProcCopy = {
+    decl: ProcedureDeclarationNode;
+    plan: ReturnPlan;
+    bindings: { param: string; lists: string[]; struct: boolean }[];
+};
+
+const isCollection = (type: TypeNode): boolean => type.type === "Type" && (type.typeName === "list" || type.typeName === "dict");
+
+const READ_ONLY_COLUMN = "keys() and values() are read-only; writing would put the dict's columns out of step";
+
+const listWriters = new Set(["data_addtolist", "data_insertatlist", "data_deleteoflist", "data_deletealloflist", "data_replaceitemoflist"]);
 
 /** Whether an IR tree reads any of `names` as a variable. */
 function mentions(node: unknown, names: Set<string>): boolean {

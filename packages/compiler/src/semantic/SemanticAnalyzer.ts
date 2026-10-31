@@ -10,6 +10,7 @@ import type {
     DecoratorNode,
     EnumDeclarationNode,
     StructDeclarationNode,
+    StructFieldNode,
     MemberExpressionNode,
     NodeBase,
     ProcedureDeclarationNode,
@@ -220,6 +221,7 @@ export class SemanticAnalyzer {
      * Each file becomes a namespace named after its basename (motion.knip -> motion.*).
      */
     loadStdlib(modules: StdlibModule[]): void {
+        const scopes = new Map<StdlibModule, Scope>();
         for (const module of modules) {
             const savedReporter = this.reporter;
             const savedScope = this.current;
@@ -240,14 +242,11 @@ export class SemanticAnalyzer {
             this.hoistNamespaceConsts(module.ast.body, isPrelude ? null : module.namespace);
             this.indexStdlibBlocks(module.ast.body, isPrelude ? null : module.namespace);
 
-            for (const stmt of module.ast.body)
-                if (stmt.type === "ProcedureDeclaration" && ["builds", "userproc"].includes(this.procSignatures.get(stmt)?.meta?.lower ?? ""))
-                    this.visit(stmt);
-
             this.current = savedScope;
             this.allowTypevars = false;
             this.inStdlib = false;
             this.reporter = savedReporter;
+            scopes.set(module, target);
 
             if (!isPrelude) {
                 this.stdlibScope.declare({
@@ -257,6 +256,25 @@ export class SemanticAnalyzer {
                     scope: target,
                 });
             }
+        }
+
+        // Bodies wait until every module is declared, because one may call methods from any of them, or its own
+        for (const module of modules) {
+            const savedReporter = this.reporter;
+            const savedScope = this.current;
+            this.reporter = module.reporter;
+            this.allowTypevars = true;
+            this.inStdlib = true;
+            this.current = scopes.get(module)!;
+
+            for (const stmt of module.ast.body)
+                if (stmt.type === "ProcedureDeclaration" && ["builds", "userproc"].includes(this.procSignatures.get(stmt)?.meta?.lower ?? ""))
+                    this.visit(stmt);
+
+            this.current = savedScope;
+            this.allowTypevars = false;
+            this.inStdlib = false;
+            this.reporter = savedReporter;
 
             if (module.reporter.hasErrors()) {
                 console.error(`Internal compiler error in stdlib file '${module.sourcePath}' (this is a Katnip bug):`);
@@ -326,6 +344,17 @@ export class SemanticAnalyzer {
 
     /** Namespace scopes of already-analyzed modules, keyed by source path. */
     private readonly moduleScopes = new Map<string, Scope>();
+    /** Every imported module once, dependencies first, for the IR to declare their state. */
+    readonly modules: ImportedModule[] = [];
+    private readonly moduleVars = new Set<StatementNode>();
+    /** Lets an importer read the fields of a struct value it got from a module. */
+    private readonly moduleStructs = new Map<string, StructSymbol>();
+    /** A struct's field types name things in the file that declared it, not the file reading the field. */
+    private readonly structScopes = new Map<StructSymbol, Scope>();
+    /** `m.x` reads and writes, by the module variable they reach; a namespace name alone can't tell two files apart. */
+    readonly importedMembers = new Map<MemberExpressionNode, VariableDeclarationNode>();
+    /** Module variables something assigns to, which therefore can't fold to their initializer. */
+    readonly writtenVars = new Set<unknown>();
 
     /**
      * Binds imported modules as namespaces in the current scope.
@@ -367,8 +396,23 @@ export class SemanticAnalyzer {
         this.currentReturnType = null;
 
         this.loadImports(module.imports);
+        for (const stmt of module.ast.body) if (stmt.type === "VariableDeclaration") this.moduleVars.add(stmt);
         this.hoist(module.ast.body);
+        for (const stmt of module.ast.body)
+            if (stmt.type === "SpriteDeclaration") this.error("a sprite can only be declared in the file being built", stmt);
+        for (const stmt of module.ast.body) {
+            if (stmt.type !== "ProcedureDeclaration") continue;
+            const sig = this.procSignatures.get(stmt);
+            if (sig) this.resolveSignature(sig, stmt);
+        }
+        for (const symbols of inner.entries().values())
+            for (const sym of symbols) {
+                if (sym.kind !== "struct") continue;
+                this.moduleStructs.set(sym.name, sym);
+                this.structScopes.set(sym, inner);
+            }
         for (const stmt of module.ast.body) this.visit(stmt);
+        this.modules.push(module);
 
         this.reporter = savedReporter;
         this.current = savedScope;
@@ -390,6 +434,14 @@ export class SemanticAnalyzer {
         return facade;
     }
 
+    /** Fixes a signature's types in the current scope, as a caller in another file can't resolve its names. */
+    private resolveSignature(sig: Signature, stmt: ProcedureDeclarationNode): void {
+        sig.resolvedParamTypes = stmt.parameters.map(p => this.typeFromNode(p.paramType));
+        sig.resolvedReturn = stmt.returnType
+            ? this.typeFromNode(stmt.returnType)
+            : { kind: "primitive", name: "void" };
+    }
+
     /** Resolve hoisted stdlib so they can be eagerly loaded. */
     private finalizeStdlibScope(body: StatementNode[]): void {
         for (const stmt of body) {
@@ -398,10 +450,7 @@ export class SemanticAnalyzer {
                     s => s.params === stmt.parameters,
                 );
                 if (!sig) continue; // hoist already reported a redeclaration error
-                sig.resolvedParamTypes = stmt.parameters.map(p => this.typeFromNode(p.paramType));
-                sig.resolvedReturn = stmt.returnType
-                    ? this.typeFromNode(stmt.returnType)
-                    : { kind: "primitive", name: "void" };
+                this.resolveSignature(sig, stmt);
             } else if (stmt.type === "VariableDeclaration") {
                 if (!stmt.varType) {
                     this.error(`Stdlib constant '${stmt.name}' must have a type annotation`, stmt);
@@ -610,6 +659,10 @@ export class SemanticAnalyzer {
     }
 
     private hoistStruct(node: StructDeclarationNode): void {
+        // Structs share one namespace across files, so a second shape under one name would corrupt the first
+        const other = this.moduleStructs.get(node.name);
+        if (other && structShape(other.fields) !== structShape(node.fields))
+            this.error(`struct '${node.name}' is already declared with different fields in an imported file; rename one`, node);
         this.declare({ kind: "struct", name: node.name, declNode: node, fields: node.fields }, node);
     }
 
@@ -683,6 +736,10 @@ export class SemanticAnalyzer {
                         this.error(`Cannot assign to parameter '${root.name}'`, root);
                 }
                 const target = this.inferType(node.left);
+                for (const part of targets) {
+                    if (part.type === "Identifier") this.writtenVars.add(this.current.lookup(part.name)?.[0]?.declNode);
+                    if (part.type === "MemberExpression") this.writtenVars.add(this.importedMembers.get(part));
+                }
                 const value = this.inferType(node.right);
                 this.checkAssign(
                     value,
@@ -953,6 +1010,14 @@ export class SemanticAnalyzer {
         this.enter(kind);
         for (const statement of block.body) this.visit(statement);
         this.exit();
+        const cap = block.body.slice(0, -1).find(endsTheStack);
+        if (cap)
+            this.reporter.add(
+                new KatnipError("Semantic", "nothing after this runs, because Scratch can't stack a block under it", {
+                    line: cap.loc.start.line,
+                    column: cap.loc.start.column,
+                }, "warning"),
+            );
     }
 
     /**
@@ -1283,7 +1348,8 @@ export class SemanticAnalyzer {
         if (!asHandler && resolved.signature?.meta?.hat) {
             this.error(`'${this.calleeName(call)}' is a hat block and can only be used as an event handler`, call);
         }
-        if (resolved.signature) this.callResolutions.set(call, resolved.signature);
+        // The IR finds a proc's return plan by signature identity, so a generic call records what it instantiated
+        if (resolved.signature) this.callResolutions.set(call, resolved.signature.declared ?? resolved.signature);
         return resolved;
     }
 
@@ -1465,7 +1531,11 @@ export class SemanticAnalyzer {
                     this.error(`'${head.name}.${propName}' is a procedure: call it with (...)`, expr);
                     return { kind: "unknown" };
                 }
-                // IR folds namespace members straight from `constMembers`; anything missing there
+                if (member.kind === "variable" && this.moduleVars.has(member.declNode as StatementNode)) {
+                    this.importedMembers.set(expr, member.declNode as VariableDeclarationNode);
+                    return this.typeOf(member);
+                }
+                // IR folds stdlib members straight from `constMembers`; anything missing there
                 // would lower to an empty literal. Say so instead of silently compiling nothing.
                 if (member.kind === "variable" && !this.constMembers.has(`${head.name}.${propName}`))
                     this.error(
@@ -1518,14 +1588,18 @@ export class SemanticAnalyzer {
 
     /** Resolves a struct field's type by struct name + field name, or null if absent. */
     private structField(structName: string, fieldName: string): InternalType | null {
-        const struct = this.current.lookup(structName)?.find((s): s is StructSymbol => s.kind === "struct");
+        const struct = this.current.lookup(structName)?.find((s): s is StructSymbol => s.kind === "struct") ?? this.moduleStructs.get(structName);
         const field = struct?.fields.find(f => f.name === fieldName);
         if (!field) return null;
-        return field.fieldType
+        const reader = this.current;
+        this.current = this.structScopes.get(struct!) ?? reader;
+        const type: InternalType = field.fieldType
             ? this.typeFromNode(field.fieldType)
             : field.default
               ? this.inferType(field.default)
               : { kind: "unknown" };
+        this.current = reader;
+        return type;
     }
 
     /** Classifies a member expression's object identifier, emitting the shared self/undefined errors. */
@@ -1543,7 +1617,8 @@ export class SemanticAnalyzer {
             return enumSym ? { kind: "enum", symbol: enumSym, name: objNode.property.name } : { kind: "value" };
         }
         if (objNode.type !== "Identifier") return { kind: "value" };
-        if (objNode.name === "self") {
+        // A parameter named self is an ordinary value
+        if (objNode.name === "self" && !this.current.lookup("self")) {
             if (!this.inSprite()) this.error(`'self' can only be used inside a sprite`, objNode);
             return { kind: "self" };
         }
@@ -1592,11 +1667,10 @@ export class SemanticAnalyzer {
                 const arg = args.positional[i] ?? args.named.get(sig.params[i]?.name);
                 if (arg) bindReceiver(paramType, arg.type, bindings);
             });
-            // Cloning would break signature identity, which the IR uses to find a proc's return plan.
-            // Only a generic signature needs one, and those are all @opcode builtins with no plan.
             if (bindings.size === 0) return sig;
             return {
                 ...sig,
+                declared: sig,
                 resolvedParamTypes: sig.resolvedParamTypes.map(t => substitute(t, bindings)),
                 resolvedReturn: sig.resolvedReturn ? substitute(sig.resolvedReturn, bindings) : undefined,
             };
@@ -1785,4 +1859,19 @@ export class SemanticAnalyzer {
             }),
         );
     }
+}
+
+/** Field names, types and defaults, without source positions. */
+function structShape(fields: StructFieldNode[]): string {
+    return JSON.stringify(fields, (key, value) => (key === "loc" ? undefined : value));
+}
+
+/** `forever` and `clone.delete()`: cap blocks, which codegen ends a stack at. */
+function endsTheStack(stmt: StatementNode): boolean {
+    if (stmt.type === "ForeverStatement") return true;
+    if (stmt.type !== "ExpressionStatement" || stmt.expression.type !== "CallExpression") return false;
+    const callee = stmt.expression.object;
+    return callee.type === "MemberExpression"
+        && callee.object.type === "Identifier" && callee.object.name === "clone"
+        && callee.property.name === "delete";
 }

@@ -5,6 +5,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { strFromU8, unzipSync } from "fflate";
 import { compileToIR, compileToSb3 } from "../index.js";
 import type { IRExpr, IRProc, IRProgram, IRStmt } from "../ir/IRNode.js";
 
@@ -18,9 +19,21 @@ const mathops: Record<string, (x: number) => number> = {
     "e ^": Math.exp,
 };
 
+/** Compile options serving these virtual files by bare name, so `import "./lib.knip"` finds "lib.knip". */
+const withFiles = (files: Record<string, string>) => ({
+    path: "/p/main.knip",
+    resolve: (specifier: string) => {
+        const name = specifier.replace("./", "");
+        return files[name] === undefined ? null : { path: `/p/${name}`, source: files[name]! };
+    },
+});
+
+/** Scratch's list lookups ignore case. */
+const sameItem = (a: unknown, b: unknown) => String(a).toLowerCase() === String(b).toLowerCase();
+
 /** Runs the first sprite's scripts in order and returns everything `looks.say` said. */
-function run(source: string): unknown[] {
-    const { errors, ir } = compileToIR(source);
+function run(source: string, files: Record<string, string> = {}): unknown[] {
+    const { errors, ir } = compileToIR(source, withFiles(files));
     assert.ok(ir, errors.map((e) => e.message).join("\n"));
     const program: IRProgram = ir;
     const sprite = program.sprites[0]!;
@@ -60,6 +73,8 @@ function run(source: string): unknown[] {
             case "operator_mathop": return mathops[at(0)]!(n(1));
             case "data_lengthoflist": return listOf(expr.inputs[0]!).length;
             case "data_itemoflist": return listOf(expr.inputs[0]!)[n(1) - 1] ?? "";
+            case "data_itemnumoflist": return listOf(expr.inputs[0]!).findIndex((item) => sameItem(item, at(1))) + 1;
+            case "data_listcontainsitem": return listOf(expr.inputs[0]!).some((item) => sameItem(item, at(1)));
         }
         throw new Error(`evaluator has no ${expr.opcode}`);
     };
@@ -87,8 +102,8 @@ function run(source: string): unknown[] {
                     for (let i = Number(value(stmt.times, args)); i > 0; i--) exec(stmt.body, args);
                     break;
                 case "for": {
-                    const times = Number(value(stmt.times, args));
-                    for (let i = 1; i <= times; i++) {
+                    // Scratch's for each re-reads its count on every iteration
+                    for (let i = 1; i <= Number(value(stmt.times, args)); i++) {
                         vars.set(stmt.iter, i);
                         exec(stmt.body, args);
                         vars.set(stmt.iter, i);
@@ -105,6 +120,9 @@ function run(source: string): unknown[] {
                             break;
                         case "data_addtolist":
                             listOf(first!).push(value(second!, args));
+                            break;
+                        case "data_replaceitemoflist":
+                            listOf(first!)[Number(value(second!, args)) - 1] = value(stmt.inputs[2]!, args);
                             break;
                         case "data_deletealloflist":
                             listOf(first!).length = 0;
@@ -323,12 +341,148 @@ test("tuple patterns are checked", () => {
     assert.match(message(`private c: str = ""; (a, c) = two();`), /Cannot assign/);
 });
 
+const DICTS = `public d: dict<str, num> = {"a": 1, "b": 2}; public e: dict<str, num> = {"b": 20, "c": 30};`;
+const dictRun = (body: string) => run(`${DICTS} sprite Cat { events.onFlag() { ${body} } }`);
+
+test("dict.merge overwrites shared keys, appends new ones and leaves the source alone", () => {
+    assert.deepEqual(
+        dictRun(`d.merge(e); for ((k, v), d) { looks.say(f"{k}={v}"); } looks.say(f"{e.length()}");`),
+        ["a=1", "b=20", "c=30", 2],
+    );
+});
+
+test("merging a dict into itself changes nothing", () => {
+    assert.deepEqual(dictRun(`d.merge(d); for ((k, v), d) { looks.say(f"{k}={v}"); }`), ["a=1", "b=2"]);
+});
+
+test("dict.contains and dict.length report the keys, ignoring case as Scratch does", () => {
+    assert.deepEqual(
+        dictRun(`looks.say(f"{d.length()}"); if (d.contains("a")) { looks.say("a"); } if (d.contains("A")) { looks.say("A"); } if (d.contains("z")) { looks.say("z"); }`),
+        [2, "a", "A"],
+    );
+});
+
+test("keys() and values() are live, and a stored copy is not", () => {
+    assert.deepEqual(
+        dictRun(`private own: list<str> = d.keys(); d["z"] = 9;
+            looks.say(f"{own.length()}"); looks.say(f"{d.keys().length()}"); looks.say(f"{d.values()[3]}");
+            for (k, d.keys()) { looks.say(k); }`),
+        [2, 3, 9, "a", "b", "z"],
+    );
+});
+
+test("zip walks keys() and values() together", () => {
+    assert.deepEqual(dictRun(`for ((k, v), zip(d.keys(), d.values())) { looks.say(f"{k}{v}"); }`), ["a1", "b2"]);
+});
+
+const LISTS = `public a: list<num> = [1, 2]; public b: list<num> = [10, 20, 30];`;
+const listRun = (procs: string, body: string) => run(`${LISTS} ${DICTS} ${procs} sprite Cat { events.onFlag() { ${body} } }`);
+
+test("list.merge appends, and merging a list into itself doubles it once", () => {
+    assert.deepEqual(listRun("", `a.merge(b); looks.say(f"{a.length()},{a[3]},{b.length()}"); b.merge(b); looks.say(f"{b.length()},{b[6]}");`), ["5,10,3", "6,30"]);
+});
+
+test("list.merge on a list of structs still refuses to build", () => {
+    const { errors, sb3 } = compileToSb3(`struct P { x: num = 0 } public ps: list<P> = []; sprite Cat { events.onFlag() { ps.merge(ps); } }`);
+    assert.equal(sb3, undefined);
+    assert.match(errors.map((e) => e.message).join("\n"), /isn't supported on a list of structs/);
+});
+
+test("list slices run through the stdlib, including backwards and out of range", () => {
+    const body = `private c: list<num> = []; c = b[3:1:-1]; looks.say(f"{c.length()},{c[1]},{c[3]}");
+        c = b[0:9]; looks.say(f"{c.length()},{c[1]}"); c = b[2:3]; c = c[1:1]; looks.say(f"{c.length()},{c[1]}");`;
+    assert.deepEqual(listRun("", body), ["3,30,10", "3,10", "1,20"]);
+});
+
+test("a stdlib proc taking lists stays out of a project that doesn't call it", () => {
+    const { ir } = compileToIR(`public a: list<num> = [1]; sprite Cat { events.onFlag() { a.add(1); } }`);
+    assert.equal(ir!.procs.size + ir!.sprites[0]!.procs.size, 0);
+});
+
+test("motion.getPosition unpacks x and y", () => {
+    const { errors, sb3 } = compileToSb3(`public a: num = 0; public b: num = 0; sprite Cat { events.onFlag() { (a, b) = motion.getPosition(); motion.setX(motion.x() + motion.y()); } }`);
+    assert.ok(sb3, errors.map((e) => e.message).join("\n"));
+});
+
+test("calls that would silently do nothing, or wipe the list, refuse to build", () => {
+    const cases: [string, RegExp][] = [
+        [`d.values().merge(a);`, /read-only/],
+        [`a.sliceInto(a, 1, 1);`, /use a slice instead/],
+        [`a.sliceInto(b, 1, 1);`, /use a slice instead/],
+    ];
+    for (const [body, expected] of cases) {
+        const { errors, sb3 } = compileToSb3(`${LISTS} ${DICTS} sprite Cat { events.onFlag() { ${body} } }`);
+        assert.equal(sb3, undefined, body);
+        assert.match(errors.map((e) => e.message).join("\n"), expected, body);
+    }
+});
+
+test("a list param reads whichever list each call passes", () => {
+    const sum = `proc sum(xs: list<num>) -> num { private t: num = 0; for (x, xs) { t += x; } return t; }`;
+    assert.deepEqual(listRun(sum, `looks.say(f"{sum(a)}"); looks.say(f"{sum(b)}"); looks.say(f"{sum(a)}");`), [3, 60, 3]);
+});
+
+test("writing through a list param changes the caller's list", () => {
+    assert.deepEqual(
+        listRun(`proc push(xs: list<num>, v: num) -> void { xs.add(v); xs[1] = v; }`, `push(a, 7); looks.say(f"{a[1]},{a.length()},{b[1]}");`),
+        ["7,3,10"],
+    );
+});
+
+test("a dict param reaches both columns", () => {
+    assert.deepEqual(
+        listRun(`proc put(m: dict<str, num>) -> void { m["q"] = 5; for ((k, v), m) { looks.say(f"{k}{v}"); } }`, `put(e); looks.say(f"{d.length()}");`),
+        ["b20", "c30", "q5", 2],
+    );
+});
+
+test("a list param passes through other procs, and recursion stays on one copy", () => {
+    const procs = `proc last(xs: list<num>, i: num) -> num { if (i == xs.length()) { return xs[i]; } return last(xs, i + 1); }
+        proc outer(ys: list<num>) -> num { return last(ys, 1); }`;
+    assert.deepEqual(listRun(procs, `looks.say(f"{outer(a)}"); looks.say(f"{outer(b)}");`), [2, 30]);
+});
+
+test("slices and keys() can be passed, and a proc writing to keys() can't touch the dict", () => {
+    const procs = `proc count(xs: list<any>) -> num { xs.add(0); return xs.length(); }`;
+    assert.deepEqual(listRun(procs, `looks.say(f"{count(b[1:2])}"); looks.say(f"{count(d.keys())}"); looks.say(f"{d.length()}");`), [3, 3, 2]);
+});
+
+test("a struct list param keeps its field columns", () => {
+    const procs = `struct P { x: num = 0, y: num = 0 } public ps: list<P> = [P(x = 1, y = 2)];
+        proc ys(l: list<P>) -> num { l.add(P(x = 3, y = 4)); return l[l.length()].y + l[1].y; }`;
+    assert.deepEqual(listRun(procs, `looks.say(f"{ys(ps)}"); looks.say(f"{ps.length()}");`), [6, 2]);
+});
+
+test("each sprite gets its own copy, which can reach its private list", () => {
+    const { errors, ir } = compileToIR(`public g: list<num> = [1];
+        proc size(xs: list<num>) -> num { return xs.length(); }
+        sprite A { private own: list<num> = [1, 2]; events.onFlag() { looks.say(f"{size(own)}"); looks.say(f"{size(g)}"); } }
+        sprite B { events.onFlag() { looks.say(f"{size(g)}"); } }`);
+    assert.ok(ir, errors.map((e) => e.message).join("\n"));
+    assert.deepEqual([...ir.sprites[0]!.procs.keys()].sort(), ["size_g", "size_own"]);
+    assert.deepEqual([...ir.sprites[1]!.procs.keys()], ["size_g_1"]);
+    assert.equal(ir.procs.size, 0, "the uncopied proc must not reach the project");
+});
+
+test("a copy of a global proc reads the global a sprite member shadows", () => {
+    const said = run(`public n: num = 1; public g: list<num> = [5];
+        proc read(xs: list<num>) -> num { return n + xs[1]; }
+        sprite A { private n: num = 100; events.onFlag() { looks.say(f"{read(g)}"); } }`);
+    assert.deepEqual(said, [6]);
+});
+
+test("list param projects build to a real sb3", () => {
+    const { errors, sb3 } = compileToSb3(`public a: list<num> = [1]; public b: list<num> = [2];
+        proc size(@proccode = "size of %xs and %n", xs: list<num>, n: num) -> num { return xs.length() + n; }
+        sprite A { events.onFlag() { looks.say(f"{size(a, 1)}"); looks.say(f"{size(b, 1)}"); } }`);
+    assert.ok(sb3, errors.map((e) => e.message).join("\n"));
+});
+
 test("constructs with no lowering refuse to build", () => {
     const cases: [string, RegExp][] = [
         [`looks.say("hi"); sprite Cat {}`, /top level/],
         [`sprite Cat { looks.say("hi"); }`, /directly in a sprite/],
         [`public c: list<num> = range(5); sprite Cat {}`, /initialized from a literal/],
-        [`public d: dict<str, num> = {}; sprite Cat { events.onFlag() { private k = d.keys(); } }`, /initialized from a literal/],
         [`public a: list<num> = []; public b = a; sprite Cat {}`, /initialized from a literal/],
         [`public a: list<num> = []; public b: list<num> = []; sprite Cat { events.onFlag() { a = b; } }`, /whole list/],
         [`public a: list<num> = []; sprite Cat { events.onFlag() { if (a == a) { } } }`, /whole lists/],
@@ -343,12 +497,167 @@ test("constructs with no lowering refuse to build", () => {
     }
 });
 
-test("writing to an imported value refuses to build", () => {
-    const files: Record<string, string> = { "/p/lib.knip": `public x: num = 1;` };
-    const { errors, sb3 } = compileToSb3(`import "./lib.knip"; sprite Cat { events.onFlag() { lib.x = 2; } }`, {
-        path: "/p/main.knip",
-        resolve: () => ({ path: "/p/lib.knip", source: files["/p/lib.knip"]! }),
-    });
+test("a stdlib constant can't be written", () => {
+    const { errors, sb3 } = compileToSb3(`sprite Cat { events.onFlag() { math.pi = 2; } }`);
     assert.equal(sb3, undefined);
     assert.match(errors.map((e) => e.message).join("\n"), /read-only/);
+});
+
+// -- module state --
+const say = (...exprs: string[]) => exprs.map((expr) => `looks.say(f"{${expr}}");`).join(" ");
+const inFlag = (imports: string, body: string) => `${imports} sprite Cat { events.onFlag() { ${body} } }`;
+
+test("a module keeps private state between calls", () => {
+    const lib = `private n: num = 0; public proc bump() -> num { n += 1; return n; }`;
+    assert.deepEqual(run(inFlag(`import "./lib.knip";`, `lib.bump(); ${say("lib.bump()")}`), { "lib.knip": lib }), [2]);
+});
+
+test("the importer can read and write public module state, and the module sees it", () => {
+    const lib = `public n: num = 1; public proc get() -> num { return n; } public proc set2() -> void { n = 2; }`;
+    const body = `${say("lib.n")} lib.n = 5; ${say("lib.get()")} lib.n += 1; ${say("lib.n")} lib.set2(); ${say("lib.n")}`;
+    assert.deepEqual(run(inFlag(`import "./lib.knip";`, body), { "lib.knip": lib }), [1, 5, 6, 2]);
+});
+
+test("two modules and the main file can share a variable name", () => {
+    const files = { "a.knip": `public n: num = 0; public proc set() -> void { n = 1; }`, "b.knip": `public n: num = 0; public proc set() -> void { n = 2; }` };
+    const source = inFlag(`import "./a.knip"; import "./b.knip"; public n: num = 3;`, `a.set(); b.set(); ${say("a.n", "b.n", "n")}`);
+    assert.deepEqual(run(source, files), [1, 2, 3]);
+});
+
+test("module lists and dicts work from both sides", () => {
+    const lib = `public xs: list<num> = [1]; public d: dict<str, num> = {"a": 1}; public proc grow() -> void { xs.add(2); d["b"] = 2; }`;
+    const body = `lib.grow(); lib.xs.add(3); lib.xs[1] = 9; lib.d["c"] = 3; ${say("lib.xs.length()", "lib.xs[1]", "lib.d.length()", "lib.d.contains(\"b\")")} for (x, lib.xs) { ${say("x")} }`;
+    assert.deepEqual(run(inFlag(`import "./lib.knip";`, body), { "lib.knip": lib }), [3, 9, 3, true, 9, 2, 3]);
+});
+
+test("a module can pass its list to a list param, and the importer can too", () => {
+    const lib = `public xs: list<num> = [1, 2]; public proc total(l: list<num>) -> num { private t: num = 0; for (x, l) { t += x; } return t; } public proc own() -> num { return total(xs); }`;
+    assert.deepEqual(run(inFlag(`import "./lib.knip";`, say("lib.own()", "lib.total(lib.xs)")), { "lib.knip": lib }), [3, 3]);
+});
+
+test("module structs and struct lists hold state", () => {
+    const lib = `struct P { x: num = 0, y: num = 0 } public p: P = P(x = 1); public ps: list<P> = [];
+        public proc store() -> void { ps.add(P(x = p.x, y = 7)); p.x = 2; }`;
+    assert.deepEqual(run(inFlag(`import "./lib.knip";`, `lib.store(); ${say("lib.p.x", "lib.ps.length()", "lib.ps[1].y")}`), { "lib.knip": lib }), [2, 1, 7]);
+});
+
+test("a module initializer that needs blocks runs before the user's scripts", () => {
+    const lib = `public n: num = 2 + 3; public xs: list<num> = [n, n + 1];`;
+    assert.deepEqual(run(inFlag(`import "./lib.knip";`, say("lib.n", "lib.xs[2]")), { "lib.knip": lib }), [5, 6]);
+});
+
+test("one module's state reaches another that imports it", () => {
+    const files = { "store.knip": `public n: num = 0;`, "user.knip": `import "./store.knip"; public proc bump() -> void { store.n += 1; }` };
+    assert.deepEqual(run(inFlag(`import "./user.knip"; import "./store.knip";`, `user.bump(); user.bump(); ${say("store.n")}`), files), [2]);
+});
+
+test("a proc touching module state builds even when nothing calls it", () => {
+    const { errors, sb3 } = compileToSb3(inFlag(`import "./lib.knip";`, ""), withFiles({ "lib.knip": `private n: num = 0; public proc bump() -> void { n += 1; }` }));
+    assert.ok(sb3, errors.map((e) => e.message).join("\n"));
+});
+
+test("never-written literals fold, inside the module and out, and add no variable", () => {
+    const lib = `public limit: num = 10; private half: num = 5; public proc sum() -> num { return limit + half; }`;
+    const { ir } = compileToIR(inFlag(`import "./lib.knip";`, say("lib.limit", "lib.sum()")), withFiles({ "lib.knip": lib }));
+    assert.deepEqual([...ir!.variables.keys()].filter((name) => name.startsWith("lib.")), []);
+    assert.deepEqual(run(inFlag(`import "./lib.knip";`, say("lib.limit", "lib.sum()")), { "lib.knip": lib }), [10, 15]);
+});
+
+test("a proc local shadows its module's constant", () => {
+    const lib = `public limit: num = 10; public proc f() -> num { private limit: num = 1; return limit; }`;
+    assert.deepEqual(run(inFlag(`import "./lib.knip";`, say("lib.f()")), { "lib.knip": lib }), [1]);
+});
+
+test("enumerate over a struct list binds the index and the fields", () => {
+    const decls = `struct P { x: num = 0, y: num = 0 } public ps: list<P> = [P(x = 1, y = 2), P(x = 3, y = 4)];`;
+    assert.deepEqual(run(`${decls} sprite Cat { events.onFlag() { for ((i, p), enumerate(ps)) { looks.say(f"{i}:{p.x},{p.y}"); } } }`), ["1:1,2", "2:3,4"]);
+    assert.deepEqual(run(`${decls} sprite Cat { events.onFlag() { for (i, enumerate(ps)) { looks.say(f"{i}"); } } }`), [1, 2]);
+});
+
+test("enumerate works on a struct list param and a module's struct list", () => {
+    const lib = `struct P { x: num = 0 } public ps: list<P> = [P(x = 5)];
+        public proc total(l: list<P>) -> num { private t: num = 0; for ((i, p), enumerate(l)) { t += i * p.x; } return t; }`;
+    assert.deepEqual(run(inFlag(`import "./lib.knip";`, say("lib.total(lib.ps)")), { "lib.knip": lib }), [5]);
+});
+
+const buildErrors = (source: string, files: Record<string, string>): string[] =>
+    compileToIR(source, withFiles(files)).errors.filter((e) => e.severity === "error").map((e) => e.message);
+
+test("a builds proc inlined into an importer still sees its own module's struct list", () => {
+    const lib = `
+        struct Item { n: num = 0 }
+        private items: list<Item> = [];
+        public proc first(@lower = "builds") -> num { return items[1].n; }
+        public proc nth(@lower = "builds", i: num) -> num { return items[i].n + first(); }
+    `;
+    const main = `import "./lib.knip"; sprite A { private v: num = 0; events.onFlag() { v = lib.nth(1); } }`;
+    assert.deepEqual(buildErrors(main, { "lib.knip": lib }), []);
+});
+
+test("an importer can read a struct field typed by an enum in that struct's module", () => {
+    const lib = `
+        public enum Kind { A, B }
+        struct Item { kind: Kind = Kind.A }
+        public items: list<Item> = [];
+    `;
+    const main = `import "./lib.knip"; sprite A { events.onFlag() {
+        if (lib.items[1].kind == lib.Kind.B) { lib.items[1].kind = lib.Kind.A; }
+    } }`;
+    assert.deepEqual(buildErrors(main, { "lib.knip": lib }), []);
+});
+
+test("an error lowering a module's proc names that module's file", () => {
+    const lib = `
+        private a: list<num> = [];
+        private b: list<num> = [];
+        public proc f() -> void { a = b; }
+    `;
+    const main = `import "./lib.knip"; sprite A { events.onFlag() { lib.f(); } }`;
+    const [message] = buildErrors(main, { "lib.knip": lib });
+    assert.match(message!, /lib\.knip:4:/);
+});
+
+test("a sprite in an imported file is an error, not silently dropped", () => {
+    const main = `import "./lib.knip"; sprite A { }`;
+    assert.match(buildErrors(main, { "lib.knip": `sprite B { }` }).join(), /sprite can only be declared/);
+});
+
+test("one struct name with two shapes across files is an error; the same shape is fine", () => {
+    const one = `struct P { x: num = 0 } public proc f() -> void { }`;
+    const other = `struct P { y: num = 0 } public proc g() -> void { }`;
+    const main = `import "./one.knip"; import "./other.knip"; sprite A { }`;
+    assert.match(buildErrors(main, { "one.knip": one, "other.knip": other }).join(), /different fields/);
+    assert.deepEqual(buildErrors(main, { "one.knip": one, "other.knip": one }), []);
+});
+
+test("statements after clone.delete() or forever warn that they never run", () => {
+    const warned = (body: string): boolean =>
+        compileToIR(`sprite A { events.onFlag() { ${body} } }`).errors.some((e) => e.severity === "warning" && /nothing after this runs/.test(e.message));
+    assert.equal(warned(`clone.delete(); looks.show();`), true);
+    assert.equal(warned(`forever { wait(1); } looks.show();`), true);
+    assert.equal(warned(`looks.show(); clone.delete();`), false);
+    assert.equal(warned(`if (1 == 1) { clone.delete(); } looks.show();`), false);
+});
+
+test("a target only gets the global procs its scripts reach", () => {
+    const lib = `
+        public n: num = 0;
+        public proc inner() -> void { n += 1; }
+        public proc outer() -> void { inner(); }
+        public proc unused() -> void { n -= 1; }
+    `;
+    const main = `import "./lib.knip";
+        sprite A { events.onFlag() { lib.outer(); } }
+        sprite B { events.onFlag() { looks.show(); } }
+        stage { events.onFlag() { looks.nextBackdrop(); } }`;
+    const { sb3 } = compileToSb3(main, withFiles({ "lib.knip": lib }));
+    const project = JSON.parse(strFromU8(unzipSync(sb3!)["project.json"]!)) as { targets: { name: string; blocks: unknown }[] };
+    const procsOf = (name: string): string[] =>
+        Object.values(project.targets.find((t) => t.name === name)!.blocks as Record<string, { opcode: string; mutation?: { proccode: string } }>)
+            .filter((b) => b.opcode === "procedures_prototype")
+            .map((b) => b.mutation!.proccode)
+            .sort();
+    assert.deepEqual(procsOf("A"), ["inner", "outer"]);
+    assert.deepEqual(procsOf("B"), []);
+    assert.deepEqual(procsOf("Stage"), []);
 });

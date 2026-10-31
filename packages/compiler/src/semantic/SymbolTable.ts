@@ -57,6 +57,8 @@ export interface Signature {
     resolvedReturn?: InternalType;
     meta?: SignatureMeta;
     decorators?: DecoratorNode[];
+    /** On a generic call's instantiated copy, the signature it was made from. */
+    declared?: Signature;
 }
 
 /** An enum as code outside the stdlib reaches it: `Key`, `sensing.TouchTarget`. */

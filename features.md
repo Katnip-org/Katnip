@@ -74,6 +74,9 @@ The practical "what do I write instead" version is [Known gaps](https://docs.kat
   * 🟢 Parameters are read-only; assigning to one (or to a struct parameter's field) is an
     error.
   * 🟢 Default parameter values.
+  * 🟢 List and dict parameters; Scratch can't pass a list, so the compiler generates one copy of the
+    proc per sprite and set of lists, and writes reach the caller's list. A slice is passed as a hidden
+    list, and `keys()`/`values()` as a copy. A literal can't be passed, and a copy drops `@proccode`.
   * 🟢 Named arguments; `motion.goTo(y = 0, x = 0)` routes by name, not position.
   * 🟢 Methods; a first parameter named `self` makes the proc callable as
     `receiver.method()`.
@@ -100,7 +103,8 @@ The practical "what do I write instead" version is [Known gaps](https://docs.kat
 * 🟢 **`do { } while ( )`**; lowered by emitting the body once ahead of the loop, so it
   always runs at least once; note the body is duplicated in the output.
 * 🟢 **`for` over a counter**; `for (i, 4)` lowers to `control_for_each`.
-* 🟢 **`for` over a list**; binds each element by index.
+* 🟢 **`for` over a list**; binds each element by index. Scratch re-reads the count every iteration,
+  so adding to the list inside its own loop extends the loop.
 * 🟢 **`for` over a string**; binds each letter through `operator_letter_of`.
 * 🟢 **`for` over a dict**; `for ((key, value), d)` walks the keys and values columns
   together.
@@ -124,7 +128,8 @@ The practical "what do I write instead" version is [Known gaps](https://docs.kat
   top level.
 * 🟢 **Statement placement errors**; handlers, imports, and switch placement are checked,
   and a statement outside a handler stops the build.
-* 🟢 **`forever`**; lowers to `control_forever`.
+* 🟢 **`forever`**; lowers to `control_forever`. Statements after it, or after `clone.delete()`, warn that
+  they never run.
 * 🟢 **`repeat`**; lowers to `control_repeat`; the count must be a `num`.
 
 ## Expressions and operators
@@ -221,11 +226,14 @@ The practical "what do I write instead" version is [Known gaps](https://docs.kat
   ones cross, and imports are never re-exported.
 * 🟢 **Lowering imported code**; an imported proc is lowered into every target that calls
   it, transitively, and an imported value with a literal initializer folds at the use site.
-* 🔴 **Imported module state**; mutable state declared in an imported module does not cross.
-  Reading an imported list, or a value with no literal initializer, is a check error (*only
-  members with a literal initializer are supported*). A proc that touches its own module's
-  variable fails codegen with `undeclared variable` for any file importing that module, even
-  if the proc is never called. Writing to an imported value stops the build.
+* 🟢 **Imported module state**; a module owns its variables, lists, dicts and structs, public and
+  private. They live on the stage as `lib.x`, so names can't collide across files. An importer can read
+  and write public ones. A literal that's never written folds and adds no variable.
+  * 🟢 `@lower = "builds"` procs see their own module's names when inlined into another file, and an importer
+    can read a struct field typed by an enum from the struct's module.
+  * 🟢 Lowering errors inside a module name that module's file and line.
+  * 🟢 A sprite in an imported file is an error. Sprites live in the file being built.
+  * 🟡 Structs share one namespace across files. One name with two shapes is an error, so rename one.
 
 ## Structs
 
@@ -269,21 +277,23 @@ the compiler cannot enumerate, `Target`, `TouchTarget`, `DistanceTarget`, `Objec
 * 🟢 **`clone`**; `onStart`, `create`, `delete`.
 * 🟢 **`sound`**; `play`, `playUntilDone`, `stopAll`, effects, volume. The `sound` asset
   declaration still works; only `sound.` selects the namespace.
-* 🟡 **`list`**; `add`, `insert`, `contains`, `length`, `clear`, `indexOf`, `remove`, `show`, `hide` are 🟢;
-  `merge` is 🔴 (`katnip_list_merge`).
+* 🟢 **`list`**; everything is 🟢, including `merge`. List slices lower through the stdlib's `sliceInto`,
+  which can't be called directly. `merge` isn't supported on a list of structs.
 * 🟢 **`math`**; `pi`, `e`, `tau` fold to literals; the `MathOp` enum and `op` wrap
   `operator_mathop`, and `abs`, `floor`, `ceil`, `sqrt`, `sin`, `cos`, `tan`, `asin`,
   `acos`, `atan`, `ln`, `log`, `epow` are `builds` procs over it. `random`, `round` and `mod`
   bind their own blocks, and `pow` backs `**`. No `min` or `max` yet.
 * 🟡 **`str`**; `contains` and `slice` are 🟢; the rest of the string surface is not written yet.
-* 🔴 **`dict`**; `contains`, `length`, `keys`, `values`, `merge` all resolve to `katnip_*`
-  opcodes with no codegen metadata, so all five stop the build.
+* 🟢 **`dict`**; `contains` and `length` read the keys column. `keys()` and `values()` read their
+  column directly, live and read-only, and storing one in a list copies it. `merge` is a stdlib proc,
+  and only takes a declared dict. Keys are case-insensitive, because Scratch's list lookups are.
 * 🟡 **`console`**; `input` is 🟢; `log`, `warn`, `error` are 🔴 (`katnip_*`).
 * 🟢 **Casts**; `Num`, `Str` and `Bool` are `builds` procs that inline the value unchanged.
   They are type-checker assertions, not runtime conversions. `List` was removed from the
   prelude; there is no list cast.
-* 🔴 **Helpers**; `typeof` and `motion.getPosition` have no codegen metadata; using one
+* 🔴 **Helpers**; `typeof` has no codegen metadata; using it
   throws `no slot metadata`.
+* 🟢 `enumerate()` over a list of structs binds the index and the fields; `zip()` over one still stops the build.
 * 🟡 **Iteration helpers**; in a `for` header `range()`, `zip()` and `enumerate()` are 🟢,
   folded into the loop and never built. Used *as a value*, all three stop the build 🔴.
 
@@ -306,7 +316,9 @@ Every enum-typed parameter above is reachable two ways: the namespaced member
   asset into a `.sb3` that loads in Scratch and MistWarp.
 * 🟢 **Assets**; declared costumes and sounds are keyed by md5, so one file used from
   several sprites lands in the zip once. Rotation centres and sample rates are left for
-  Scratch to compute on load. A sprite with no `costume` keeps the default cat.
+  Scratch to compute on load. Bitmaps are written at resolution 1, so a PNG shows at its own pixel size. A
+  sprite with no `costume` keeps the default cat.
+* 🟢 **Procs per target**; a target only gets the global and imported procs its scripts can reach.
 * 🔴 **Monitor layout**; monitors can be shown and hidden, but not positioned or styled.
 * 🔴 **Comments in output**; nothing is written to the sb3 comment map.
 
@@ -347,7 +359,6 @@ Every enum-typed parameter above is reachable two ways: the namespaced member
 
 ## Nearest gaps, in rough order
 
-1. Give the remaining `katnip_*` builtins real lowerings; `console`, `typeof`, `list.merge`
-   and the dict methods are the widest hole.
-2. Lower imported module variables and lists, so a module can own state.
-3. Attach comments to the AST and emit them into the sb3 comment map.
+1. Give the remaining `katnip_*` builtins real lowerings; `console` and `typeof`
+   are what's left.
+2. Attach comments to the AST and emit them into the sb3 comment map.

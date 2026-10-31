@@ -23,4 +23,6 @@ proc setY(@opcode = "motion_sety", y: num) -> void {}
 proc ifOnEdgeBounce(@opcode = "motion_ifonedgebounce") -> void {}
 proc setRotationStyle(@opcode = "motion_setrotationstyle", style: RotationStyle) -> void {}
 
-proc getPosition(@opcode = "katnip_motion_position") -> (num, num) {}
+proc x(@opcode = "motion_xposition") -> num {}
+proc y(@opcode = "motion_yposition") -> num {}
+proc getPosition() -> (num, num) { return (x(), y()); }

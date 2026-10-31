@@ -5,4 +5,6 @@ proc contains(@opcode = "katnip_dict_contains", self: dict<K, V>, key: K) -> boo
 proc length(@opcode = "katnip_dict_length", self: dict<K, V>) -> num {}
 proc keys(@opcode = "katnip_dict_keys", self: dict<K, V>) -> list<K> {}
 proc values(@opcode = "katnip_dict_values", self: dict<K, V>) -> list<V> {}
-proc merge(@opcode = "katnip_dict_merg", self: dict<K, V>, addition: dict<K, V>) -> void {}
+proc merge(self: dict<K, V>, addition: dict<K, V>) -> void {
+    for ((key, value), addition) { self[key] = value; }
+}

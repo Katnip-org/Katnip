@@ -12,4 +12,25 @@ proc indexOf(@opcode = "data_itemnumoflist", self: list<T>, item: T) -> num {}
 proc show(@opcode = "data_showlist", self: list<T>) -> void {}
 proc hide(@opcode = "data_hidelist", self: list<T>) -> void {}
 
-proc merge(@opcode = "katnip_list_merge", self: list<T>, addition: list<T>) -> void {}
+proc merge(self: list<T>, addition: list<T>) -> void {
+    # A for re-reads its count every iteration, so merging a list into itself needs the count held still
+    private count: num = addition.length();
+    for (i, count) { self.add(addition[i]); }
+}
+
+# dst = self[start:stop:step]: 1-based, stop-inclusive, like range(). dst must not be self.
+proc sliceInto(@operator = "[:]list", self: list<T>, dst: list<T>, start: num, stop: num, step: num = 1) -> void {
+    dst.clear();
+    private i: num = start;
+    if (step > 0) {
+        while (i <= stop) {
+            if (i > 0 && i <= self.length()) { dst.add(self[i]); }
+            i += step;
+        }
+    } elif (step < 0) {
+        while (i >= stop) {
+            if (i > 0 && i <= self.length()) { dst.add(self[i]); }
+            i += step;
+        }
+    }
+}

@@ -1165,3 +1165,48 @@ test("struct list add stages nothing when no field reads the list", () => {
     const body = yieldScript(`${POINT}public ps: list<Point> = [];`, "ps.add(Point(x = 1, y = 2));");
     assert.deepEqual(order(body), ["data_addtolist", "data_addtolist"]);
 });
+
+// -- dict methods --
+const DICT = `public d: dict<str, num> = {"a": 1}; public e: dict<str, num> = {"b": 2}; public k: list<str> = []; public n: num = 0; public b: bool = false;`;
+
+test("dict.contains and dict.length read the keys column", () => {
+    const body = yieldScript(DICT, `b = d.contains("a"); n = d.length();`) as unknown as { inputs: unknown[] }[];
+    assert.deepEqual(body[0]!.inputs[1], { kind: "op", opcode: "data_listcontainsitem", inputs: [{ kind: "var", name: "d_keys" }, { kind: "lit", value: "a" }] });
+    assert.deepEqual(body[1]!.inputs[1], { kind: "op", opcode: "data_lengthoflist", inputs: [{ kind: "var", name: "d_keys" }] });
+});
+
+test("keys() and values() read their column with no extra blocks", () => {
+    const body = yieldScript(DICT, `n = d.keys().length(); n = d.values()[1];`) as unknown as { inputs: unknown[] }[];
+    assert.equal(body.length, 2);
+    assert.deepEqual(body[0]!.inputs[1], { kind: "op", opcode: "data_lengthoflist", inputs: [{ kind: "var", name: "d_keys" }] });
+    assert.deepEqual(body[1]!.inputs[1], { kind: "op", opcode: "data_itemoflist", inputs: [{ kind: "var", name: "d_vals" }, { kind: "lit", value: 1 }] });
+});
+
+test("for over keys() walks the column", () => {
+    const body = yieldScript(DICT, `for (x, d.values()) { n += x; }`) as unknown as { kind: string; times: unknown }[];
+    assert.equal(body[0]!.kind, "for");
+    assert.deepEqual(body[0]!.times, { kind: "op", opcode: "data_lengthoflist", inputs: [{ kind: "var", name: "d_vals" }] });
+});
+
+test("storing keys() copies through a proc, by declaration and by assignment", () => {
+    const declared = yieldScript(DICT, `private own: list<str> = d.keys();`) as unknown as { kind: string; proc?: string }[];
+    assert.match(declared.find((s) => s.kind === "call")!.proc!, /^katnip_sliceInto_d_keys_/);
+    const assigned = yieldScript(DICT, `k = d.keys();`) as unknown as { kind: string; proc?: string }[];
+    assert.equal(assigned.find((s) => s.kind === "call")!.proc, "katnip_sliceInto_d_keys_k");
+});
+
+test("writing through keys() or values() is refused", () => {
+    for (const write of [`d.keys().add("x");`, `d.keys().clear();`, `d.values().remove(1);`, `d.values().insert(1, 1);`, `d.values()[1] = 2;`])
+        assert.throws(() => yieldScript(DICT, write), /read-only/, write);
+});
+
+test("dict.merge calls one stdlib copy per pair of dicts", () => {
+    const sprite = lower(`${DICT} sprite Cat { events.onFlag() { d.merge(e); d.merge(e); } }`, { stdlib: true }).sprites[0]!;
+    const calls = sprite.scripts[0]!.body.map((s) => (s as { proc?: string }).proc!);
+    assert.equal(calls[0], calls[1]);
+    assert.equal(sprite.procs.get(calls[0]!)!.warp, true);
+});
+
+test("dict.merge refuses a literal", () => {
+    assert.throws(() => yieldScript(DICT, `d.merge({"z": 1});`), /only a declared list or dict/);
+});

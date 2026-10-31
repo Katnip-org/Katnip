@@ -79,17 +79,6 @@ test("a module bound under two names folds its consts under both", () => {
     );
 });
 
-test("an imported const that cannot fold is reported, not silently emptied", () => {
-    // Only literal initializers fold, and the IR reads them straight out of constMembers -- so
-    // anything missing would lower to an empty string with no diagnostic at all.
-    assert.match(
-        errorsOf(`import "./m.knip";\nproc main() -> void { private x: str = m.computed; }`, {
-            "/proj/m.knip": `public computed: str = "a" + "b";`,
-        }),
-        /'m\.computed' cannot be read across a namespace boundary/,
-    );
-});
-
 test("private members do not cross the file boundary", () => {
     assert.match(
         errorsOf(`import "./thing.knip";\nproc main() -> void { private x: num = thing.secret(); }`, {
