@@ -73,6 +73,8 @@ export class IRGenerator {
     /** Return variables this statement read, which a later call in the statement would overwrite. */
     private liveRets: Extract<IRExpr, { kind: "var" }>[] = [];
     private stagedRets = 0;
+    /** Names each yields result, so two in one statement don't share a variable. */
+    private yieldCount = 0;
     /** Sliced lists are filled by a generated warp proc, per owner, source and destination. */
     private readonly sliceProcs = new Set<string>();
     private sliceLists = 0;
@@ -420,6 +422,7 @@ export class IRGenerator {
         }
         if (expr.type === "CallExpression") {
             const sig = this.analyzer.callResolutions.get(expr);
+            if (sig?.meta?.lower === "yields") return this.lowerYields(expr, sig, out, true);
             if (sig) return this.lowerUserproc(expr, sig, this.lowerArgs(expr, sig, out), out);
         }
         throw new KatnipError("IR", "this struct value can't be lowered yet", spanOf(expr));
@@ -473,8 +476,19 @@ export class IRGenerator {
                 for (const column of columns) this.emit(out, { kind: "raw", opcode, inputs: [list(column)] });
                 return { kind: "lit", value: "" };
             case "data_addtolist": {
-                const values = this.lowerStruct(this.callArgs(node, sig)[1]!, out);
+                const written = new Set(columns);
+                // Adding to one column grows it, so anything reading the list has to be read first
+                const values = this.lowerStruct(this.callArgs(node, sig)[1]!, out).map((value) => (mentions(value, written) ? this.stageYield(value, out) : value));
                 columns.forEach((column, i) => this.emit(out, { kind: "raw", opcode, inputs: [list(column), values[i]!] }));
+                return { kind: "lit", value: "" };
+            }
+            case "data_insertatlist": {
+                const resolved = this.callArgs(node, sig);
+                const written = new Set(columns);
+                // Inserting into one column shifts it, so anything reading the list has to be read first
+                const values = this.lowerStruct(resolved[1]!, out).map((value) => (mentions(value, written) ? this.stageYield(value, out) : value));
+                const index = this.stableIndex(this.lowerExpr(resolved[2]!, out), out);
+                columns.forEach((column, i) => this.emit(out, { kind: "raw", opcode, inputs: [list(column), values[i]!, structuredClone(index)] }));
                 return { kind: "lit", value: "" };
             }
         }
@@ -646,6 +660,7 @@ export class IRGenerator {
             case "DoWhileStatement": {
                 if (node.type === "DoWhileStatement") out.push(...this.lowerBlock(node.body));
                 const setup = out.length;
+                const condYields = this.yieldCount;
                 const cond = this.lowerExpr(node.condition, out);
                 const body = this.lowerBlock(node.body);
                 // The condition's setup has to rerun before every check, not only the first
@@ -654,7 +669,10 @@ export class IRGenerator {
                     // Same temp names as the first lowering, because `cond` is the one read
                     this.liveRets = [];
                     this.stagedRets = 0;
+                    const bodyYields = this.yieldCount;
+                    this.yieldCount = condYields;
                     this.lowerExpr(node.condition, body);
+                    this.yieldCount = bodyYields;
                 }
                 this.emit(out, { kind: "while", cond, body });
                 break;
@@ -822,6 +840,13 @@ export class IRGenerator {
                     if (sig?.meta?.lower === "command" && !this.structListSelf(expr, sig)) {
                         const args = this.callArgs(expr, sig).map((arg) => this.lowerExpr(arg, out));
                         this.emit(out, { kind: "raw", opcode: sig.meta.opcode!, inputs: args });
+                        break;
+                    }
+                }
+                if (expr.type === "CallExpression") {
+                    const sig = this.analyzer.callResolutions.get(expr);
+                    if (sig?.meta?.lower === "yields") {
+                        this.lowerYields(expr, sig, out, false);
                         break;
                     }
                 }
@@ -1329,6 +1354,11 @@ export class IRGenerator {
                 // A struct literal has no signature; lowerStruct reads it wherever a struct is expected
                 if (!sig)
                     throw new KatnipError("IR", "a struct literal can only be used where a struct is expected", spanOf(node));
+                if (sig.meta?.lower === "yields") {
+                    if (this.structListSelf(node, sig))
+                        throw new KatnipError("IR", "a removed struct can only be used where a struct is expected", spanOf(node));
+                    return this.lowerYields(node, sig, out, true)[0]!;
+                }
                 const columns = this.structListSelf(node, sig);
                 if (columns) return this.lowerStructListCall(node, sig, columns, out);
                 const args = this.lowerArgs(node, sig, out);
@@ -1409,6 +1439,46 @@ export class IRGenerator {
             if (this.structFieldsOf(sig.params[i]!.paramType)) return this.lowerStruct(arg, out);
             return [this.lowerExpr(arg, out)];
         });
+    }
+
+    private stageYield(value: IRExpr, out: IRStmt[]): IRExpr {
+        const name = this.declare(`yielded${this.yieldCount++}`);
+        this.emit(out, this.set(name, value));
+        return { kind: "var", name };
+    }
+
+    /** An index safe to reuse across several columns: anything that could read them is staged. */
+    private stableIndex(index: IRExpr, out: IRStmt[]): IRExpr {
+        if (index.kind === "lit" || index.kind === "var" || index.kind === "param") return index;
+        return this.stageYield(index, out);
+    }
+
+    /**
+     * A yields proc runs a command block and then reports what it produced, which Scratch has no single
+     * reporter for. The result is staged in a variable per value, skipped when `read` is false.
+     */
+    private lowerYields(node: CallExpressionNode, sig: Signature, out: IRStmt[], read: boolean): IRExpr[] {
+        const opcode = sig.meta!.opcode!;
+        const resolved = this.callArgs(node, sig);
+        const stage = (value: IRExpr): IRExpr => this.stageYield(value, out);
+
+        if (opcode === "sensing_askandwait") {
+            this.emit(out, { kind: "raw", opcode, inputs: [this.lowerExpr(resolved[0]!, out)] });
+            if (!read) return [];
+            return [stage({ kind: "op", opcode: "sensing_answer", inputs: [] })];
+        }
+        if (opcode === "data_deleteoflist") {
+            const lists = this.structListSelf(node, sig) ?? this.listsOf(resolved[0]!);
+            // Deleting from one column shortens it, so `ps.remove(ps.length())` must not re-read its index
+            const index = this.stableIndex(this.lowerExpr(resolved[1]!, out), out);
+            const at = () => structuredClone(index);
+            const list = (name: string): IRExpr => ({ kind: "var", name });
+            const values: IRExpr[] = [];
+            if (read) for (const name of lists) values.push(stage({ kind: "op", opcode: "data_itemoflist", inputs: [list(name), at()] }));
+            for (const name of lists) this.emit(out, { kind: "raw", opcode, inputs: [list(name), at()] });
+            return values;
+        }
+        throw new KatnipError("IR", `no @lower = "yields" lowering for '${opcode}'`, spanOf(node));
     }
 
     /** Emits a userproc call and returns its return slots, one per returned value. */

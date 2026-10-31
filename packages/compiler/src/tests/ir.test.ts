@@ -990,10 +990,10 @@ test("a literal range step of 0 is an error, not an infinite count", () => {
     );
 });
 
-test("a yields proc reports a KatnipError instead of crashing on the missing plan", () => {
+test("a yields proc with no lowering reports a KatnipError", () => {
     assert.throws(
-        () => lower(`private xs: list<num> = [1]; sprite Cat { events.onFlag() { xs.remove(1); } }`, { stdlib: true }),
-        (err: Error) => err.name === "KatnipError" && /"yields" procs are not lowered yet/.test(err.message),
+        () => lower(`proc odd(@opcode = "looks_size", @lower = "yields") -> num {} sprite Cat { events.onFlag() { odd(); } }`, { stdlib: true }),
+        (err: Error) => err.name === "KatnipError" && /no @lower = "yields" lowering for 'looks_size'/.test(err.message),
     );
 });
 
@@ -1078,4 +1078,90 @@ test("struct params spread into one arg per field, and a struct return fills one
     const call = body.find((s): s is Extract<IRStmt, { kind: "call" }> => s.kind === "call")!;
     assert.equal(call.args.length, 4);
     assert.deepEqual(setOf(body, "p_y")!.inputs[1], { kind: "var", name: mid.retVars[1] });
+});
+
+// -- yields --
+type YieldStmt = { opcode?: string; inputs: { opcode?: string; name?: string }[] };
+const yieldScript = (decls: string, body: string) =>
+    lower(`${decls} sprite Cat { events.onFlag() { ${body} } }`, { stdlib: true }).sprites[0].scripts[0].body as unknown as YieldStmt[];
+const order = (body: YieldStmt[]) => body.map((s) => s.opcode);
+
+test("list.remove as a statement only deletes", () => {
+    const body = yieldScript("public xs: list<num> = [1];", "xs.remove(1);");
+    assert.deepEqual(body, [{ kind: "raw", opcode: "data_deleteoflist", inputs: [{ kind: "var", name: "xs" }, { kind: "lit", value: 1 }] }]);
+});
+
+test("list.remove as a value reads the item before deleting it", () => {
+    const body = yieldScript("public xs: list<num> = [1]; public n: num = 0;", "n = xs.remove(1);");
+    assert.deepEqual(order(body), ["data_setvariableto", "data_deleteoflist", "data_setvariableto"]);
+    assert.equal(body[0]!.inputs[1]!.opcode, "data_itemoflist");
+});
+
+test("two removes in one statement keep separate results", () => {
+    const body = yieldScript("public xs: list<num> = [1, 2]; public n: num = 0;", "n = xs.remove(1) + xs.remove(1);");
+    assert.notEqual(body[0]!.inputs[0]!.name, body[2]!.inputs[0]!.name);
+});
+
+test("struct list remove hits every column at one index, staged so a shrinking column can't move it", () => {
+    const body = yieldScript(`${POINT}public ps: list<Point> = [];`, "ps.remove(ps.length());");
+    assert.deepEqual(order(body), ["data_setvariableto", "data_deleteoflist", "data_deleteoflist"]);
+    const index = { kind: "var", name: body[0]!.inputs[0]!.name };
+    assert.deepEqual(body[1]!.inputs, [{ kind: "var", name: "ps_x" }, index]);
+    assert.deepEqual(body[2]!.inputs, [{ kind: "var", name: "ps_y" }, index]);
+});
+
+test("a removed struct can be stored whole, its fields read before the delete", () => {
+    const body = yieldScript(`${POINT}public ps: list<Point> = [];`, "private p: Point = ps.remove(1);");
+    const reads = body.slice(0, order(body).indexOf("data_deleteoflist")).map((s) => s.inputs[1]!.opcode);
+    assert.deepEqual(reads, ["data_itemoflist", "data_itemoflist"]);
+});
+
+test("a field of a removed struct is read before the delete", () => {
+    const body = yieldScript(`${POINT}public ps: list<Point> = [];`, `looks.say(f"{ps.remove(1).y}");`);
+    assert.deepEqual(order(body).slice(0, 4), ["data_setvariableto", "data_setvariableto", "data_deleteoflist", "data_deleteoflist"]);
+    assert.equal((body[4]!.inputs[0] as { name?: string }).name, body[1]!.inputs[0]!.name);
+});
+
+test("a while condition that removes re-reads into the variable it tests", () => {
+    const body = yieldScript("public xs: list<num> = [1];", "while (xs.remove(1) > 0) { looks.say(\"x\"); }") as unknown as { kind: string; cond: { inputs: { name?: string }[] }; body: YieldStmt[] }[];
+    const loop = body.find((s) => s.kind === "while")!;
+    const tested = loop.cond.inputs[0]!.name;
+    assert.equal(loop.body.find((s) => s.opcode === "data_setvariableto")!.inputs[0]!.name, tested);
+});
+
+test("console.input asks, then stages the answer so a second ask can't overwrite it", () => {
+    const body = yieldScript(`public s: str = "";`, `s = console.input("a") + console.input("b");`);
+    assert.deepEqual(order(body).slice(0, 4), ["sensing_askandwait", "data_setvariableto", "sensing_askandwait", "data_setvariableto"]);
+    assert.equal(body[1]!.inputs[1]!.opcode, "sensing_answer");
+});
+
+// -- insert --
+test("list.insert passes item then index", () => {
+    const body = yieldScript("public xs: list<num> = [1];", "xs.insert(5, 1);");
+    assert.deepEqual(body, [{ kind: "raw", opcode: "data_insertatlist", inputs: [{ kind: "var", name: "xs" }, { kind: "lit", value: 5 }, { kind: "lit", value: 1 }] }]);
+});
+
+test("struct list insert hits every column at one staged index", () => {
+    const body = yieldScript(`${POINT}public ps: list<Point> = [];`, "ps.insert(Point(x = 1, y = 2), ps.length());");
+    assert.deepEqual(order(body), ["data_setvariableto", "data_insertatlist", "data_insertatlist"]);
+    const index = { kind: "var", name: body[0]!.inputs[0]!.name };
+    assert.deepEqual(body[1]!.inputs, [{ kind: "var", name: "ps_x" }, { kind: "lit", value: 1 }, index]);
+    assert.deepEqual(body[2]!.inputs, [{ kind: "var", name: "ps_y" }, { kind: "lit", value: 2 }, index]);
+});
+
+test("struct list insert reads the list before shifting any column", () => {
+    const body = yieldScript(`${POINT}public ps: list<Point> = [];`, "ps.insert(Point(x = ps[1].y, y = ps[1].x), 1);");
+    assert.deepEqual(order(body), ["data_setvariableto", "data_setvariableto", "data_insertatlist", "data_insertatlist"]);
+});
+
+test("struct list add reads the list before growing any column", () => {
+    const body = yieldScript(`${POINT}public ps: list<Point> = [];`, "ps.add(Point(x = ps.length(), y = ps.length()));");
+    assert.deepEqual(order(body), ["data_setvariableto", "data_setvariableto", "data_addtolist", "data_addtolist"]);
+    assert.deepEqual(body[2]!.inputs[1], { kind: "var", name: body[0]!.inputs[0]!.name });
+    assert.deepEqual(body[3]!.inputs[1], { kind: "var", name: body[1]!.inputs[0]!.name });
+});
+
+test("struct list add stages nothing when no field reads the list", () => {
+    const body = yieldScript(`${POINT}public ps: list<Point> = [];`, "ps.add(Point(x = 1, y = 2));");
+    assert.deepEqual(order(body), ["data_addtolist", "data_addtolist"]);
 });

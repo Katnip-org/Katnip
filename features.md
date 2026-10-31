@@ -189,8 +189,9 @@ The practical "what do I write instead" version is [Known gaps](https://docs.kat
   stops the build.
 * 🔴 **List and dict returns**; explicitly rejected by the analyzer, since the frame width
   is not statically known.
-* 🔴 **`@lower = "yields"` procs**; declared in the stdlib (`list.remove`,
-  `console.input`) but the IR has no lowering for them.
+* 🟢 **`@lower = "yields"` procs**; run a command block, then report through a staged variable:
+  `list.remove` reads the item before deleting it, and `console.input` asks, then reads the answer.
+  A discarded result emits only the command.
 
 ## Decorators
 
@@ -198,8 +199,8 @@ The practical "what do I write instead" version is [Known gaps](https://docs.kat
 * 🟢 `@hat`; marks a proc usable only as an event handler; misuse is reported in both
   directions.
 * 🟢 `@warp`; runs the proc without screen refresh.
-* 🟢 `@lower`; one of `reporter`, `command`, `userproc`, `builds`; `yields` is accepted but
-  unlowered.
+* 🟢 `@lower`; one of `reporter`, `command`, `userproc`, `builds`, `yields`. `yields` lowers per
+  opcode; any other opcode is a build error.
 * 🟢 `@proccode`; sets a user proc's Scratch custom-block label. One `%name` (or bare
   `%s`/`%n`/`%b`) placeholder per parameter, in declaration order; the declared parameter
   type picks the final spec. Checked, a wrong count or a reordered placeholder is an error.
@@ -236,7 +237,10 @@ The practical "what do I write instead" version is [Known gaps](https://docs.kat
   `list<Struct>`. Literals, field reads and writes, whole-struct assignment, element reads
   and writes, `add`/`length`/`clear`/`show`/`hide`, `for` over a struct list, struct params
   (one input per field) and struct returns (one slot per field).
-* 🔴 A whole struct as one value, `contains`/`indexOf`/`remove`/`merge` on a struct list, and
+* 🟢 `insert` on a struct list writes one index in every column.
+* 🟢 `remove` on a struct list deletes one index from every column, and the removed struct can be
+  stored or have a field read.
+* 🔴 A whole struct as one value, `contains`/`indexOf`/`merge` on a struct list, and
   structs from imported modules fail the build.
 
 ## Standard library
@@ -265,8 +269,8 @@ the compiler cannot enumerate, `Target`, `TouchTarget`, `DistanceTarget`, `Objec
 * 🟢 **`clone`**; `onStart`, `create`, `delete`.
 * 🟢 **`sound`**; `play`, `playUntilDone`, `stopAll`, effects, volume. The `sound` asset
   declaration still works; only `sound.` selects the namespace.
-* 🟡 **`list`**; `add`, `contains`, `length`, `clear`, `indexOf`, `show`, `hide` are 🟢;
-  `remove` is 🔴 (yields), `merge` is 🔴 (`katnip_list_merge`).
+* 🟡 **`list`**; `add`, `insert`, `contains`, `length`, `clear`, `indexOf`, `remove`, `show`, `hide` are 🟢;
+  `merge` is 🔴 (`katnip_list_merge`).
 * 🟢 **`math`**; `pi`, `e`, `tau` fold to literals; the `MathOp` enum and `op` wrap
   `operator_mathop`, and `abs`, `floor`, `ceil`, `sqrt`, `sin`, `cos`, `tan`, `asin`,
   `acos`, `atan`, `ln`, `log`, `epow` are `builds` procs over it. `random`, `round` and `mod`
@@ -274,7 +278,7 @@ the compiler cannot enumerate, `Target`, `TouchTarget`, `DistanceTarget`, `Objec
 * 🟡 **`str`**; `contains` and `slice` are 🟢; the rest of the string surface is not written yet.
 * 🔴 **`dict`**; `contains`, `length`, `keys`, `values`, `merge` all resolve to `katnip_*`
   opcodes with no codegen metadata, so all five stop the build.
-* 🔴 **`console`**; `log`, `warn`, `error` are `katnip_*`; `input` is a yields proc.
+* 🟡 **`console`**; `input` is 🟢; `log`, `warn`, `error` are 🔴 (`katnip_*`).
 * 🟢 **Casts**; `Num`, `Str` and `Bool` are `builds` procs that inline the value unchanged.
   They are type-checker assertions, not runtime conversions. `List` was removed from the
   prelude; there is no list cast.
@@ -346,5 +350,4 @@ Every enum-typed parameter above is reachable two ways: the namespaced member
 1. Give the remaining `katnip_*` builtins real lowerings; `console`, `typeof`, `list.merge`
    and the dict methods are the widest hole.
 2. Lower imported module variables and lists, so a module can own state.
-3. Lower `@lower = "yields"` procs, unblocking `list.remove` and `console.input`.
-4. Attach comments to the AST and emit them into the sb3 comment map.
+3. Attach comments to the AST and emit them into the sb3 comment map.

@@ -69,14 +69,6 @@ sprite Cat { events.onFlag() { private p: Point = Point(x = 1, y = 2); looks.say
     assert(!isEmptyLit(say.inputs[0]!), "p.x must read the field, not an empty literal");
 });
 
-test("a @lower = \"yields\" proc lowers", { todo: "lowerExpr has no branch for it; the plan lookup crashes" }, () => {
-    const body = script(`public s: list<num> = [1, 2];
-sprite Cat { events.onFlag() { private gone: num = s.remove(1); looks.say(f"{gone}"); } }`);
-
-    const opcodes = body.filter((s): s is Extract<IRStmt, { kind: "raw" }> => s.kind === "raw").map((s) => s.opcode);
-    assert(opcodes.includes("data_deleteoflist"), "list.remove must emit its block before the value is read");
-});
-
 test("every stdlib opcode has codegen metadata", { todo: "the katnip_* builtins have no lowering; using one throws 'no slot metadata'" }, () => {
     const missing: string[] = [];
     for (const module of loadStdlibModules())
