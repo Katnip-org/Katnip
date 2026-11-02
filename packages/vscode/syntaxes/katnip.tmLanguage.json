@@ -27,9 +27,9 @@
       "patterns": [
         {
           "name": "string.quoted.double.katnip",
-          "begin": "f\"",
+          "begin": "(f)\"",
           "end": "\"",
-          "beginCaptures": { "0": { "name": "storage.type.string.katnip" } },
+          "beginCaptures": { "1": { "name": "storage.type.string.katnip" } },
           "patterns": [
             { "name": "constant.character.escape.katnip", "match": "\\\\." },
             { "include": "#interpolation" }
@@ -37,9 +37,9 @@
         },
         {
           "name": "string.quoted.single.katnip",
-          "begin": "f'",
+          "begin": "(f)'",
           "end": "'",
-          "beginCaptures": { "0": { "name": "storage.type.string.katnip" } },
+          "beginCaptures": { "1": { "name": "storage.type.string.katnip" } },
           "patterns": [
             { "name": "constant.character.escape.katnip", "match": "\\\\." },
             { "include": "#interpolation" }
