@@ -1648,6 +1648,34 @@ export class SemanticAnalyzer {
         }
     }
 
+    /** The namespace or enum a dotted path names, read from the global scope once analysis is done. */
+    staticMember(path: string[]): NamespaceSymbol | EnumSymbol | null {
+        let scope: Scope = this.current;
+        let found: NamespaceSymbol | EnumSymbol | null = null;
+        path.forEach((name, i) => {
+            if (i > 0 && found?.kind !== "namespace") {
+                found = null;
+                return;
+            }
+            const symbols = i === 0 ? scope.lookup(name) : scope.lookupLocal(name);
+            found = symbols?.find((s): s is NamespaceSymbol | EnumSymbol => s.kind === "namespace" || s.kind === "enum") ?? null;
+            if (found?.kind === "namespace") scope = found.scope;
+        });
+        return found;
+    }
+
+    /** The stdlib scope holding a value type's methods. */
+    methodScope(type: InternalType): Scope | null {
+        const namespace = this.typeHeadNamespace(type);
+        if (!namespace) return null;
+        return this.stdlibNamespace(namespace)?.scope ?? null;
+    }
+
+    structFields(name: string): StructFieldNode[] {
+        const struct = this.current.lookup(name)?.find((s): s is StructSymbol => s.kind === "struct") ?? this.moduleStructs.get(name);
+        return struct?.fields ?? [];
+    }
+
     /** Looks a namespace up directly in the stdlib scope (immune to user shadowing). */
     private stdlibNamespace(name: string): NamespaceSymbol | null {
         return this.stdlibScope.lookupLocal(name)?.find((s): s is NamespaceSymbol => s.kind === "namespace") ?? null;

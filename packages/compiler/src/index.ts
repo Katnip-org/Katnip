@@ -1,6 +1,7 @@
 import { Lexer } from "./lexer/Lexer.js";
 import { Parser } from "./parser/Parser.js";
 import { SemanticAnalyzer } from "./semantic/SemanticAnalyzer.js";
+import { hoverAt, memberCompletions, type Completion } from "./semantic/hover.js";
 import { loadStdlibModules, type StdlibModule } from "./semantic/StdlibLoader.js";
 import { ErrorReporter, KatnipError } from "./utils/ErrorReporter.js";
 import { Logger } from "./utils/Logger.js";
@@ -71,6 +72,38 @@ function stdlibBuildError(): KatnipError {
 
 export function checkSource(source: string, options: Options = {}): readonly KatnipError[] {
     return analyze(source, options).reporter.getErrors();
+}
+
+export function getHover(source: string, line: number, column: number, options: Options = {}): string | null {
+    const { ast, analyzer } = analyze(source, options);
+    if (!ast || !analyzer) return null;
+    return hoverAt(ast, analyzer, line, column);
+}
+
+/**
+ * What can follow the `.` before a 1-based position, or null if the cursor isn't after a dot.
+ * `config.` alone doesn't parse, so the unfinished member is cut out and the receiver analyzed by itself.
+ */
+export function getMemberCompletions(source: string, line: number, column: number, options: Options = {}): Completion[] | null {
+    const lines = source.split("\n");
+    const chars = [...(lines[line - 1] ?? "")];
+    const before = chars.slice(0, column - 1).join("");
+    const dot = /\.\w*$/.exec(before);
+    if (!dot) return null;
+
+    const receiver = before.slice(0, dot.index);
+    const path = (/[\w.]*$/.exec(receiver)?.[0] ?? "").split(".");
+    const after = chars.slice(column - 1).join("");
+
+    for (const end of ["", ";"]) {
+        const patched = [...lines];
+        patched[line - 1] = receiver + end + after;
+        const { ast, analyzer } = analyze(patched.join("\n"), options);
+        if (!ast || !analyzer) continue;
+        const items = memberCompletions(ast, analyzer, path, line, [...receiver].length + 1);
+        if (items.length > 0) return items;
+    }
+    return [];
 }
 
 /** Lowers to IR. `ir` is absent when `errors` holds anything of severity "error". */

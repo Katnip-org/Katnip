@@ -51,7 +51,8 @@ export function activate(context: vscode.ExtensionContext): void {
         vscode.workspace.onDidSaveTextDocument(run),
         vscode.workspace.onDidChangeTextDocument((e) => scheduleCheck(context, e.document)),
         vscode.workspace.onDidCloseTextDocument((doc) => diagnostics.delete(doc.uri)),
-        vscode.languages.registerCompletionItemProvider("katnip", { provideCompletionItems: complete }),
+        vscode.languages.registerCompletionItemProvider("katnip", { provideCompletionItems: (doc, pos) => complete(context, doc, pos) }, "."),
+        vscode.languages.registerHoverProvider("katnip", { provideHover: (doc, pos) => hover(context, doc, pos) }),
         vscode.commands.registerCommand("katnip.build", () => build(context)),
     );
     vscode.workspace.textDocuments.forEach(run);
@@ -75,6 +76,15 @@ async function check(context: vscode.ExtensionContext, doc: vscode.TextDocument)
         const detail = err instanceof Error ? (err.stack ?? err.message) : String(err);
         output.appendLine(`Check FAILED for ${doc.uri.fsPath}:\n${detail}`);
     }
+}
+
+async function hover(context: vscode.ExtensionContext, doc: vscode.TextDocument, pos: vscode.Position): Promise<vscode.Hover | null> {
+    const { getHover } = await loadCompiler(context);
+    // VS Code counts UTF-16 units from 0; Katnip counts code points from 1.
+    const column = [...doc.lineAt(pos.line).text.slice(0, pos.character)].length + 1;
+    const text = getHover(doc.getText(), pos.line + 1, column, { path: doc.uri.fsPath, resolve: fileResolver, readAsset: fileAssetReader });
+    if (!text) return null;
+    return new vscode.Hover(new vscode.MarkdownString().appendCodeblock(text, "katnip"));
 }
 
 async function build(context: vscode.ExtensionContext): Promise<void> {
@@ -129,8 +139,27 @@ const KEYWORDS = [
 // TODO: regex scan of the open file; swap for compiler symbol table when cross-file completion matters
 const DECL = /\b(?:proc|enum|struct|sprite)\s+(\w+)|\b(?:private|public)\s+(\w+)/g;
 
-function complete(doc: vscode.TextDocument): vscode.CompletionItem[] {
-    const items = KEYWORDS.map((k) => new vscode.CompletionItem(k, vscode.CompletionItemKind.Keyword));
+const MEMBER_KINDS = {
+    function: vscode.CompletionItemKind.Function,
+    field: vscode.CompletionItemKind.Field,
+    enumMember: vscode.CompletionItemKind.EnumMember,
+    enum: vscode.CompletionItemKind.Enum,
+    variable: vscode.CompletionItemKind.Variable,
+};
+
+async function complete(context: vscode.ExtensionContext, doc: vscode.TextDocument, pos: vscode.Position): Promise<vscode.CompletionItem[]> {
+    const { getMemberCompletions } = await loadCompiler(context);
+    const column = [...doc.lineAt(pos.line).text.slice(0, pos.character)].length + 1;
+    const members = getMemberCompletions(doc.getText(), pos.line + 1, column, { path: doc.uri.fsPath, resolve: fileResolver, readAsset: fileAssetReader });
+    if (members) {
+        return members.map((member) => {
+            const item = new vscode.CompletionItem(member.name, MEMBER_KINDS[member.kind]);
+            item.detail = member.detail;
+            return item;
+        });
+    }
+
+    const items =KEYWORDS.map((k) => new vscode.CompletionItem(k, vscode.CompletionItemKind.Keyword));
     const seen = new Set<string>();
     for (const m of doc.getText().matchAll(DECL)) {
         const name = m[1] ?? m[2];
