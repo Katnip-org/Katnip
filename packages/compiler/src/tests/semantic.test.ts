@@ -396,8 +396,10 @@ test("struct list field column is a list of the field type", () => {
     assert.equal(errors.split("\n").length, 1);
 });
 
-test("non-scalar struct fields are rejected", () => {
-    assert.match(errorsOf("struct Bad { xs: list<num> }"), /only scalar fields/);
+test("struct fields are scalars or lists of scalars", () => {
+    assert.equal(errorsOf("struct Ok { xs: list<num> }"), "");
+    assert.match(errorsOf("struct Bad { xs: list<list<num>> }"), /only scalar fields/);
+    assert.match(errorsOf("struct Bad { d: dict<str, num> }"), /only scalar fields/);
 });
 
 test("duplicate struct fields are reported", () => {

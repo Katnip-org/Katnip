@@ -981,9 +981,10 @@ export class SemanticAnalyzer {
             const defaultType = field.default ? this.inferType(field.default) : null;
             const fieldType = annotated ?? defaultType ?? { kind: "unknown" as const };
 
-            if (!this.isScalarFieldType(fieldType)) {
+            const scalarList = fieldType.kind === "list" && this.isScalarFieldType(fieldType.element);
+            if (!this.isScalarFieldType(fieldType) && !scalarList) {
                 this.error(
-                    `Struct field '${field.name}' has type '${typeToString(fieldType)}'; only scalar fields (num, str, bool, enum) are supported`,
+                    `Struct field '${field.name}' has type '${typeToString(fieldType)}'; only scalar fields (num, str, bool, enum) and lists of them are supported`,
                     field,
                 );
             }

@@ -510,6 +510,20 @@ test("list param projects build to a real sb3", () => {
     assert.ok(sb3, errors.map((e) => e.message).join("\n"));
 });
 
+const BUFFER = `struct Buffer { len: num, data: list<str> } public xs: Buffer = Buffer(len = 0, data = [""] * 3);`;
+
+test("a lone struct can hold a list field", () => {
+    const body = `xs.data.add("a"); xs.data[1] = "b"; xs.len = xs.data.length();
+        for (s, xs.data) { xs.len += 1; } looks.say(f"{xs.data[1]}{xs.data[4]}{xs.len}");`;
+    assert.deepEqual(run(`${BUFFER} sprite Cat { events.onFlag() { ${body} } }`), ["ba8"]);
+});
+
+test("a list field takes its default, and works in a script-local struct", () => {
+    const decls = `struct Bag { n: num = 1, items: list<num> = [1, 2] * 2 }`;
+    const body = `private b: Bag = Bag(); b.items.add(b.n); looks.say(Str(b.items.length()));`;
+    assert.deepEqual(run(`${decls} sprite Cat { events.onFlag() { ${body} } }`), [5]);
+});
+
 test("constructs with no lowering refuse to build", () => {
     const cases: [string, RegExp][] = [
         [`looks.say("hi"); sprite Cat {}`, /top level/],
@@ -521,6 +535,11 @@ test("constructs with no lowering refuse to build", () => {
         [`proc two() -> (num, num) { return (1, 2); } sprite Cat { events.onFlag() { private a = two(); } }`, /must be unpacked/],
         [`sprite Cat { events.onFlag() { private t: (num, num) = (1, 2); } }`, /returned or unpacked/],
         [`private p: list<(str, num)> = [("a", 1)]; sprite Cat {}`, /returned or unpacked/],
+        [`${BUFFER} public bs: list<Buffer> = []; sprite Cat {}`, /can't be stored in a list/],
+        [`${BUFFER} public b2: Buffer = xs; sprite Cat {}`, /initialized from a literal/],
+        [`${BUFFER} proc f(b: Buffer) -> num { return b.len; } sprite Cat { events.onFlag() { looks.say(Str(f(xs))); } }`, /copied, passed or returned/],
+        [`${BUFFER} sprite Cat { events.onFlag() { xs = Buffer(len = 1, data = []); } }`, /copied, passed or returned/],
+        [`${BUFFER} sprite Cat { events.onFlag() { xs.data = xs.data[1:2]; } }`, /replaced as a whole/],
     ];
     for (const [source, expected] of cases) {
         const { errors, sb3 } = compileToSb3(source);

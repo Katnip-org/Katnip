@@ -436,6 +436,8 @@ export class IRGenerator {
         const mark = this.pending.length;
 
         if (list) {
+            if (fields.some(isListField))
+                throw new KatnipError("IR", `a struct with a list field can't be stored in a list`, spanOf(node));
             const columns = fields.map((field) => `${base}_${field.name}`);
             this.structLists.set(node.name, columns);
             if (init && init.type !== "ListExpression")
@@ -467,23 +469,36 @@ export class IRGenerator {
             return;
         }
 
+        const isScalar = (_: unknown, i: number) => !isListField(fields[i]!);
         let columns = fields.map((field) => `${base}_${field.name}`);
-        if (sink) columns = columns.map((column) => this.declare(column, target));
-        this.structVars.set(node.name, columns);
+        if (sink) columns = columns.map((column, i) => (isScalar(column, i) ? this.declare(column, target) : column));
 
         const nodes = init ? this.literalFields(init) : fields.map((field) => field.default ?? undefined);
-        const baked = nodes ? literals(nodes) : null;
+        if (!fields.every(isScalar)) {
+            if (!nodes)
+                throw new KatnipError("IR", "a struct with a list field can only be initialized from a literal for now", spanOf(init!));
+            fields.forEach((field, i) => {
+                if (isScalar(field, i)) return;
+                const name = `${node.name}_${field.name}`;
+                this.declareMember({ ...node, name, varType: field.fieldType, initializer: nodes[i] ?? null }, sink);
+                columns[i] = this.listNames.get(name)![0]!;
+            });
+        }
+        this.structVars.set(node.name, columns);
+
+        const scalars = columns.filter(isScalar);
+        const baked = nodes ? literals(nodes.filter(isScalar)) : null;
         if (!sink && baked) {
-            columns.forEach((column, i) => target.variables.set(column, baked[i]!));
+            scalars.forEach((column, i) => target.variables.set(column, baked[i]!));
             return;
         }
-        if (!sink) for (const column of columns) target.variables.set(column, "");
+        if (!sink) for (const column of scalars) target.variables.set(column, "");
         let values: IRExpr[];
-        if (init)
-            values = this.lowerStruct(init, out);
+        if (nodes)
+            values = nodes.filter(isScalar).map((node): IRExpr => (node ? this.lowerExpr(node, out) : { kind: "lit", value: "" }));
         else
-            values = nodes!.map((node): IRExpr => (node ? this.lowerExpr(node, out) : { kind: "lit", value: "" }));
-        this.assignStruct(columns, values, out);
+            values = this.lowerStruct(init!, out);
+        this.assignStruct(scalars, values, out);
         this.popTo(out, mark);
     }
 
@@ -500,6 +515,9 @@ export class IRGenerator {
 
     /** Lowers a struct-typed expression to one value per field, in field order. */
     private lowerStruct(expr: ExpressionNode, out: IRStmt[]): IRExpr[] {
+        const type = this.analyzer.exprTypes.get(expr);
+        if (type?.kind === "struct" && this.structs.get(type.name)?.some(isListField))
+            throw new KatnipError("IR", "a struct with a list field can't be copied, passed or returned yet", spanOf(expr));
         const fields = this.literalFields(expr);
         if (fields) return fields.map((node): IRExpr => (node ? this.lowerExpr(node, out) : { kind: "lit", value: "" }));
 
@@ -632,6 +650,8 @@ export class IRGenerator {
             const type = this.analyzer.exprTypes.get(node.object);
             if (type?.kind === "list" && type.element.kind === "struct")
                 return [this.structListOf(node.object)[this.fieldIndex(type.element.name, node.property.name)]!];
+            const column = this.listField(node);
+            if (column) return [column];
         }
         const names = node.type === "Identifier" ? this.listNames.get(node.name) : undefined;
         if (!names)
@@ -641,6 +661,15 @@ export class IRGenerator {
                 spanOf(node),
             );
         return names;
+    }
+
+    private listField(node: ExpressionNode): string | null {
+        if (node.type !== "MemberExpression" || node.object.type !== "Identifier") return null;
+        const type = this.analyzer.exprTypes.get(node.object);
+        if (type?.kind !== "struct") return null;
+        const i = this.fieldIndex(type.name, node.property.name);
+        if (!isListField(this.structs.get(type.name)![i]!)) return null;
+        return this.structVars.get(node.object.name)?.[i] ?? null;
     }
 
     private callArgs(call: CallExpressionNode, sig: Signature): ExpressionNode[] {
@@ -1690,6 +1719,9 @@ export class IRGenerator {
                     if (value !== undefined) return { kind: "lit", value };
                 }
                 const type = this.analyzer.exprTypes.get(node.object);
+                const columns = node.object.type === "Identifier" ? this.structVars.get(node.object.name) : undefined;
+                if (type?.kind === "struct" && columns)
+                    return this.column(columns[this.fieldIndex(type.name, node.property.name)]!);
                 if (type?.kind === "struct")
                     return this.lowerStruct(node.object, out)[this.fieldIndex(type.name, node.property.name)]!;
                 if (type?.kind === "list" && type.element.kind === "struct")
@@ -1803,6 +1835,8 @@ export class IRGenerator {
             return this.binop(operator.slice(0, -1), current, this.lowerExpr(right, out), out);
         };
         const owner = left.object;
+        if (this.listField(left))
+            throw new KatnipError("IR", "a list field can't be replaced as a whole yet", spanOf(left));
         if (owner.type === "Identifier") {
             const column = this.structVars.get(owner.name)![field]!;
             this.emit(out, this.set(column, value(this.column(column))));
@@ -1919,6 +1953,9 @@ type ProcCopy = {
 };
 
 const isCollection = (type: TypeNode): boolean => type.type === "Type" && (type.typeName === "list" || type.typeName === "dict");
+
+const isListField = (field: StructFieldNode): boolean =>
+    field.fieldType ? isCollection(field.fieldType) : unrollRepeat(field.default ?? null)?.type === "ListExpression";
 
 const READ_ONLY_COLUMN = "keys() and values() are read-only; writing would put the dict's columns out of step";
 
