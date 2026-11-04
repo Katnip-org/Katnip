@@ -9,7 +9,7 @@ import { loadImports, type AssetReader, type ImportResolver } from "./semantic/M
 import { loadData, loadImportedData } from "./codegen/assets.js";
 import { ErrorReporter, KatnipError } from "./utils/ErrorReporter.js";
 import { Logger } from "./utils/Logger.js";
-import { compileToIR, compileToSb3, decompileSb3, isStdlibSource } from "./index.js";
+import { compileToIR, compileToSb3, decompileSb3ToKpkg, isStdlibSource } from "./index.js";
 
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
@@ -269,13 +269,13 @@ cli
                 process.exitCode = 1;
             });
     })
-    .command('decompile <source> [output]', 'Decompile a Scratch .sb3 into .knip source', (yargs: any) => {
+    .command('decompile <source> [output]', 'Decompile a Scratch .sb3 into a .kpkg (zipped katnip folder)', (yargs: any) => {
         yargs.positional('source', {
             describe: 'The path to the .sb3 file',
             type: 'string',
             demandOption: true,
         }).positional('output', {
-            describe: 'The path to write the .knip to (defaults to the source path with a .knip extension)',
+            describe: 'The path to write the .kpkg to (defaults to the source path with a .kpkg extension)',
             type: 'string',
         });
     }, (argv: any) => {
@@ -283,8 +283,8 @@ cli
         fs.readFile(source as PathLike)
             .then(async (sb3: Uint8Array) => {
                 const output = (argv.output as string | undefined)
-                    ?? `${source.replace(/\.sb3$/i, '')}.knip`;
-                await fs.writeFile(output as PathLike, decompileSb3(sb3));
+                    ?? `${source.replace(/\.sb3$/i, '')}.kpkg`;
+                await fs.writeFile(output as PathLike, decompileSb3ToKpkg(sb3));
                 console.log(`Wrote ${output}`);
             })
             .catch((err: any) => {

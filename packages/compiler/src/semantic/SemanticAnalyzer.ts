@@ -1188,7 +1188,9 @@ export class SemanticAnalyzer {
                     expression.operator === ">" ||
                     expression.operator === "<=" ||
                     expression.operator === ">=";
-                const matchedPair = bothList || (bothEnum && isComparison);
+                const listRepeat =
+                    expression.operator === "*" && l.kind === "list" && r.kind === "primitive" && r.name === "num";
+                const matchedPair = bothList || (bothEnum && isComparison) || listRepeat;
 
                 // `unknown` is the escape hatch (not-yet-typed calls/members);
                 // let it pass so one missing type doesn't cascade into errors.
@@ -1210,8 +1212,9 @@ export class SemanticAnalyzer {
                         return isStr(l) || isStr(r)
                             ? { kind: "primitive", name: "str" }
                             : { kind: "primitive", name: "num" };
-                    case "-":
                     case "*":
+                        if (listRepeat) return l;
+                    case "-":
                     case "/":
                     case "%":
                     case "**":

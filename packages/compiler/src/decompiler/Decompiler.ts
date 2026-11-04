@@ -93,6 +93,10 @@ function scalarLit(value: Scalar): Expr {
 
 const wrap = (e: Expr, min: number) => (e.prec < min ? `(${e.code})` : e.code);
 
+const assetFileName = (name: string) => name.replace(/[\\/:*?"<>|\s]/g, "_");
+
+const ASSET_MENUS = new Set(["looks_costume", "looks_backdrops", "sound_sounds_menu"]);
+
 function identifier(name: string): string {
     const cleaned = name.trim().replace(/[^A-Za-z0-9_]+/g, "_");
     return /^[0-9]/.test(cleaned) ? `_${cleaned}` : cleaned;
@@ -132,6 +136,11 @@ export class Decompiler {
     private params = new Map<string, { ident: string; ty: Ty }>();
     private inProc = false;
     private notes: string[] = [];
+    /** Asset files the emitted source points at: path relative to the .knip, md5ext inside the sb3. */
+    assets: { path: string; md5ext: string }[] = [];
+
+    /** Asset declarations only make sense when the asset files ship alongside the source. */
+    constructor(private withAssets = false) {}
 
     decompile(project: Sb3Project): string {
         const stage = project.targets.find((t) => t.isStage);
@@ -140,21 +149,43 @@ export class Decompiler {
 
         if (stage) {
             out.push(...this.declare(stage, "public", this.globalVars, this.globalLists));
+            this.vars = this.globalVars;
+            this.lists = this.globalLists;
+            const assets = this.assetLines(stage, "stage");
             const body = this.target(stage);
-            if (body.length) out.push("", "stage {", ...body, "}");
+            if (assets.length && body.length) assets.push("");
+            if (assets.length || body.length) out.push("", "stage {", ...assets, ...body, "}");
         }
 
         for (const sprite of sprites) {
             this.scope = this.globals.child();
             this.vars = new Map(this.globalVars);
             this.lists = new Map(this.globalLists);
-            const declarations = this.declare(sprite, "private", this.vars, this.lists).map((line) => INDENT + line);
+            const name = this.globals.claim(sprite.name);
+            const declarations = [
+                ...this.assetLines(sprite, name),
+                ...this.declare(sprite, "private", this.vars, this.lists).map((line) => INDENT + line),
+            ];
             const body = this.target(sprite);
             if (declarations.length && body.length) declarations.push("");
 
-            out.push("", `sprite ${this.globals.claim(sprite.name)} {`, ...declarations, ...body, "}");
+            out.push("", `sprite ${name} {`, ...declarations, ...body, "}");
         }
         return out.join("\n").replace(/^\n+/, "") + "\n";
+    }
+
+    private assetLines(target: Target, folder: string): string[] {
+        const lines: string[] = [];
+        if (!this.withAssets) return lines;
+        for (const [kind, list] of [["costume", target.costumes], ["sound", target.sounds]] as const) {
+            for (const asset of list) {
+                // The compiler names an asset after its file stem, so the file carries the Scratch name
+                const path = `./assets/${folder}/${assetFileName(asset.name)}.${asset.dataFormat}`;
+                this.assets.push({ path, md5ext: asset.md5ext ?? `${asset.assetId}.${asset.dataFormat}` });
+                lines.push(`${INDENT}${kind} "${path}";`);
+            }
+        }
+        return lines;
     }
 
     private declare(target: Target, access: string, vars: Map<string, string>, lists: Map<string, string>): string[] {
@@ -326,6 +357,11 @@ export class Decompiler {
             }
             case "procedures_call":
                 return line(`${this.procCall(block).code};`);
+            case "motion_turnleft": {
+                const degrees = this.input(block, "DEGREES", "num");
+                if (typeof degrees.lit === "number") return line(`motion.turn(${numLit(-degrees.lit).code});`);
+                return line(`motion.turn(-${wrap(degrees, UNARY)});`);
+            }
         }
         const entry = this.stdlib.byOpcode.get(block.opcode);
         if (!entry || entry.hat) return line(`# unsupported: ${block.opcode}`);
@@ -555,13 +591,13 @@ export class Decompiler {
                 if (slot.ref === "list") return atom(this.listField(block), "any");
                 const value = block.fields[slot.name]?.[0] ?? "";
                 if (slot.ref === "broadcast") return strLit(value);
-                return this.option(value, param);
+                return this.option(value, param, block.opcode === "event_whenbackdropswitchesto");
             }
             case "menu": {
                 const inner = block.inputs[slot.name]?.[1] ?? null;
                 const menu = typeof inner === "string" ? (this.blocks[inner] as Block | undefined) : undefined;
                 if (menu?.shadow && menu.opcode === slot.menuOpcode)
-                    return this.option(menu.fields[slot.menuField]?.[0] ?? slot.default, param);
+                    return this.option(menu.fields[slot.menuField]?.[0] ?? slot.default, param, ASSET_MENUS.has(menu.opcode));
                 return this.cast(this.value(inner, want), want);
             }
             case "broadcast":
@@ -569,11 +605,12 @@ export class Decompiler {
         }
     }
 
-    private option(value: string, param: StdlibParam): Expr {
+    private option(value: string, param: StdlibParam, asset = false): Expr {
         for (const e of param.enums) {
             const member = e.members.find((m) => String(m.value) === value);
             if (member) return atom(`${e.qualified}.${member.name}`, "any");
         }
+        if (asset && this.withAssets) return strLit(assetFileName(value));
         if (!takesText(param.type)) this.notes.push(`option '${value}' for ${param.name}`);
         return strLit(value);
     }

@@ -1039,6 +1039,20 @@ test("a struct list is one parallel list per field", () => {
     assert.deepEqual(program.lists.get("ps_y"), [2, 7]);
 });
 
+test("a literal list times a literal count folds into the baked list", () => {
+    const program = lower(`public xs: list<str> = [""] * 250000; public ys = [1, 2] * 3;`);
+    const xs = program.lists.get("xs")!;
+    assert.equal(xs.length, 250000);
+    assert(xs.every((x) => x === ""));
+    assert.deepEqual(program.lists.get("ys"), [1, 2, 1, 2, 1, 2]);
+});
+
+test("a struct list literal times a literal count folds every column", () => {
+    const program = lower(`${POINT}public ps: list<Point> = [Point(x = 1)] * 3;`);
+    assert.deepEqual(program.lists.get("ps_x"), [1, 1, 1]);
+    assert.deepEqual(program.lists.get("ps_y"), [7, 7, 7]);
+});
+
 test("struct list methods, element reads and element writes touch every column in lockstep", () => {
     const body = structScript(
         "public ps: list<Point> = [];",

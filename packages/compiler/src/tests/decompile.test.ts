@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { strFromU8, unzipSync } from "fflate";
-import { checkSource, compileToSb3, decompileProject, decompileSb3 } from "../index.js";
+import { strFromU8, strToU8, unzipSync, zipSync } from "fflate";
+import { checkSource, compileToSb3, decompileProject, decompileSb3, decompileSb3ToKpkg } from "../index.js";
 import { minimalProject, minimalSprite, minimalStage, type Block, type BlockMap, type Scalar } from "../codegen/SB3TypeDefs.js";
 
 function build(source: string): Uint8Array {
@@ -206,6 +206,71 @@ test("a for each counts with its own variable, unless the loop would shadow it",
     const knip = decompileProject(global);
     expectChecks(knip);
     assert.match(knip, /for \(i, 3\) \{\n\s+g = i;/);
+});
+
+test("a .kpkg carries every costume and sound and rebuilds the same assets", () => {
+    const sb3 = build(`sprite Cat { events.onFlag() { looks.show(); } }`);
+    const pkg = unzipSync(decompileSb3ToKpkg(sb3));
+    const knip = strFromU8(pkg["main.knip"]!);
+    assert.match(knip, /costume "\.\/assets\/stage\/[^"]+";/);
+    assert.match(knip, /costume "\.\/assets\/Cat\/[^"]+";/);
+
+    const { errors, sb3: rebuilt } = compileToSb3(knip, {
+        path: "/pkg/main.knip",
+        readAsset: (specifier) => pkg[specifier.replace(/^\.\//, "")] ?? null,
+    });
+    assert.ok(rebuilt, errors.map((e) => e.message).join("\n"));
+    const assetsOf = (bytes: Uint8Array) => Object.keys(unzipSync(bytes)).filter((f) => f !== "project.json").sort();
+    assert.deepEqual(assetsOf(rebuilt), assetsOf(sb3));
+});
+
+test("a .kpkg swaps spaces in asset names for _ in files and menu references", () => {
+    const files = unzipSync(build(`sprite Cat { events.onFlag() { looks.switchCostume("kartnap"); looks.switchBackdrop(looks.Backdrop.NEXT); } }`));
+    const project = JSON.parse(strFromU8(files["project.json"]!));
+    const cat = project.targets.find((t: { isStage: boolean }) => !t.isStage);
+    const before = cat.costumes[0].name;
+    assert.equal(before, "kartnap");
+    cat.costumes[0].name = "my cat";
+    for (const b of Object.values(cat.blocks) as Block[])
+        if (b.opcode === "looks_costume" && b.fields.COSTUME![0] === before) b.fields.COSTUME![0] = "my cat";
+    files["project.json"] = strToU8(JSON.stringify(project));
+
+    const pkg = unzipSync(decompileSb3ToKpkg(zipSync(files)));
+    const knip = strFromU8(pkg["main.knip"]!);
+    assert.ok(pkg["assets/Cat/my_cat.svg"]);
+    assert.match(knip, /costume "\.\/assets\/Cat\/my_cat\.svg";/);
+    assert.match(knip, /looks\.switchCostume\("my_cat"\);/);
+    assert.match(knip, /looks\.switchBackdrop\(looks\.Backdrop\.NEXT\);/);
+    assert.doesNotMatch(knip, /my cat/);
+    const { errors, sb3 } = compileToSb3(knip, { path: "/pkg/main.knip", readAsset: (s) => pkg[s.replace(/^\.\//, "")] ?? null });
+    assert.ok(sb3, errors.map((e) => e.message).join("\n"));
+});
+
+test("turn left becomes a negated turn", () => {
+    const knip = decompileProject(project({
+        hat: { opcode: "event_whenflagclicked", next: "lit", topLevel: true, x: 0, y: 0 },
+        lit: { opcode: "motion_turnleft", next: "expr", parent: "hat", inputs: { DEGREES: [1, [4, "120"]] } },
+        expr: { opcode: "motion_turnleft", parent: "lit", inputs: { DEGREES: [3, "add", [4, ""]] } },
+        add: { opcode: "operator_add", parent: "expr", inputs: { NUM1: [1, [4, "1"]], NUM2: [1, [4, "2"]] } },
+    }));
+    expectChecks(knip);
+    assert.match(knip, /motion\.turn\(-120\);/);
+    assert.match(knip, /motion\.turn\(-\(1 \+ 2\)\);/);
+});
+
+test("a stage script uses the renamed global, not its raw Scratch name", () => {
+    const p = project({});
+    p.targets[0] = {
+        ...p.targets[0]!,
+        variables: { g1: ["stage", 0] },
+        blocks: {
+            hat: { opcode: "event_whenflagclicked", next: "set", parent: null, inputs: {}, fields: {}, shadow: false, topLevel: true, x: 0, y: 0 },
+            set: { opcode: "data_setvariableto", next: null, parent: "hat", inputs: { VALUE: [1, [10, "1"]] }, fields: { VARIABLE: ["stage", "g1"] }, shadow: false, topLevel: false },
+        },
+    };
+    const knip = decompileProject(p);
+    expectChecks(knip);
+    assert.match(knip, /stage2 = 1;/);
 });
 
 test("rejects bytes without a project.json", () => {

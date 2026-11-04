@@ -334,7 +334,7 @@ export class IRGenerator {
 
     private declareMember(node: VariableDeclarationNode, sink?: IRStmt[]): void {
         const target = isPublicVar(node) ? this.program : this.sprite ?? this.program;
-        const init = node.initializer;
+        const init = unrollRepeat(node.initializer);
         if (!sink) this.liveRets = [];
         const struct = this.declaredStruct(node);
         if (struct) {
@@ -344,7 +344,7 @@ export class IRGenerator {
         const kind =
             node.varType?.type === "Type"
                 ? node.varType.typeName
-                : init && this.analyzer.exprTypes.get(init)?.kind;
+                : node.initializer && this.analyzer.exprTypes.get(node.initializer)?.kind;
         const name = this.emittedName(node);
 
         if (kind !== "list" && kind !== "dict") {
@@ -431,7 +431,7 @@ export class IRGenerator {
     ): void {
         const fields = this.structs.get(struct)!;
         const base = this.emittedName(node);
-        const init = node.initializer;
+        const init = unrollRepeat(node.initializer);
         const out = sink ?? (this.sprite ? this.spriteInit : this.init);
         const mark = this.pending.length;
 
@@ -1835,6 +1835,13 @@ export class IRGenerator {
 }
 
 /** Initial list contents, or null when an element needs blocks to build and the column must be filled at runtime. */
+function unrollRepeat(init: ExpressionNode | null): ExpressionNode | null {
+    if (init?.type !== "BinaryExpression" || init.operator !== "*") return init;
+    const { left, right } = init;
+    if (left.type !== "ListExpression" || right.type !== "Literal" || typeof right.value !== "number") return init;
+    return { ...left, elements: Array.from({ length: right.value }, () => left.elements).flat() };
+}
+
 function literals(nodes: (ExpressionNode | undefined)[]): (string | number | boolean)[] | null {
     const values: (string | number | boolean)[] = [];
     for (const node of nodes) {
