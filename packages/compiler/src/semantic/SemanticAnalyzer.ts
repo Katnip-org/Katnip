@@ -1492,15 +1492,15 @@ export class SemanticAnalyzer {
         if (receiver.kind === "unknown") return { type: { kind: "unknown" } };
 
         const nsName = this.typeHeadNamespace(receiver);
-        if (!nsName) {
+        const methodful = nsName !== null || receiver.kind === "struct";
+        if (!nsName && !methodful) {
             this.error(`Type '${typeToString(receiver)}' has no methods`, objNode);
             return { type: { kind: "unknown" } };
         }
 
-        // Stdlib self calls get special case resolving.
-        const overloads = procOverloads(this.stdlibNamespace(nsName)?.scope.lookupLocal(propName) ?? []).filter(
-            sig => sig.params[0]?.name === "self",
-        );
+        const stdlib = nsName ? (this.stdlibNamespace(nsName)?.scope.lookupLocal(propName) ?? []) : [];
+        const user = methodful ? (this.current.lookup(propName) ?? []) : [];
+        const overloads = procOverloads([...stdlib, ...user]).filter(sig => sig.params[0]?.name === "self");
         if (overloads.length === 0) {
             this.error(`'${propName}' is not a method of type '${typeToString(receiver)}'`, callee.property);
             return { type: { kind: "unknown" } };

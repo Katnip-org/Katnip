@@ -588,7 +588,7 @@ export class IRGenerator {
     }
 
     private structListSelf(node: CallExpressionNode, sig: Signature): string[] | null {
-        if (sig.params[0]?.name !== "self" || node.object.type !== "MemberExpression") return null;
+        if (!sig.meta?.stdlib || sig.params[0]?.name !== "self" || node.object.type !== "MemberExpression") return null;
         const self = node.object.object;
         if (self.type !== "Identifier") return null;
         return this.structLists.get(self.name) ?? null;
@@ -1644,6 +1644,11 @@ export class IRGenerator {
                         typeof part === "string" ? { kind: "lit", value: part } : this.lowerExpr(part, out),
                     );
                 if (chunks.length === 0) return { kind: "lit", value: "" };
+                const lone = node.parts.filter((part) => part !== "");
+                if (lone.length === 1 && typeof lone[0] !== "string") {
+                    const type = this.analyzer.exprTypes.get(lone[0]!);
+                    if (!(type?.kind === "primitive" && type.name === "str")) chunks.push({ kind: "lit", value: "" });
+                }
                 return chunks.reduceRight((right, left) => ({
                     kind: "op",
                     opcode: "operator_join",

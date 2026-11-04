@@ -40,7 +40,7 @@ test("checkSource resolves imports through the supplied resolver", () => {
     const files = {
         "/proj/lib.knip": `public proc twice(n: num) -> num { return n * 2; }`,
     };
-    const source = `import "./lib.knip";\nsprite Cat { events.onFlag() { looks.say(f"{lib.twice(2)}"); } }`;
+    const source = `import "./lib.knip";\nsprite Cat { events.onFlag() { looks.say(Str(lib.twice(2))); } }`;
 
     assert.deepEqual(checkSource(source, { path: ENTRY_PATH, resolve: virtualResolver(files) }), []);
     // Without a resolver the specifier cannot be read at all, so the namespace is unknown.

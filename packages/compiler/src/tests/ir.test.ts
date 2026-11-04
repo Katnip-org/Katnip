@@ -258,7 +258,8 @@ test("chained left-associative operators fold left: a - b - c is (a - b) - c", (
 test("interpolated strings lower to right-nested joins", () => {
     const join = (a: unknown, b: unknown) => ({ kind: "op", opcode: "operator_join", inputs: [a, b] });
     assert.deepEqual(exprOf(`f"a{1}b"`), join({ kind: "lit", value: "a" }, join({ kind: "lit", value: 1 }, { kind: "lit", value: "b" })));
-    assert.deepEqual(exprOf(`f"{1}"`), { kind: "lit", value: 1 });
+    assert.deepEqual(exprOf(`f"{1}"`), join({ kind: "lit", value: 1 }, { kind: "lit", value: "" }));
+    assert.deepEqual(exprOf(`f"{"a"}"`), { kind: "lit", value: "a" });
 });
 
 test("vstack call sites read by depth from the top and pop what they pushed", () => {
@@ -929,7 +930,7 @@ test("a return pops the slots its enclosing statements pushed, since the script 
 test("a script local shadowing a global is declared and read under the same name, only in its own block", () => {
     const program = lower(
         `public x: num = 1;
-         sprite Cat { events.onFlag() { private x: num = 2; looks.say(f"{x}"); for (i, 1) { } } events.onClick() { looks.say(f"{x}"); } }`,
+         sprite Cat { events.onFlag() { private x: num = 2; looks.say(Str(x)); for (i, 1) { } } events.onClick() { looks.say(Str(x)); } }`,
         { stdlib: true },
     );
     const [flag, click] = program.sprites[0].scripts;
@@ -950,8 +951,8 @@ test("a sprite's private list does not leak into the next sprite or a top-level 
         `public xs: list<num> = [1];
          public x: num = 1;
          sprite Cat { private xs: list<num> = [2]; private x: num = 2; }
-         sprite Dog { events.onFlag() { looks.say(f"{xs[1]}"); } }
-         proc g() -> void { console.log(f"{x}"); }`,
+         sprite Dog { events.onFlag() { looks.say(Str(xs[1])); } }
+         proc g() -> void { console.log(Str(x)); }`,
         { stdlib: true },
     );
     const say = raws(program.sprites[1].scripts[0].body, "looks_say")[0];
@@ -964,7 +965,7 @@ test("a sprite's private list does not leak into the next sprite or a top-level 
 });
 
 test("a sprite can index a global list declared below it", () => {
-    const program = lower(`sprite Cat { events.onFlag() { looks.say(f"{xs[1]}"); } }\npublic xs: list<num> = [1];`, {
+    const program = lower(`sprite Cat { events.onFlag() { looks.say(Str(xs[1])); } }\npublic xs: list<num> = [1];`, {
         stdlib: true,
     });
     assert.equal(raws(program.sprites[0].scripts[0].body, "looks_say").length, 1);
@@ -1018,7 +1019,7 @@ test("a struct variable becomes one variable per field, baked when its literal i
 });
 
 test("field reads and writes go to the field's own variable", () => {
-    const body = structScript("public p: Point = Point(x = 1, y = 2);", "p.x += 3; looks.say(f\"{p.y}\");");
+    const body = structScript("public p: Point = Point(x = 1, y = 2);", "p.x += 3; looks.say(Str(p.y));");
     assert.deepEqual(setOf(body, "p_x")!.inputs[1], {
         kind: "op",
         opcode: "operator_add",
@@ -1056,7 +1057,7 @@ test("a struct list literal times a literal count folds every column", () => {
 test("struct list methods, element reads and element writes touch every column in lockstep", () => {
     const body = structScript(
         "public ps: list<Point> = [];",
-        "ps.add(Point(x = 1, y = 2)); ps[1].x = 5; ps[1] = Point(x = 8, y = 9); looks.say(f\"{ps[1].y}\"); looks.say(f\"{ps.length()}\");",
+        "ps.add(Point(x = 1, y = 2)); ps[1].x = 5; ps[1] = Point(x = 8, y = 9); looks.say(Str(ps[1].y)); looks.say(Str(ps.length()));",
     );
     const lists = (opcode: string) => raws(body, opcode).map((s) => (s.inputs[0] as { name: string }).name);
     assert.deepEqual(lists("data_addtolist"), ["ps_x", "ps_y"]);
@@ -1067,7 +1068,7 @@ test("struct list methods, element reads and element writes touch every column i
 });
 
 test("a for over a struct list binds each element's fields", () => {
-    const body = structScript("public ps: list<Point> = [Point(x = 1)];", "for (p, ps) { looks.say(f\"{p.x}\"); }");
+    const body = structScript("public ps: list<Point> = [Point(x = 1)];", "for (p, ps) { looks.say(Str(p.x)); }");
     const loop = body.find((s): s is Extract<IRStmt, { kind: "for" }> => s.kind === "for")!;
     assert.deepEqual(loop.times, { kind: "op", opcode: "data_lengthoflist", inputs: [{ kind: "var", name: "ps_x" }] });
     assert.deepEqual(
@@ -1131,7 +1132,7 @@ test("a removed struct can be stored whole, its fields read before the delete", 
 });
 
 test("a field of a removed struct is read before the delete", () => {
-    const body = yieldScript(`${POINT}public ps: list<Point> = [];`, `looks.say(f"{ps.remove(1).y}");`);
+    const body = yieldScript(`${POINT}public ps: list<Point> = [];`, `looks.say(Str(ps.remove(1).y));`);
     assert.deepEqual(order(body).slice(0, 4), ["data_setvariableto", "data_setvariableto", "data_deleteoflist", "data_deleteoflist"]);
     assert.equal((body[4]!.inputs[0] as { name?: string }).name, body[1]!.inputs[0]!.name);
 });

@@ -148,8 +148,13 @@ function run(source: string, files: Record<string, string> = {}): unknown[] {
 
 /** What each expression says, one at a time, with `decls` at the top level. */
 function says(expr: string, decls = ""): unknown {
-    return run(`${decls} sprite Cat { events.onFlag() { looks.say(f"{${expr}}"); } }`)[0];
+    return run(`${decls} sprite Cat { events.onFlag() { looks.say(Str(${expr})); } }`)[0];
 }
+
+test("an f-string with one hole is a string, not the raw value", () => {
+    assert.equal(says(`f"{n + 1}"`, "public n: num = 1;"), "2");
+    assert.equal(says(`f"{2}"`), "2");
+});
 
 test("** folds literals and computes through inline blocks or math.pow", () => {
     assert.equal(says("2 ** 3"), 8);
@@ -212,7 +217,7 @@ test("a return value used as a base survives a later call", () => {
 
 test("a loop condition with an inline power is recomputed every iteration", () => {
     const said = run(`public n: num = 0;
-sprite Cat { events.onFlag() { while ((n + 1) ** 2 < 10) { n += 1; } looks.say(f"{n}"); } }`);
+sprite Cat { events.onFlag() { while ((n + 1) ** 2 < 10) { n += 1; } looks.say(Str(n)); } }`);
     assert.deepEqual(said, [3]);
 });
 
@@ -233,13 +238,13 @@ test("short literal string slices are letter blocks with no proc; the rest use s
 test("a computed string is read once by an inline slice", () => {
     const said = run(`public a: str = "ab"; public n: num = 0;
 proc next() -> str { n += 1; return a; }
-sprite Cat { events.onFlag() { looks.say(next()[1:2]); looks.say(f"{n}"); } }`);
+sprite Cat { events.onFlag() { looks.say(next()[1:2]); looks.say(Str(n)); } }`);
     assert.deepEqual(said, ["ab", 1]);
     assert.equal(says("(a + a)[2:3]", `public a: str = "ab";`), "ba");
 });
 
 test("**= and math.pow both reach the same proc", () => {
-    const said = run(`sprite Cat { events.onFlag() { private x: num = 3; x **= 2; looks.say(f"{x}"); looks.say(f"{math.pow(2, 5)}"); } }`);
+    const said = run(`sprite Cat { events.onFlag() { private x: num = 3; x **= 2; looks.say(Str(x)); looks.say(Str(math.pow(2, 5))); } }`);
     assert.deepEqual(said, [9, 32]);
 });
 
@@ -260,7 +265,7 @@ test("two calls in one statement each keep their own return value", () => {
 test("a condition with two calls is recomputed every iteration", () => {
     const said = run(`public n: num = 0;
 proc f(x: num) -> num { return x; }
-sprite Cat { events.onFlag() { while (f(n) + f(1) < 4) { n += 1; } looks.say(f"{n}"); } }`);
+sprite Cat { events.onFlag() { while (f(n) + f(1) < 4) { n += 1; } looks.say(Str(n)); } }`);
     assert.deepEqual(said, [3]);
 });
 
@@ -286,7 +291,7 @@ sprite Cat {
     events.onFlag() {
         private part = xs[2:3];
         looks.say(f"{part.length()}{part[2]}");
-        for (x, xs[4:]) { looks.say(f"{x}"); }
+        for (x, xs[4:]) { looks.say(Str(x)); }
         ys = xs[::-2];
         looks.say(f"{ys[1]}{ys[3]}");
         xs = xs[2:2];
@@ -300,7 +305,7 @@ test("slices package into a project, including from the top level", () => {
     const { errors, sb3 } = compileToSb3(`public xs: list<num> = [1, 2, 3];
 public ys = xs[2:];
 public s: str = "abc";
-sprite Cat { private zs = xs[:2]; events.onFlag() { looks.say(s[1:2]); looks.say(f"{2 ** 8}"); } }
+sprite Cat { private zs = xs[:2]; events.onFlag() { looks.say(s[1:2]); looks.say(Str(2 ** 8)); } }
 sprite Dog { private zs = xs[:1]; }`);
     assert.deepEqual(errors, []);
     assert.ok(sb3);
@@ -346,7 +351,7 @@ const dictRun = (body: string) => run(`${DICTS} sprite Cat { events.onFlag() { $
 
 test("dict.merge overwrites shared keys, appends new ones and leaves the source alone", () => {
     assert.deepEqual(
-        dictRun(`d.merge(e); for ((k, v), d) { looks.say(f"{k}={v}"); } looks.say(f"{e.length()}");`),
+        dictRun(`d.merge(e); for ((k, v), d) { looks.say(f"{k}={v}"); } looks.say(Str(e.length()));`),
         ["a=1", "b=20", "c=30", 2],
     );
 });
@@ -357,7 +362,7 @@ test("merging a dict into itself changes nothing", () => {
 
 test("dict.contains and dict.length report the keys, ignoring case as Scratch does", () => {
     assert.deepEqual(
-        dictRun(`looks.say(f"{d.length()}"); if (d.contains("a")) { looks.say("a"); } if (d.contains("A")) { looks.say("A"); } if (d.contains("z")) { looks.say("z"); }`),
+        dictRun(`looks.say(Str(d.length())); if (d.contains("a")) { looks.say("a"); } if (d.contains("A")) { looks.say("A"); } if (d.contains("z")) { looks.say("z"); }`),
         [2, "a", "A"],
     );
 });
@@ -365,7 +370,7 @@ test("dict.contains and dict.length report the keys, ignoring case as Scratch do
 test("keys() and values() are live, and a stored copy is not", () => {
     assert.deepEqual(
         dictRun(`private own: list<str> = d.keys(); d["z"] = 9;
-            looks.say(f"{own.length()}"); looks.say(f"{d.keys().length()}"); looks.say(f"{d.values()[3]}");
+            looks.say(Str(own.length())); looks.say(Str(d.keys().length())); looks.say(Str(d.values()[3]));
             for (k, d.keys()) { looks.say(k); }`),
         [2, 3, 9, "a", "b", "z"],
     );
@@ -419,7 +424,7 @@ test("calls that would silently do nothing, or wipe the list, refuse to build", 
 
 test("a list param reads whichever list each call passes", () => {
     const sum = `proc sum(xs: list<num>) -> num { private t: num = 0; for (x, xs) { t += x; } return t; }`;
-    assert.deepEqual(listRun(sum, `looks.say(f"{sum(a)}"); looks.say(f"{sum(b)}"); looks.say(f"{sum(a)}");`), [3, 60, 3]);
+    assert.deepEqual(listRun(sum, `looks.say(Str(sum(a))); looks.say(Str(sum(b))); looks.say(Str(sum(a)));`), [3, 60, 3]);
 });
 
 test("writing through a list param changes the caller's list", () => {
@@ -431,7 +436,7 @@ test("writing through a list param changes the caller's list", () => {
 
 test("a dict param reaches both columns", () => {
     assert.deepEqual(
-        listRun(`proc put(m: dict<str, num>) -> void { m["q"] = 5; for ((k, v), m) { looks.say(f"{k}{v}"); } }`, `put(e); looks.say(f"{d.length()}");`),
+        listRun(`proc put(m: dict<str, num>) -> void { m["q"] = 5; for ((k, v), m) { looks.say(f"{k}{v}"); } }`, `put(e); looks.say(Str(d.length()));`),
         ["b20", "c30", "q5", 2],
     );
 });
@@ -439,25 +444,52 @@ test("a dict param reaches both columns", () => {
 test("a list param passes through other procs, and recursion stays on one copy", () => {
     const procs = `proc last(xs: list<num>, i: num) -> num { if (i == xs.length()) { return xs[i]; } return last(xs, i + 1); }
         proc outer(ys: list<num>) -> num { return last(ys, 1); }`;
-    assert.deepEqual(listRun(procs, `looks.say(f"{outer(a)}"); looks.say(f"{outer(b)}");`), [2, 30]);
+    assert.deepEqual(listRun(procs, `looks.say(Str(outer(a))); looks.say(Str(outer(b)));`), [2, 30]);
 });
 
 test("slices and keys() can be passed, and a proc writing to keys() can't touch the dict", () => {
     const procs = `proc count(xs: list<any>) -> num { xs.add(0); return xs.length(); }`;
-    assert.deepEqual(listRun(procs, `looks.say(f"{count(b[1:2])}"); looks.say(f"{count(d.keys())}"); looks.say(f"{d.length()}");`), [3, 3, 2]);
+    assert.deepEqual(listRun(procs, `looks.say(Str(count(b[1:2]))); looks.say(Str(count(d.keys()))); looks.say(Str(d.length()));`), [3, 3, 2]);
 });
 
 test("a struct list param keeps its field columns", () => {
     const procs = `struct P { x: num = 0, y: num = 0 } public ps: list<P> = [P(x = 1, y = 2)];
         proc ys(l: list<P>) -> num { l.add(P(x = 3, y = 4)); return l[l.length()].y + l[1].y; }`;
-    assert.deepEqual(listRun(procs, `looks.say(f"{ys(ps)}"); looks.say(f"{ps.length()}");`), [6, 2]);
+    assert.deepEqual(listRun(procs, `looks.say(Str(ys(ps))); looks.say(Str(ps.length()));`), [6, 2]);
+});
+
+test("a self-first proc is a method on lists, dicts and structs", () => {
+    const procs = `struct P { x: num = 0, y: num = 0 } public p: P = P(x = 1, y = 2); public ps: list<P> = [P(x = 1, y = 2)];
+        proc total(self: list<num>) -> num { private t: num = 0; for (x, self) { t += x; } return t; }
+        proc push(self: list<num>, v: num) -> void { self.add(v); }
+        proc put(self: dict<str, num>, k: str) -> void { self[k] = 1; }
+        proc sum(self: P) -> num { return self.x + self.y; }
+        proc ys(self: list<P>) -> num { return self[1].y; }`;
+    assert.deepEqual(
+        listRun(procs, `a.push(4); e.put("z"); ${["a.total()", "b.total()", "e.length()", "p.sum()", "ps.ys()", "total(a)"].map((x) => `looks.say(Str(${x}));`).join(" ")}`),
+        [7, 60, 3, 3, 2, 7],
+    );
+});
+
+test("a self-first proc is a method on num, str and bool", () => {
+    const procs = `public n: num = 3; public s: str = "hi"; public on: bool = true;
+        proc twice(self: num) -> num { return self * 2; }
+        proc shout(self: str) -> str { return self + "!"; }
+        proc flip(self: bool) -> bool { return !self; }`;
+    assert.deepEqual(listRun(procs, `looks.say(Str(n.twice())); looks.say(s.shout()); looks.say(Str(on.flip()));`), [6, "hi!", false]);
+});
+
+test("a method on a struct still checks its receiver type", () => {
+    const { errors } = compileToIR(`struct P { x: num = 0 } struct Q { y: num = 0 } public q: Q = Q(y = 1);
+        proc sum(self: P) -> num { return self.x; } sprite Cat { events.onFlag() { looks.say(Str(q.sum())); } }`);
+    assert.match(errors.map((e) => e.message).join(), /'self' expects P, got Q/);
 });
 
 test("each sprite gets its own copy, which can reach its private list", () => {
     const { errors, ir } = compileToIR(`public g: list<num> = [1];
         proc size(xs: list<num>) -> num { return xs.length(); }
-        sprite A { private own: list<num> = [1, 2]; events.onFlag() { looks.say(f"{size(own)}"); looks.say(f"{size(g)}"); } }
-        sprite B { events.onFlag() { looks.say(f"{size(g)}"); } }`);
+        sprite A { private own: list<num> = [1, 2]; events.onFlag() { looks.say(Str(size(own))); looks.say(Str(size(g))); } }
+        sprite B { events.onFlag() { looks.say(Str(size(g))); } }`);
     assert.ok(ir, errors.map((e) => e.message).join("\n"));
     assert.deepEqual([...ir.sprites[0]!.procs.keys()].sort(), ["size_g", "size_own"]);
     assert.deepEqual([...ir.sprites[1]!.procs.keys()], ["size_g_1"]);
@@ -467,14 +499,14 @@ test("each sprite gets its own copy, which can reach its private list", () => {
 test("a copy of a global proc reads the global a sprite member shadows", () => {
     const said = run(`public n: num = 1; public g: list<num> = [5];
         proc read(xs: list<num>) -> num { return n + xs[1]; }
-        sprite A { private n: num = 100; events.onFlag() { looks.say(f"{read(g)}"); } }`);
+        sprite A { private n: num = 100; events.onFlag() { looks.say(Str(read(g))); } }`);
     assert.deepEqual(said, [6]);
 });
 
 test("list param projects build to a real sb3", () => {
     const { errors, sb3 } = compileToSb3(`public a: list<num> = [1]; public b: list<num> = [2];
         proc size(@proccode = "size of %xs and %n", xs: list<num>, n: num) -> num { return xs.length() + n; }
-        sprite A { events.onFlag() { looks.say(f"{size(a, 1)}"); looks.say(f"{size(b, 1)}"); } }`);
+        sprite A { events.onFlag() { looks.say(Str(size(a, 1))); looks.say(Str(size(b, 1))); } }`);
     assert.ok(sb3, errors.map((e) => e.message).join("\n"));
 });
 
@@ -504,7 +536,7 @@ test("a stdlib constant can't be written", () => {
 });
 
 // -- module state --
-const say = (...exprs: string[]) => exprs.map((expr) => `looks.say(f"{${expr}}");`).join(" ");
+const say = (...exprs: string[]) => exprs.map((expr) => `looks.say(Str(${expr}));`).join(" ");
 const inFlag = (imports: string, body: string) => `${imports} sprite Cat { events.onFlag() { ${body} } }`;
 
 test("a module keeps private state between calls", () => {
@@ -571,7 +603,7 @@ test("a proc local shadows its module's constant", () => {
 test("enumerate over a struct list binds the index and the fields", () => {
     const decls = `struct P { x: num = 0, y: num = 0 } public ps: list<P> = [P(x = 1, y = 2), P(x = 3, y = 4)];`;
     assert.deepEqual(run(`${decls} sprite Cat { events.onFlag() { for ((i, p), enumerate(ps)) { looks.say(f"{i}:{p.x},{p.y}"); } } }`), ["1:1,2", "2:3,4"]);
-    assert.deepEqual(run(`${decls} sprite Cat { events.onFlag() { for (i, enumerate(ps)) { looks.say(f"{i}"); } } }`), [1, 2]);
+    assert.deepEqual(run(`${decls} sprite Cat { events.onFlag() { for (i, enumerate(ps)) { looks.say(Str(i)); } } }`), [1, 2]);
 });
 
 test("enumerate works on a struct list param and a module's struct list", () => {

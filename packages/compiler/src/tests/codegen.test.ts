@@ -466,7 +466,7 @@ sprite Cat {
     events.onFlag() {
         private q: Point = shift(ps[1], 2);
         ps.add(q);
-        for (p, ps) { looks.say(f"{p.x}"); }
+        for (p, ps) { looks.say(Str(p.x)); }
     }
 }`);
     assert.ok(find(blocksOf(project), "procedures_definition"));
@@ -492,8 +492,8 @@ test("scripts are stacked by their measured height, not a fixed gap", () => {
 test("a variable in an input counts as a reporter layer, and a define hat is taller than an event hat", () => {
     const project = build(`public n: num = 1;
     sprite Cat {
-        proc f(a: num) -> void { looks.say(f"{a}"); }
-        events.onFlag() { looks.say(f"{n + 1}"); }
+        proc f(a: num) -> void { looks.say(Str(a)); }
+        events.onFlag() { looks.say(Str(n + 1)); }
         events.onFlag() { }
     }`);
     const tops = Object.values(blocksOf(project))

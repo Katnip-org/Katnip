@@ -48,7 +48,7 @@ const isEmptyLit = (expr: IRExpr) => expr.kind === "lit" && expr.value === "";
 test("imported procs reach codegen", () => {
     const files = { "/proj/lib.knip": `public proc twice(n: num) -> num { return n * 2; }` };
     const { errors, sb3 } = compileToSb3(
-        `import "./lib.knip";\nsprite Cat { events.onFlag() { looks.say(f"{lib.twice(2)}"); } }`,
+        `import "./lib.knip";\nsprite Cat { events.onFlag() { looks.say(Str(lib.twice(2))); } }`,
         { path: ENTRY_PATH, resolve: virtualResolver(files) },
     );
 
@@ -63,7 +63,7 @@ test("imported procs reach codegen", () => {
 
 test("struct literals and field reads lower", () => {
     const body = script(`struct Point { x: num, y: num }
-sprite Cat { events.onFlag() { private p: Point = Point(x = 1, y = 2); looks.say(f"{p.x}"); } }`);
+sprite Cat { events.onFlag() { private p: Point = Point(x = 1, y = 2); looks.say(Str(p.x)); } }`);
 
     const say = body.find((s): s is Extract<IRStmt, { kind: "raw" }> => s.kind === "raw" && s.opcode === "looks_say")!;
     assert(!isEmptyLit(say.inputs[0]!), "p.x must read the field, not an empty literal");
@@ -96,7 +96,7 @@ sprite Cat { events.onFlag() { private a: num = 0; private b: num = 0; (a, b) = 
 });
 
 test("a list declared inside a script lowers", () => {
-    const body = script(`sprite Cat { events.onFlag() { private xs: list<num> = [1, 2]; looks.say(f"{xs[1]}"); } }`);
+    const body = script(`sprite Cat { events.onFlag() { private xs: list<num> = [1, 2]; looks.say(Str(xs[1])); } }`);
 
     const say = body.find((s): s is Extract<IRStmt, { kind: "raw" }> => s.kind === "raw" && s.opcode === "looks_say")!;
     assert.equal((say.inputs[0] as { opcode?: string }).opcode, "data_itemoflist");
