@@ -254,6 +254,7 @@ export class Decompiler {
 
         const header: string[] = [];
         if (mutation.warp === "true") header.push("@warp = true");
+        if (def.shadow) header.push("@shadow = true");
         const spec = (ty: Ty) => (ty === "bool" ? "%b" : "%s");
         const generated = [info.name, ...info.params.map((p) => `${p.ident} ${spec(p.ty)}`)].join(" ");
         if (mutation.proccode.replace(/%n/g, "%s") !== generated) {

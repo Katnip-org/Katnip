@@ -17,8 +17,9 @@ enum Key { SPACE = "space", LEFT_ARROW = "left arrow", RIGHT_ARROW = "right arro
 proc Num(@lower = "builds", value: any) -> num { return value; }
 proc Str(@lower = "builds", value: any) -> str { return value; }
 proc Bool(@lower = "builds", value: any) -> bool { return value; }
-# TODO: implement list returns to allow this to be a cast instead of a no-op
-# proc List(@lower = "builds", value: any) -> list<any> { return value; }
+# List(v) / Var(l) also let a variable fill a list slot and vice versa (raw JS reads)
+proc List(@lower = "builds", value: any) -> list<any> { return value; }
+proc Var(@lower = "builds", value: any) -> any { return value; }
 
 # iter helpers
 # In a `for` header these three are folded into the loop counter, never built as lists.

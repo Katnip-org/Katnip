@@ -801,6 +801,7 @@ export class IRGenerator {
             proccode: copy ? undefined : sig?.meta?.proccode,
             returns: plan.returns,
             warp: sig?.meta?.warp ?? true,
+            shadow: sig?.meta?.shadow,
             strategy: plan.strategy,
             vStackName: plan.vStackName,
             retVars: plan.retVars,

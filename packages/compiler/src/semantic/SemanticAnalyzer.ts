@@ -549,6 +549,7 @@ export class SemanticAnalyzer {
         // TODO: Implement the features the program currently blocks
         if (
             !meta.opcode &&
+            meta.lower !== "builds" &&
             node.returnType?.type === "Type" &&
             (node.returnType.typeName === "list" || node.returnType.typeName === "dict")
         ) {
@@ -620,13 +621,17 @@ export class SemanticAnalyzer {
         const meta: SignatureMeta = {};
         const loweringKinds: LoweringKind[] = ["reporter", "command", "yields", "userproc", "builds"];
         const retModes = ["auto", "var", "vstack"] as const;
+        const known = ["opcode", "operator", "proccode", "hat", "warp", "shadow", "lower", "ret"];
         for (const decorator of decorators) {
+            if (!known.includes(decorator.name))
+                this.error(`unknown decorator '@${decorator.name}' is ignored; expected one of: @${known.join(", @")}`, decorator, undefined, "warning");
             const value = decorator.value.type === "Literal" ? decorator.value.value : undefined;
             if (decorator.name === "opcode" && typeof value === "string") meta.opcode = value;
             if (decorator.name === "operator" && typeof value === "string") meta.operator = value;
             if (decorator.name === "proccode" && typeof value === "string") meta.proccode = value;
             if (decorator.name === "hat") meta.hat = value === "true" || value === true;
             if (decorator.name === "warp") meta.warp = value === "true" || value === true;
+            if (decorator.name === "shadow") meta.shadow = value === "true" || value === true;
             if (decorator.name === "lower") {
                 if (typeof value === "string" && (loweringKinds as string[]).includes(value)) {
                     meta.lower = value as LoweringKind;
@@ -1876,7 +1881,7 @@ export class SemanticAnalyzer {
      * By default the caret spans the whole node; pass `length` to underline only
      * the first N columns (e.g. just an offending keyword).
      */
-    private error(message: string, ref: NodeBase | SourceLocation, length?: number): void {
+    private error(message: string, ref: NodeBase | SourceLocation, length?: number, severity?: "warning"): void {
         const loc = "loc" in ref ? ref.loc : ref;
         this.reporter.add(
             new KatnipError("Semantic", message, {
@@ -1888,7 +1893,7 @@ export class SemanticAnalyzer {
                           endLine: loc.end.line,
                           endColumn: loc.end.column,
                       }),
-            }),
+            }, severity),
         );
     }
 }

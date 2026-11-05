@@ -690,6 +690,16 @@ test("statements after clone.delete() or forever warn that they never run", () =
     assert.equal(warned(`if (1 == 1) { clone.delete(); } looks.show();`), false);
 });
 
+test("an unknown proc decorator warns instead of vanishing", () => {
+    const warned = (decorator: string): boolean =>
+        compileToIR(`sprite A { proc p(${decorator}) -> void { looks.show(); } }`).errors.some(
+            (e) => e.severity === "warning" && /unknown decorator/.test(e.message),
+        );
+    assert.equal(warned(`@shadw = true`), true);
+    assert.equal(warned(`@shadow = true`), false);
+    assert.equal(warned(`@warp = true`), false);
+});
+
 test("a target only gets the global procs its scripts reach", () => {
     const lib = `
         public n: num = 0;

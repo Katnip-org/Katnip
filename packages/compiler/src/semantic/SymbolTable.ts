@@ -31,6 +31,8 @@ export interface SignatureMeta {
     hat?: boolean;
     /** Whether the proc runs without screen refresh (@warp). */
     warp?: boolean;
+    /** Whether the definition block is a shadow, which hides it in the editor (@shadow). */
+    shadow?: boolean;
     /** Emission strategy (@lower), defaulted from opcode/return shape when absent. */
     lower?: LoweringKind;
     /** Binary operator this proc backs (@operator), e.g. "!&". Only meaningful with @lower = "builds". */

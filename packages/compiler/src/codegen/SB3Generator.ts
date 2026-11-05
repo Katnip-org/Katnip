@@ -297,7 +297,12 @@ export class SB3Generator {
         const sig = this.signature(proc);
         this.params = new Map(proc.params.map((p) => [p.name, p.type]));
 
-        const [defID, def] = this.newBlock("procedures_definition", blocks, null, { topLevel: true, x: 0, y: this.topY });
+        const [defID, def] = this.newBlock("procedures_definition", blocks, null, {
+            topLevel: true,
+            shadow: proc.shadow === true,
+            x: 0,
+            y: this.topY,
+        });
         const [protoID, proto] = this.newBlock("procedures_prototype", blocks, defID, { shadow: true });
         def.inputs.custom_block = [1, protoID];
 
@@ -461,7 +466,7 @@ export class SB3Generator {
                 return this.emitExpr(stackItem(expr), blocks, parent);
             // `input` compresses a var to a [12, name, id] primitive, this is the unprocessed form.
             case "var": {
-                const varID = this.varIDs.get(expr.name);
+                const varID = this.refID(expr.name, "variable");
                 if (!varID) throw new KatnipError("Codegen",`undeclared variable '${expr.name}'`);
                 const [id, block] = this.newBlock("data_variable", blocks, parent);
                 block.fields.VARIABLE = [expr.name, varID];
@@ -499,8 +504,7 @@ export class SB3Generator {
 
                     let refID;
                     if (slot.ref === "broadcast") refID = this.broadcastID(name);
-                    else if (slot.ref === "list") refID = this.listIDs.get(name);
-                    else refID = this.varIDs.get(name);
+                    else refID = this.refID(name, slot.ref);
 
                     if (!refID) throw new KatnipError("Codegen",`undeclared ${slot.ref} '${name}'`);
                     block.fields[slot.name] = [name, refID];
@@ -532,6 +536,15 @@ export class SB3Generator {
         });
     }
 
+    /**
+     * A name only reaches the other registry through List()/Var(), which the analyzer requires,
+     * so the fallback writes the foreign ID on purpose: scratch-vm resolves by ID without a type check.
+     */
+    private refID(name: string, kind: "variable" | "list"): Uid | undefined {
+        if (kind === "list") return this.listIDs.get(name) ?? this.varIDs.get(name);
+        return this.varIDs.get(name) ?? this.listIDs.get(name);
+    }
+
     /** Broadcasts are registered on the stage, whichever target uses them. */
     private broadcastID(name: string): Uid {
         const existing = this.broadcastIDs.get(name);
@@ -557,7 +570,7 @@ export class SB3Generator {
                 if (!prim) return this.input(boolLit(expr.value), blocks, parent);
                 return [1, [prim, String(expr.value)] as Primitive];
             case "var": {
-                const id = this.varIDs.get(expr.name);
+                const id = this.refID(expr.name, "variable");
                 if (!id) throw new KatnipError("Codegen",`undeclared variable '${expr.name}'`);
                 return [3, [12, expr.name, id], shadow];
             }

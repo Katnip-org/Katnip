@@ -41,6 +41,7 @@ export interface IRProc {
     proccode?: string;
     returns: ReturnMethod;
     warp: boolean;
+    shadow?: boolean;
     strategy: "var" | "vstack" | null;
     vStackName: string | null;
     retVars: string[];

@@ -83,6 +83,13 @@ test("proc definition emits a prototype, mutation and argument reporters", () =>
     }
 });
 
+test("@shadow makes the definition block a shadow, and only when asked", () => {
+    const def = (decorator: string) =>
+        find(blocksOf(build(`sprite Cat { proc hide(${decorator}) -> void { looks.say("hi"); } }`)), "procedures_definition")![1];
+    assert.equal(def("@shadow = true").shadow, true);
+    assert.equal(def("").shadow, false);
+});
+
 test("@proccode sets the custom block label, with specs from the param types", () => {
     const proccode = (source: string) => {
         const [, proto] = find(blocksOf(build(source)), "procedures_prototype")!;
