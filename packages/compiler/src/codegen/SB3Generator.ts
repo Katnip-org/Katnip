@@ -561,6 +561,13 @@ export class SB3Generator {
         // A color shadow must be a valid #rrggbb, unlike every other prim where "" is fine.
         const shadow = prim ? ([prim, prim === 9 ? "#000000" : ""] as Primitive) : null;
 
+        // Bool(x) is only a marker: x goes in raw, unwrapped even in a boolean slot.
+        if (expr.kind === "op" && expr.opcode === "katnip_bool") {
+            const inner = expr.inputs[0]!;
+            if (prim || inner.kind === "lit") return this.input(inner, blocks, parent, prim);
+            return [2, this.emitExpr(inner, blocks, parent)];
+        }
+
         // No prim means a boolean slot, which is hexagonal and rejects a round reporter.
         if (!prim && expr.kind !== "lit" && !this.isBoolShaped(expr))
             return this.input(boolCast(expr), blocks, parent);

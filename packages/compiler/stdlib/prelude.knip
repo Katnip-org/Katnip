@@ -16,7 +16,8 @@ enum Key { SPACE = "space", LEFT_ARROW = "left arrow", RIGHT_ARROW = "right arro
 # casts
 proc Num(@lower = "builds", value: any) -> num { return value; }
 proc Str(@lower = "builds", value: any) -> str { return value; }
-proc Bool(@lower = "builds", value: any) -> bool { return value; }
+# Bool(x) in a boolean slot goes in raw (no `= "true"` wrap), so Scratch applies its own truthiness
+proc Bool(@opcode = "katnip_bool", value: any) -> bool {}
 # List(v) / Var(l) also let a variable fill a list slot and vice versa (raw JS reads)
 proc List(@lower = "builds", value: any) -> list<any> { return value; }
 proc Var(@lower = "builds", value: any) -> any { return value; }
