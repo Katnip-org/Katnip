@@ -340,6 +340,18 @@ test("+ over str operands is operator_join, not operator_add", () => {
     assert.equal(num.kind === "op" && num.opcode, "operator_add");
 });
 
+test("+= on a str target is operator_join, not operator_add", () => {
+    const program = lower(
+        HAT + `sprite Cat { proc f() -> str { return "x"; } onflag() { private s: str; private t = "b"; s += t; s += f(); } }`,
+    );
+    const sets = raws(program.sprites[0].scripts[0].body, "data_setvariableto").filter(
+        (b) => (b.inputs[0] as { name?: string }).name === "s",
+    );
+    const values = sets.map((set) => set.inputs[1] as IRExpr).filter((value) => value.kind === "op");
+    assert.equal(values.length, 2);
+    for (const value of values) assert.equal(value.kind === "op" && value.opcode, "operator_join");
+});
+
 test("forever lowers to a forever loop", () => {
     const program = lower(HAT + `sprite Cat { onflag() { private t = 0; forever { t += 1; } } }`);
     const body = program.sprites[0].scripts[0].body;
