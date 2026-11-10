@@ -1052,8 +1052,9 @@ export class IRGenerator {
                     const combined: IRExpr =
                         node.operator === "="
                             ? right
-                            : this.binop(
+                            : this.typedBinop(
                                   node.operator.slice(0, -1),
+                                  node.left,
                                   { kind: "op", opcode: "data_itemoflist", inputs: [structuredClone(vals), slot()] },
                                   right,
                                   out,
@@ -1100,8 +1101,9 @@ export class IRGenerator {
                 const value: IRExpr =
                     node.operator === "="
                         ? this.lowerExpr(node.right, out)
-                        : this.binop(
+                        : this.typedBinop(
                               node.operator.slice(0, -1),
+                              node.left,
                               this.lowerExpr(node.left, out),
                               this.lowerExpr(node.right, out),
                               out,
@@ -1468,6 +1470,16 @@ export class IRGenerator {
         for (const value of Object.values(node)) this.freeze(value);
     }
 
+    /**
+     * `x op = y` has to type like `x = x op y`. Going straight to binop lost the str case, so
+     * `s += f()` on a str target emitted operator_add and Scratch turned the text into 0.
+     */
+    private typedBinop(op: string, target: ExpressionNode, left: IRExpr, right: IRExpr, out: IRStmt[]): IRExpr {
+        const type = this.analyzer.exprTypes.get(target);
+        if (op === "+" && type?.kind === "primitive" && type.name === "str")
+            return { kind: "op", opcode: "operator_join", inputs: [left, right] };
+        return this.binop(op, left, right, out);
+    }
     private binop(op: string, left: IRExpr, right: IRExpr, out: IRStmt[]): IRExpr {
         const opcode = binaryOpcodes[op];
         if (opcode) return { kind: "op", opcode, inputs: [left, right] };
