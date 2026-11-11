@@ -220,20 +220,8 @@ export interface Monitor {
 }
 
 // --- Extensions ---
-export type KnownExtension =
-    | "pen"
-    | "music"
-    | "text2speech"
-    | "translate"
-    | "videoSensing"
-    | "makeymakey"
-    | "microbit"
-    | "ev3"
-    | "boost"
-    | "wedo2"
-    | "gdxfor";
-
-export type ExtensionId = KnownExtension | (string & {});
+export type { KnownExtension } from "../utils/extensions.js";
+export type ExtensionId = import("../utils/extensions.js").KnownExtension | (string & {});
 
 // --- SB3 Project ---
 export interface Platform {
@@ -262,6 +250,11 @@ export interface Sb3Project {
     targets: Target[];
     monitors: Monitor[];
     extensions: ExtensionId[];
+    /**
+     * Extension id -> the URL to fetch it from. TurboWarp reads this next to `extensions` and loads
+     * each one before the project runs; Scratch ignores it. Omitted when nothing needs fetching.
+     */
+    extensionURLs?: Record<string, string>;
     meta: KatnipMeta;
 }
 

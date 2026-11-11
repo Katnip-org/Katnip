@@ -19,6 +19,9 @@ export type Slot =
     | { kind: "menu"; name: string; menuOpcode: string; menuField: string; default: string };
 
 const input = (name: string, prim?: ShadowPrimitiveType): Slot => ({ kind: "input", name, prim });
+
+/** An input slot for a block whose metadata comes from the project rather than this table. */
+export const inputSlot = input;
 const broadcast = (name: string): Slot => ({ kind: "broadcast", name });
 const field = (name: string, ref?: "variable" | "list" | "broadcast"): Slot => ({ kind: "field", name, ref });
 const menu = (name: string, menuOpcode: string, menuField: string, def: string): Slot =>

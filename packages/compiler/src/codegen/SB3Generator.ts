@@ -20,8 +20,9 @@ import {
     type Uid,
     COSTUME_FORMATS,
 } from "./SB3TypeDefs.js";
-import { booleanOpcodes, opcodeSlots, type ShadowPrimitiveType } from "./scratchDefs.js";
+import { booleanOpcodes, inputSlot, opcodeSlots, type Slot, type ShadowPrimitiveType } from "./scratchDefs.js";
 import { KatnipError } from "../utils/ErrorReporter.js";
+import { KNOWN_EXTENSION_IDS, opcodePrefix, type DeclaredExtension } from "../utils/extensions.js";
 
 interface ProcSignature {
     proccode: string;
@@ -99,10 +100,7 @@ const cBlocks = new Set([
 ]);
 
 /** Opcode prefixes Scratch will not load unless the project declares them. */
-const extensionIDs = new Set<KnownExtension>([
-    "pen", "music", "text2speech", "translate", "videoSensing",
-    "makeymakey", "microbit", "ev3", "boost", "wedo2", "gdxfor",
-]);
+const extensionIDs = new Set<string>(KNOWN_EXTENSION_IDS);
 
 /** The global procs a target's scripts can reach. Custom blocks are per target, so the rest would be dead weight. */
 const reachableProcs = (ir: IRProgram, sprite: IRSprite): IRProc[] => {
@@ -145,6 +143,9 @@ const reporterOpcode = (type: paramType) =>
 
 const isExtension = (opcode: string) => extensionIDs.has(opcode.split("_")[0] as KnownExtension);
 
+/** Blocks from a declared extension are as tall as Scratch's own; `isExtension` only knows the builtins. */
+type ExtensionTest = (opcode: string) => boolean;
+
 /** How many reporters deep a block's inputs nest; shadows (menus, typed-in values) don't count. */
 function reporterDepth(block: Block, blocks: BlockMap): number {
     let depth = 0;
@@ -161,11 +162,11 @@ function reporterDepth(block: Block, blocks: BlockMap): number {
 }
 
 /** Editor height of a stack, so the next script can be placed below it without overlapping. */
-function stackHeight(id: BlockId | null, blocks: BlockMap): number {
+function stackHeight(id: BlockId | null, blocks: BlockMap, isExt: ExtensionTest = isExtension): number {
     let height = 0;
     for (; id; id = (blocks[id] as Block).next) {
         const block = blocks[id] as Block;
-        const extension = isExtension(block.opcode);
+        const extension = isExt(block.opcode);
         // The first reporter layer fits in the block (the first two on an extension block)
         const freeLayers = extension ? 2 : 1;
         if (block.opcode === "procedures_definition") height += defineHatHeight;
@@ -173,15 +174,15 @@ function stackHeight(id: BlockId | null, blocks: BlockMap): number {
         else height += blockHeight;
         height += reporterLayerHeight * Math.max(0, reporterDepth(block, blocks) - freeLayers);
         if (!cBlocks.has(block.opcode)) continue;
-        height += mouthHeight(block.inputs.SUBSTACK, blocks) + cBottomHeight;
-        if (block.opcode === "control_if_else") height += cMiddleHeight + mouthHeight(block.inputs.SUBSTACK2, blocks);
+        height += mouthHeight(block.inputs.SUBSTACK, blocks, isExt) + cBottomHeight;
+        if (block.opcode === "control_if_else") height += cMiddleHeight + mouthHeight(block.inputs.SUBSTACK2, blocks, isExt);
     }
     return height;
 }
 
-function mouthHeight(input: Input | undefined, blocks: BlockMap): number {
+function mouthHeight(input: Input | undefined, blocks: BlockMap, isExt: ExtensionTest = isExtension): number {
     if (!input || typeof input[1] !== "string") return emptyMouthHeight;
-    return stackHeight(input[1], blocks);
+    return stackHeight(input[1], blocks, isExt);
 }
 
 export class SB3Generator {
@@ -199,7 +200,12 @@ export class SB3Generator {
     private procSigs = new Map<string, ProcSignature>();
     private broadcastIDs = new Map<string, Uid>();
     private params = new Map<string, paramType>();
-    private used = new Set<KnownExtension>();
+    private used = new Set<string>();
+    /** Extension prefixes the project declared, and the URL to fetch each from (null: built in). */
+    private declared = new Map<string, DeclaredExtension>();
+    /** Slots for declared extensions' blocks, which scratchDefs cannot list because they depend on the project. */
+    private declaredSlots = new Map<string, Slot[]>();
+    private isExtension: ExtensionTest = isExtension;
     private topY = 0;
 
     generate(ir: IRProgram, assets: AssetTable = new Map()): Sb3Project {
@@ -209,6 +215,11 @@ export class SB3Generator {
         this.procSigs.clear();
         this.broadcastIDs.clear();
         this.used.clear();
+        this.declared = ir.extensions;
+        this.isExtension = (opcode) => isExtension(opcode) || this.declared.has(opcodePrefix(opcode));
+        for (const ext of this.declared.values())
+            for (const [opcode, args] of ext.blocks)
+                this.declaredSlots.set(opcode, args.map((arg) => inputSlot(arg.name, arg.numeric ? 4 : 10)));
 
         const stage = minimalStage();
         this.sb3.targets.push(stage);
@@ -245,6 +256,12 @@ export class SB3Generator {
         }
 
         this.sb3.extensions = [...this.used];
+        const urls: Record<string, string> = {};
+        for (const id of this.used) {
+            const url = this.declared.get(id)?.url;
+            if (typeof url === "string") urls[id] = url;
+        }
+        if (Object.keys(urls).length) this.sb3.extensionURLs = urls;
         return this.sb3;
     }
 
@@ -277,8 +294,10 @@ export class SB3Generator {
 
     private newBlock(opcode: string, blocks: BlockMap, parent: BlockId | null, overrides: Partial<Block> = {}): [BlockId, Block] {
         const id = this.generateID("block");
-        const prefix = opcode.split("_")[0] as KnownExtension;
-        if (extensionIDs.has(prefix)) this.used.add(prefix);
+        // Scratch's own extensions load without being named; a declared one is named in project.json
+        // so the VM fetches it. Anything else is a core block (motion_*, data_*, ...), which needs neither.
+        const prefix = opcodePrefix(opcode);
+        if (extensionIDs.has(prefix) || this.declared.has(prefix)) this.used.add(prefix);
 
         blocks[id] = {
             opcode,
@@ -323,7 +342,7 @@ export class SB3Generator {
         };
 
         def.next = this.emitStack(proc.body, blocks, defID);
-        this.topY += stackHeight(defID, blocks) + scriptGap;
+        this.topY += stackHeight(defID, blocks, this.isExtension) + scriptGap;
     }
 
     private signature(proc: IRProc): ProcSignature {
@@ -350,7 +369,7 @@ export class SB3Generator {
             const [id, hat] = this.newBlock(script.hatOpcode, blocks, null, { topLevel: true, x: 0, y: this.topY });
             this.applySlots(hat, id, blocks, script.hatOpcode, script.args);
             hat.next = this.emitStack(script.body, blocks, id);
-            this.topY += stackHeight(id, blocks) + scriptGap;
+            this.topY += stackHeight(id, blocks, this.isExtension) + scriptGap;
         }
         return blocks;
     }
@@ -479,7 +498,7 @@ export class SB3Generator {
 
     /** Routes positional IR inputs into the slots opcodeSlots declares for the opcode. */
     private applySlots(block: Block, id: BlockId, blocks: BlockMap, opcode: string, inputs: IRExpr[]): void {
-        const slots = opcodeSlots[opcode];
+        const slots = this.declaredSlots.get(opcode) ?? opcodeSlots[opcode];
         if (!slots) throw new KatnipError("Codegen",`no slot metadata for '${opcode}'`);
         if (inputs.length !== slots.length)
             throw new KatnipError("Codegen",`${opcode} takes ${slots.length} inputs, got ${inputs.length}`);

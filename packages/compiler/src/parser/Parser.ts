@@ -421,6 +421,14 @@ export class Parser {
             if (this.checkToken("value", ["import"])) return this.parseImportLike("import");
             if (this.checkToken("value", ["costume"])) return this.parseImportLike("costume");
             if (this.checkToken("value", ["sound"]) && !(this.peek(1)?.token.type === ".")) return this.parseImportLike("sound");
+            // Guarded on `extension <name> =` or `extension <name>;`, so a variable called `extension`
+            // still parses as one.
+            if (
+                this.checkToken("value", ["extension"]) &&
+                this.peek(1)?.token.type === "Identifier" &&
+                ["=", ";"].includes(this.peek(2)?.token.type ?? "")
+            )
+                return this.parseExtensionDeclaration();
 
             if (this.checkToken("value", ["if"])) return this.parseIfStatement();
             if (this.checkToken("value", ["for"])) return this.parseForStatement();
@@ -817,6 +825,38 @@ export class Parser {
         };
         if (type === "import") return { type: "ImportDeclaration", ...decl };
         return { type: "AssetDeclaration", kind: type, ...decl };
+    }
+
+    /**
+     * `extension <name> = "<url>";` or `extension <name>;`
+     * The URL is optional, for extensions the Scratch VM already ships with.
+     */
+    private parseExtensionDeclaration(): StatementNode {
+        const keyword = this.consume({ type: "Identifier", value: "extension" }, "Expected 'extension' keyword");
+        const nameToken = this.consume({ type: "Identifier" }, "Expected an extension name after 'extension'");
+        const name = nameToken.token.value;
+
+        if (!/^[A-Za-z][A-Za-z0-9_]*$/.test(name))
+            this.report(new KatnipError("Parser", `'${name}' is not a valid extension name; it is used as a block opcode prefix, like 'pen' in pen_penDown`, nameToken.start));
+
+        let url: string | undefined;
+        if (this.checkToken("type", ["="])) {
+            this.advance();
+            const value = this.consume({ type: "String" }, "Expected a quoted URL after '='");
+            url = value.token.value;
+            if (!/^https?:\/\//i.test(url))
+                this.report(
+                    new KatnipError("Parser", `an extension URL must be http(s); an sb3 only names a URL, and a local path is dead once the project is shared`, value.start),
+                );
+        }
+
+        this.expectSemicolon("Expected ';' at the end of an extension declaration");
+        return {
+            type: "ExtensionDeclaration",
+            name,
+            url,
+            loc: { start: keyword.start, end: this.previous()?.end || keyword.start },
+        };
     }
 
     private parseSpriteDefinition(isStage: boolean): StatementNode {

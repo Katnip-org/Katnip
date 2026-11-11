@@ -3,12 +3,14 @@
  */
 
 import { ErrorReporter, KatnipError } from "../utils/ErrorReporter.js";
+import { CORE_CATEGORIES, KNOWN_EXTENSION_IDS, opcodePrefix, type DeclaredExtension, type KnownExtension } from "../utils/extensions.js";
 import { KatnipLog, KatnipLogType, Logger } from "../utils/Logger.js";
 import type {
     AST,
     BlockNode,
     DecoratorNode,
     EnumDeclarationNode,
+    ExtensionDeclarationNode,
     StructDeclarationNode,
     StructFieldNode,
     MemberExpressionNode,
@@ -220,6 +222,14 @@ export class SemanticAnalyzer {
      * Ingests pre-parsed stdlib modules before user analysis.
      * Each file becomes a namespace named after its basename (motion.knip -> motion.*).
      */
+    /** Extensions the project declares (`extension websocket = "..."`), by opcode prefix. */
+    private readonly declaredExtensions = new Map<string, DeclaredExtension>();
+
+    /** Extension prefixes the project declared, with their fetch URL and block shapes. */
+    get extensions(): Map<string, DeclaredExtension> {
+        return this.declaredExtensions;
+    }
+
     loadStdlib(modules: StdlibModule[]): void {
         const scopes = new Map<StdlibModule, Scope>();
         for (const module of modules) {
@@ -505,6 +515,8 @@ export class SemanticAnalyzer {
      * This is so that they can be referenced early. Top-level variables are the file's shared namespace, visible to every sprite regardless of declaration order.
      */
     private hoist(body: StatementNode[]): void {
+        // Before the procs: a proc's @opcode names an extension prefix, and that has to be known by then.
+        for (const stmt of body) if (stmt.type === "ExtensionDeclaration") this.hoistExtension(stmt);
         for (const stmt of body) {
             if (stmt.type === "EnumDeclaration") this.hoistEnum(stmt);
             else if (stmt.type === "StructDeclaration") this.hoistStruct(stmt);
@@ -544,6 +556,29 @@ export class SemanticAnalyzer {
             this.error(`@operator is only valid on a @lower = "builds" proc`, node);
         }
 
+        // A stdlib proc's opcode is one the VM or a built-in extension already has, so only user procs
+        // can name a prefix the project has to declare.
+        const ext = !this.inStdlib && meta.opcode ? this.declaredExtensions.get(opcodePrefix(meta.opcode)) : undefined;
+        if (meta.opcode && !this.inStdlib) {
+            const prefix = opcodePrefix(meta.opcode);
+            if (prefix !== meta.opcode && this.needsDeclaring(prefix) && !ext)
+                this.error(
+                    `'${meta.opcode}' belongs to the '${prefix}' extension, which this project does not declare; add \`extension ${prefix} = "<url>";\`` +
+                        ` or point the @opcode at one of Scratch's own (${KNOWN_EXTENSION_IDS.join(", ")})`,
+                    node,
+                );
+            // Scratch names a custom extension block's inputs after the extension's own argument
+            // names, so the source has to say them: the proc's params, in order.
+            else if (ext)
+                ext.blocks.set(
+                    meta.opcode,
+                    node.parameters.map((param) => ({
+                        name: param.name,
+                        numeric: param.paramType.type === "Type" && param.paramType.typeName === "num",
+                    })),
+                );
+        }
+
         if (meta.proccode !== undefined) this.checkProccode(meta.proccode, meta, node);
 
         // TODO: Implement the features the program currently blocks
@@ -574,6 +609,11 @@ export class SemanticAnalyzer {
         };
         this.procSignatures.set(node, signature);
         this.declare({ kind: "procedure", name: node.name, declNode: node, signatures: [signature] }, node);
+    }
+
+    /** Whether an opcode prefix is something the project has to declare before using. */
+    private needsDeclaring(prefix: string): boolean {
+        return !CORE_CATEGORIES.includes(prefix) && !KNOWN_EXTENSION_IDS.includes(prefix as KnownExtension);
     }
 
     /**
@@ -648,6 +688,26 @@ export class SemanticAnalyzer {
             }
         }
         return meta;
+    }
+
+    /** Records a declared extension. Repeats are fine when they agree on the URL. */
+    private hoistExtension(node: ExtensionDeclarationNode): void {
+        if (this.current.kind !== "global") {
+            this.error("Extensions can only be declared at the top level of a file", node);
+            return;
+        }
+
+        const url = node.url ?? null;
+        const seen = this.declaredExtensions.get(node.name);
+        if (!seen) {
+            this.declaredExtensions.set(node.name, { url, blocks: new Map() });
+            return;
+        }
+        if (seen.url !== url)
+            this.error(
+                `extension '${node.name}' is already declared${seen.url ? ` as ${seen.url}` : " without a URL"}; one prefix can only point at one extension`,
+                node,
+            );
     }
 
     private hoistEnum(node: EnumDeclarationNode): void {
@@ -788,6 +848,9 @@ export class SemanticAnalyzer {
             case "ImportDeclaration":
                 if (this.current.kind !== "global")
                     this.error("Imports are only allowed at the top level of a file", node);
+                break;
+            case "ExtensionDeclaration":
+                // Collected in hoist, so procs can check their @opcode against it.
                 break;
             case "AssetDeclaration": {
                 if (this.current.kind !== "sprite")

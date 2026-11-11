@@ -117,6 +117,7 @@ export type StatementNode =
     | SpriteDeclarationNode
     | ImportDeclarationNode
     | AssetDeclarationNode
+    | ExtensionDeclarationNode
     | ReturnStatementNode
     | ErrorStatementNode;
 
@@ -237,6 +238,18 @@ export interface ImportDeclarationNode extends NodeBase {
     /** Span of the quoted specifier, so resolution errors underline the path itself. */
     specifierLoc: SourceLocation;
     alias?: string;
+}
+
+/**
+ * `extension websocket = "https://example.com/ws.js";`
+ * Declares that this project's blocks may use the `websocket_*` opcodes, and where to fetch the
+ * extension from. The URL is optional: Scratch's own extensions (pen, music, ...) are built in.
+ */
+export interface ExtensionDeclarationNode extends NodeBase {
+    type: "ExtensionDeclaration";
+    /** Opcode prefix the extension's blocks use, e.g. "websocket" for `websocket_connect`. */
+    name: string;
+    url?: string;
 }
 
 export interface AssetDeclarationNode extends NodeBase {
