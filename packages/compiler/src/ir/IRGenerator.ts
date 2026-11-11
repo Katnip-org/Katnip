@@ -52,6 +52,7 @@ export class IRGenerator {
         sprites: [],
         variables: new Map(),
         lists: new Map(),
+        extensions: new Map(),
     };
 
     private sprite: IRSprite | null = null;
@@ -116,6 +117,7 @@ export class IRGenerator {
     constructor(private analyzer: SemanticAnalyzer) {}
 
     generate(ast: AST): IRProgram {
+        for (const [name, ext] of this.analyzer.extensions) this.program.extensions.set(name, ext);
         for (const stmt of ast.body) if (stmt.type === "StructDeclaration") this.structs.set(stmt.name, stmt.fields);
         this.planReturns();
         this.declareModules();
@@ -148,6 +150,7 @@ export class IRGenerator {
                 case "EnumDeclaration":
                 case "ImportDeclaration":
                 case "StructDeclaration":
+                case "ExtensionDeclaration":
                     break;
                 case "VariableAssignment":
                 case "HandlerStatement":

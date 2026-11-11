@@ -7,6 +7,7 @@
  */
 
 import type { ReturnMethod } from "../semantic/SymbolTable.js";
+import type { DeclaredExtension } from "../utils/extensions.js";
 
 /** Most basic IR type */
 export type IRExpr =
@@ -83,4 +84,6 @@ export interface IRProgram {
     variables: Map<string, string | number | boolean>;
     /** Stage-owned lists: user lists, vstack vStackNames. Maps to initial contents. */
     lists: Map<string, (string | number | boolean)[]>;
+    /** Declared block extensions: opcode prefix -> its fetch URL and the blocks it contributes. */
+    extensions: Map<string, DeclaredExtension>;
 }
